@@ -29,18 +29,18 @@ program Texture2Par
                                   modflowflag, zoneflag, geoflag
     real                       :: a_hmin
     real, allocatable          :: ppx(:), ppy(:), ppKCMin(:), &
-                                  ppdKC(:), ppAniso(:), ppKFMin(:), ppdKF(:), &
-                                  ppSsC(:), ppSsF(:), ppSyC(:), ppSyF(:), &
-                                  ppatx(:), ppaty(:), ppatKCMin(:), & 
-                                  ppatdKC(:), ppatKFMin(:), ppatdKF(:), &
-                                  ppatAniso(:)
+                                  ppdKC(:), ppAnisoC(:), ppAnisoF(:), &
+                                  ppKFMin(:), ppdKF(:), ppSsC(:), ppSsF(:), &
+                                  ppSyC(:), ppSyF(:), ppatx(:), ppaty(:), &
+                                  ppatKCMin(:), ppatdKC(:), ppatKFMin(:), & 
+                                  ppatdKF(:), ppatAnisoC(:), ppatAnisoF(:)
     integer,allocatable        :: ppZone(:), ppatZone(:)
     character(150)             :: jnk,fpath_line
     character(1000)            :: line
     logical                    :: writenodefiles
     
 ! Intel-Fortran specific way of writing to same command line line
-    open(6, carriagecontrol='fortran')
+    open(6, carriagecontrol='fortran')  ! Uses removed by VB
     
     ! Write Flag
     write(*,'(/,8x,a)') '   Texture2Par v1.0.0'
@@ -120,11 +120,11 @@ program Texture2Par
     call FindSectionLength(10, ppn, '*')
     allocate(ppx(ppn), ppy(ppn), ppKCMin(ppn), ppdKC(ppn), ppKFMin(ppn), &
              ppdKF(ppn), ppSsC(ppn), ppSsF(ppn), ppSyC(ppn), ppSyF(ppn), &
-             ppAniso(ppn), ppZone(ppn))
+             ppAnisoC(ppn), ppAnisoF(ppn), ppZone(ppn))
     do ipp = 1, ppn
       read(10,*) ppx(ipp), ppy(ipp), ppKCMin(ipp), ppdKC(ipp), ppKFMin(ipp), &
                  ppdKF(ipp), ppSsC(ipp), ppSsF(ipp), ppSyC(ipp),ppSyF(ipp), &
-                 ppAniso(ipp), ppZone(ipp)
+                 ppAnisoC(ipp), ppAnisoF(ipp), ppZone(ipp)
     end do
     
     ! Aquitard Pilot Point section
@@ -132,21 +132,22 @@ program Texture2Par
     call ReadToSymbol(10, '*')
     call FindSectionLength(10, atppn, '*')
     allocate(ppatx(atppn), ppaty(atppn), ppatKCMin(atppn), ppatdKC(atppn), &
-             ppatKFMin(atppn), ppatdKF(atppn), ppatAniso(atppn), &
-             ppatZone(atppn))
+             ppatKFMin(atppn), ppatdKF(atppn), ppatAnisoC(atppn), &
+             ppatAnisoF(atppn), ppatZone(atppn))
     do ipp = 1, atppn
       read(10,*) ppatx(ipp), ppaty(ipp), ppatKCMin(ipp), ppatdKC(ipp), &
-                 ppatKFMin(ipp), ppatdKF(ipp), ppatAniso(ipp), ppatZone(ipp)
+                 ppatKFMin(ipp), ppatdKF(ipp), ppatAnisoC(ipp), &
+                 ppatAnisoF(ipp), ppatZone(ipp)
     end do
     close(10)
 
     ! MODEL SPECIFIC
     if (modflowflag == 0) then
-      write(6,'("+",2x,a)') 'Reading IWFM Input Files'
+      write(6,'(2x,a)') 'Reading IWFM Input Files'
       call readIWFM()
       call create_nodetree()
     else if (modflowflag == 1) then
-      write(6,'("+",2x,a)') 'Reading MODFLOW Input Files'
+      write(6,'(2x,a)') 'Reading MODFLOW Input Files'
       call read_modflow(simfile)
       call calcCellCenters_global()
       call create_nodetree()
@@ -220,7 +221,7 @@ program Texture2Par
     end if
 
     ! Write Read Summary
-    write(6,'("+",2x,a)') 'Setup Summary:                          '
+    write(6,'(2x,a)') 'Setup Summary:                          '
     write(*,'(4x,1a32,i)') 'Number of aquifer pilot points: ', ppn
     write(*,'(4x,1a32,i)') 'Number of aquitard pilot points ', atppn
     write(*, '(4x,1a32,i)') 'Number of Layers: ', nlayers
@@ -249,7 +250,7 @@ program Texture2Par
     end if
 
 ! Call Layer Elevation subroutine
-    write(6,'("+",2x,a)') 'Calculating Layer Elevations at Wells'
+    write(6,'(2x,a)') 'Calculating Layer Elevations at Wells'
     if (modflowflag == 0) then
       call layerelevation(TopElev, BotElev, wellelevtop, wellelevbot)
       ! For aquitard                        
@@ -262,7 +263,7 @@ program Texture2Par
     call colocate_corrector(xwell, ywell, nwell)
 
 ! Call Layer Texture subroutine
-    write(6,'("+",2x,a)') 'Calculating Percent Coarse at Nodes      '
+    write(6,'(2x,a)') 'Calculating Percent Coarse at Nodes      '
     outfile = 'PcWellElem.out'
     call layertexture(wellelevtop, wellelevbot, PcWellElem)
     ! If IWFM or if there are MODFLOW confining beds
@@ -273,34 +274,36 @@ program Texture2Par
 
     ! Krige from pilot points to nodes
     ! Aquifer Parameters - KCMin, DeltaKC, KFMin, DeltaKF, SsC, SsF, SyC, Aniso
-    write(6,'("+",2x,a)') 'Kriging Aquifer Pilot Point Parameters     '
-    call pp_parkrige(ppx, ppy, ppKCMin, ppn, ppzone, nKCMin)
-    call pp_parkrige(ppx, ppy, ppdKC,   ppn, ppzone, dKC)
-    call pp_parkrige(ppx, ppy, ppKFMin, ppn, ppzone, nKFMin)
-    call pp_parkrige(ppx, ppy, ppdKF,   ppn, ppzone, dKF)
-    call pp_parkrige(ppx, ppy, ppSsC,   ppn, ppzone, nSsC)
-    call pp_parkrige(ppx, ppy, ppSsF,   ppn, ppzone, nSsF)
-    call pp_parkrige(ppx, ppy, ppSyC,   ppn, ppzone, nSyC)
-    call pp_parkrige(ppx, ppy, ppSyF,   ppn, ppzone, nSyF)
-    call pp_parkrige(ppx, ppy, ppAniso, ppn, ppzone, nAniso)
+    write(6,'(2x,a)') 'Kriging Aquifer Pilot Point Parameters     '
+    call pp_parkrige(ppx, ppy, ppKCMin,  ppn, ppzone, nKCMin)
+    call pp_parkrige(ppx, ppy, ppdKC,    ppn, ppzone, dKC)
+    call pp_parkrige(ppx, ppy, ppKFMin,  ppn, ppzone, nKFMin)
+    call pp_parkrige(ppx, ppy, ppdKF,    ppn, ppzone, dKF)
+    call pp_parkrige(ppx, ppy, ppSsC,    ppn, ppzone, nSsC)
+    call pp_parkrige(ppx, ppy, ppSsF,    ppn, ppzone, nSsF)
+    call pp_parkrige(ppx, ppy, ppSyC,    ppn, ppzone, nSyC)
+    call pp_parkrige(ppx, ppy, ppSyF,    ppn, ppzone, nSyF)
+    call pp_parkrige(ppx, ppy, ppAnisoC, ppn, ppzone, nAnisoC)
+    call pp_parkrige(ppx, ppy, ppAnisoF, ppn, ppzone, nAnisoF)
     
     if ((modflowflag == 0).or.(ncbd > 0 )) then
       if (atppn > 0) then
         ! Aquitard Parameters - KCMin, DeltaKC, KFMin, DeltaKF, Aniso
-        write(6,'("+",2x,a)') 'Kriging Aquitard Pilot Point Parameters     '
-        call pp_parkrige(ppatx, ppaty, ppatKCMin, atppn, ppatzone, atnKCMin)
-        call pp_parkrige(ppatx, ppaty, ppatdKC,   atppn, ppatzone, atdKC)
-        call pp_parkrige(ppatx, ppaty, ppatKFMin, atppn, ppatzone, atnKFMin)
-        call pp_parkrige(ppatx, ppaty, ppatdKF,   atppn, ppatzone, atdKF)
-        call pp_parkrige(ppatx, ppaty, ppatAniso, atppn, ppatzone, atnAniso)
+        write(6,'(2x,a)') 'Kriging Aquitard Pilot Point Parameters     '
+        call pp_parkrige(ppatx, ppaty, ppatKCMin,  atppn, ppatzone, atnKCMin)
+        call pp_parkrige(ppatx, ppaty, ppatdKC,    atppn, ppatzone, atdKC)
+        call pp_parkrige(ppatx, ppaty, ppatKFMin,  atppn, ppatzone, atnKFMin)
+        call pp_parkrige(ppatx, ppaty, ppatdKF,    atppn, ppatzone, atdKF)
+        call pp_parkrige(ppatx, ppaty, ppatAnisoC, atppn, ppatzone, atnAnisoC)
+        call pp_parkrige(ppatx, ppaty, ppatAnisoF, atppn, ppatzone, atnAnisoF)
       else
-        write(6,'("+",2x,a,/)') 'No Aquitard Pilot Points - Skipping       '
+        write(6,'(2x,a,/)') 'No Aquitard Pilot Points - Skipping       '
         atnKCMin = -999; atdKC= -999; atnKFMin = -999; atdKF = -999
       end if
     end if
     
 ! Call interpolate subroutines (Well PC to Node Aquifer parameter)
-    write(6,'("+",2x,a)') 'Calculating Node Aquifer Parameters           '
+    write(6,'(2x,a)') 'Calculating Node Aquifer Parameters           '
     call interpolate()
     if ((modflowflag == 0).or.(ncbd > 0 )) then
       call interpolate_aqtard()

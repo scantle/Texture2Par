@@ -435,7 +435,7 @@ subroutine writeWellFile_modflow(v, filename)
   integer                  :: iwell, ilay, row, col
   character(60)            :: fmt(2)
   
-  write(6,'("+",4x,a,a35)') 'Writing:', filename
+  write(6,'(4x,a,a35)') 'Writing:', filename
 
   write(fmt(1),'("(3a10,",i5,"i14)")') nlayers
   write(fmt(2),'("(3i10,",i5,"es14.5)")') nlayers
@@ -464,7 +464,7 @@ subroutine writeCellFile(v, filename)
   integer                  :: inode, ilay, row, col
   character(60)            :: fmt(2)
   
-  write(6,'("+",4x,a,a35)') 'Writing :', filename
+  write(6,'(4x,a,a35)') 'Writing :', filename
 
   write(fmt(1),'("(3a8,2a18,",i5,"i14)")') nlayers
   write(fmt(2),'("(3i8,2f18.5,",i5,"e14.5)")') nlayers

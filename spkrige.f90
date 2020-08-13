@@ -331,6 +331,12 @@ subroutine spkrige_group(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val, &
         r(n) = value
       end do
       call doolittle(r,p,id,w,ntot)
+      
+      ! Correct for negative weights, if necessary
+      if (minval(w(1:nobs)) < 0.0d0) then
+        call ok_negative_correction(w, nobs)
+      end if
+      
       value = 0.0d0
       zkrig = 0.0d0
       do n=1, nobs

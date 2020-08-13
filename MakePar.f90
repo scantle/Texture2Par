@@ -21,7 +21,7 @@ MODULE MakePar
                                  atnkcmin(:), atdkf(:), nkfmin(:), ywell(:), &
                                  zland(:), aqtardbotelev(:,:), atdkc(:), &
                                  nodex(:), nodey(:), nsyf(:), dkc(:), &
-                                 zwell(:,:), naniso(:), khb(:,:), &
+                                 zwell(:,:), nanisoC(:), nanisoF(:), khb(:,:), &
                                  pcwellaqtardelem(:,:), atnkfmin(:), nssf(:), &
                                  aqtardtopelev(:,:), nssc(:), kvb(:,:), &
                                  syb(:,:), elevation(:), botelev(:,:), &
@@ -29,7 +29,8 @@ MODULE MakePar
                                  pcnode(:,:), pcnode_aqtard(:,:), &
                                  kvb_aqtard(:,:), dkf(:), &
                                  Thick(:,:), AqTardThick(:,:), &
-                                 nodexy(:,:), atnAniso(:), interbed_thick(:,:)
+                                 nodexy(:,:), atnAnisoC(:), atnAnisoF(:), &
+                                 interbed_thick(:,:)
     integer,allocatable       :: wellelem(:), pcwellzone(:,:), numzone(:), &
                                  elements(:,:), nodeelem(:,:), nnodeelem(:), &
                                  nodezone(:), ngeozones_lay(:)
@@ -175,7 +176,7 @@ subroutine pp_parkrige(ppx, ppy, ppv, npp, ppz, kriged)
       call spkrige_group(ppcount, nnodes, nodex, nodey, pzx, pzy, pzv, &
                          kriged, nodezone, zone)
     else
-      write(*,*) 'ERROR - no pilot points for zone ', ipp
+      write(*,*) 'ERROR - no pilot points for zone ', zones(i)
       stop
     end if
   end do
@@ -196,13 +197,13 @@ SUBROUTINE interpolate()
 ! -LS
 !-----------------------------------------------------------------------------!
 
-    real                     :: sum1, sum2, weight, dcol, temppc(nnodes)
+    real                     :: sum1, sum2, weight, dcol
     real,allocatable         :: khc(:,:), khf(:,:), kvc(:,:), kvf(:,:), pc(:)
     integer                  :: iwell, ilay, inode, igeo, wcount, count
-    real                     :: wellxy(nwell,2), wellv(nwell)
+    real,allocatable         :: wellxy(:,:), wellv(:),temppc(:)
     type(tree_master_record),pointer :: welltree
-    character(30)            :: tempzones(nnodes)
-    character(60)            :: fmt(2)
+    character(30),allocatable:: tempzones(:)
+    character(60),allocatable:: fmt(:)
 
 !  Avoiding stack overflow by allocating after declaration
     allocate(KhC(nlayers, nnodes), &
@@ -210,6 +211,8 @@ SUBROUTINE interpolate()
              KvC(nlayers, nnodes), &
              KvF(nlayers, nnodes), &
              pc(nnodes))
+    allocate(wellxy(nwell,2), wellv(nwell),temppc(nnodes))
+    allocate(tempzones(nnodes),fmt(2))
     
     if (USE_IDW == 0) then
       ! Calculate percent coarse at each node by kriging well data by layer
@@ -294,8 +297,8 @@ SUBROUTINE interpolate()
                                exp(-1.0 * KCk * Dcol))
             KhF(ilay, inode) = nKFMin(inode) + (dKF(inode) * &
                                exp(-1.0 * KFk * Dcol))
-            KvC(ilay, inode) = KhC(ilay, inode) / nAniso(inode)
-            KvF(ilay, inode) = KhF(ilay, inode) / nAniso(inode)
+            KvC(ilay, inode) = KhC(ilay, inode) / nAnisoC(inode)
+            KvF(ilay, inode) = KhF(ilay, inode) / nAnisoF(inode)
             KhB(ilay, inode) = ((PcNode(ilay, inode) * &
                                 (KhC(ilay, inode) ** KHp)) + &
                                 ((1 - PcNode(ilay, inode)) * &
@@ -332,6 +335,8 @@ SUBROUTINE interpolate()
     
     ! Deallocate
     deallocate(KhC, KhF, KvC, KvF, pc)
+    deallocate(wellxy, wellv, temppc)
+    deallocate(tempzones,fmt)
 
 end subroutine interpolate
 !-----------------------------------------------------------------------------!
@@ -348,8 +353,8 @@ SUBROUTINE interpolate_aqtard()
     real                     :: sum1, sum2, weight, dcol
     real,allocatable         :: khc(:,:), khf(:,:), kvc(:,:), kvf(:,:), pc(:)
     integer                  :: iwell, ilay, inode, wcount, count
-    real                     :: wellxy(nwell,2), wellv(nwell)
-    character(60)            :: fmt(2)
+    real,allocatable         :: wellxy(:,:), wellv(:)
+    character(60),allocatable:: fmt(:)
     type(tree_master_record),pointer :: welltree
     
 !  Avoiding stack overflow by allocating after declaration
@@ -358,6 +363,8 @@ SUBROUTINE interpolate_aqtard()
              KvC(nlayers, nnodes), &
              KvF(nlayers, nnodes), &
              pc(nnodes))
+    allocate(wellxy(nwell,2), wellv(nwell))
+    allocate(fmt(2))
     if (USE_IDW == 0) then
       ! Calculate percent coarse at each node by kriging well data by layer
       do ilay=1, nlayers
@@ -441,8 +448,8 @@ SUBROUTINE interpolate_aqtard()
                                exp(-1.0 * KCk * Dcol))
             KhF(ilay, inode) = atnKFMin(inode) + (atdKF(inode) * &
                                exp(-1.0 * KFk * Dcol))
-            KvC(ilay, inode) = KhC(ilay, inode) / atnAniso(inode)
-            KvF(ilay, inode) = KhF(ilay, inode) / atnAniso(inode)
+            KvC(ilay, inode) = KhC(ilay, inode) / atnAnisoC(inode)
+            KvF(ilay, inode) = KhF(ilay, inode) / atnAnisoF(inode)
             if ((aqtardtopelev(inode, ilay) - aqtardbotelev(inode, ilay)) > 1e-5) then
               ! Has thickness
               KvB_aqtard(ilay, inode) = ((pcnode_aqtard(ilay, inode) * &
@@ -461,6 +468,8 @@ SUBROUTINE interpolate_aqtard()
     
     ! Deallocate
     deallocate(KhC, KhF, KvC, KvF)
+    deallocate(wellxy, wellv)
+    deallocate(fmt)
 
 end subroutine interpolate_aqtard
 !-----------------------------------------------------------------------------!
@@ -648,12 +657,14 @@ subroutine NodeAllocate()
            nSsF(nnodes), &
            nSyC(nnodes), &
            nSyF(nnodes), &
-           nAniso(nnodes), &
+           nAnisoC(nnodes), &
+           nAnisoF(nnodes), &
            atnKCMin(nnodes), &
            atdKC(nnodes), &
            atnKFMin(nnodes), &
            atdKF(nnodes), &
-           atnAniso(nnodes), &
+           atnAnisoC(nnodes), &
+           atnAnisoF(nnodes), &
            KhB(nlayers, nnodes), &
            KvB(nlayers, nnodes), &
            SsB(nlayers, nnodes), &

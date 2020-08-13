@@ -439,8 +439,9 @@ C2------READ CONNECTED LINE NETWORK (CLN) DIMENSIONING AND CONNECTIVITY INPUT
 C----------------------------------------------------------------------------
       NEQS = NODES
       INCLN = IUNIT(IUCLN)
+      INBCT = IUNIT(IUBCT)
       IF(INCLN.NE.0) THEN
-!        CALL SDIS2CLN1AR(IUCLN) ! Not needed by T2P
+        CALL SDIS2CLN1AR(IUCLN,INBCT)
         NEQS = NEQS + NCLNNDS
       ENDIF
 
