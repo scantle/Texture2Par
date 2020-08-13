@@ -84,7 +84,7 @@ subroutine spkrige(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val)
 
     deallocate(p, r, w, id)
 
-end subroutine
+end subroutine spkrige
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
@@ -352,11 +352,11 @@ end subroutine
 ! Return to calling program:
 !
       return
-      end
+    end subroutine setrot
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-      SUBROUTINE PSET (P,X,Y,ID,N,ntot)
+    SUBROUTINE PSET (P,X,Y,ID,N,ntot)
       implicit none
 !***  FROM SUBROUTINE WRITTEN BY SKRIVAN AND KARLINGER AND SLIGHTLY
 !***  MODIFIED BY W.D. GRUNDY
@@ -393,7 +393,7 @@ end subroutine
       DO 40 I=1,N
    40 P(ID(I)+NP1-I)=1
       RETURN
-      END
+      END SUBROUTINE PSET
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
@@ -431,7 +431,7 @@ subroutine decomp(p,id,ntot)
    91     IER=1
    92     CONTINUE
       return
-      end
+      end subroutine decomp
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------
@@ -470,7 +470,7 @@ subroutine variogram(x1,y1,z1,x2,y2,z2,value)
       endif
       value=sill-h
 
-end subroutine
+end subroutine variogram
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
@@ -505,7 +505,7 @@ subroutine doolittle(r,p,id,w,ntot)
 !*** END OF DOOLITTLE ****
       return
 
-end subroutine
+end subroutine doolittle
 !-----------------------------------------------------------------------------!
 
   END MODULE Krige
@@ -552,5 +552,5 @@ real*8 function sqdist(x1,y1,z1,x2,y2,z2,ind,MAXROT,rotmat)
       end do
       return
 
-end function
+end function sqdist
 !-----------------------------------------------------------------------------!

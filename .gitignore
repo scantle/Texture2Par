@@ -40,6 +40,7 @@
 *.suo
 
 # Generated folders
+Debug/**
 release/**
 x64/**
 mfUSGLib/Release/**
