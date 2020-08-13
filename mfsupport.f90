@@ -109,66 +109,173 @@ module MFSupport
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-SUBROUTINE inputwells_modflow()
+SUBROUTINE inputwells_modflow(readzones)
     use MakePar
     use kd_tree
+    use errorhandle
     implicit none
 
 !-----------------------------------------------------------------------------!
 ! Inputs well information.
 ! Uses NodeTree to locate closest nodes and pass this information to
 ! subroutine that locates cell/element of well.
+!
+! Well GeoZones added 7/3/2019 -LS
+!   Argument "readzones" is a flag for whether GeoZones exist (1 = yes, 0 = no)
 !-----------------------------------------------------------------------------!
     
     integer, parameter       :: nnear=4
-    integer                  :: i, iwell, izone, tpc, currwellelem, node
+    integer                  :: i, iwell, izone, igeo, ilay, tpc, readzones, &
+                                currwellelem, node, ierr, nwellgeozones
     integer                  :: closenodes(nnear)
     real                     :: depth, tx, ty, tz, td
     real                     :: nodedists(nnear), queryxy(2)
-    character(30)            :: wellname
+    character(30)            :: wellname, geobylayer(nlayers), &
+                                wellgeonames(max_zones)
+    logical                  :: newzone
+    
+    ! Initialize (to prevent issues where compiler does not initilize to 0)
+    nwellgeozones = 0
 
-! Read well file
+    ! Read well file
     write(*,'(2x,2a)') 'Reading Well File ', trim(wellfile)
-    open(10, file =trim(wellfile), status='old', action='read')
+    open(10, file =trim(wellfile), status='old', action='read', iostat=ierr)
+    call iostathandler(ierr, trim(wellfile))
     read(10,*)                        ! Header
-    do i=1, wfilelen
-      read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td
-      ! Well "zone" is discrete depth interval and should not be confused with
-      ! other uses of zone (e.g. pilot points)
-      PcWellZone(iwell, izone) = tpc
-      numZone(iwell) = izone
-      if (izone == 1) then
-        Xwell(iwell) = tx
-        Ywell(iwell) = ty
-        Zland(iwell) = tz
-        ! Use node tree to find closest node
-        queryxy(1) = tx
-        queryxy(2) = ty
-        call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
-        ! Handle Model Differences
+    
+    if (readzones == 0) then
+      ! No GeoZones
+      nwellgeozones = 1
+      wellgeozones(1:nlayers,1:nwell) = '[NONE]'
+      do i=1, wfilelen
+        read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td
+        ! Well "zone" is discrete depth interval and should not be confused with
+        ! other uses of zone (e.g. pilot points)
+        PcWellZone(iwell, izone) = tpc
+        numZone(iwell) = izone
+        if (izone == 1) then
+          Xwell(iwell) = tx
+          Ywell(iwell) = ty
+          Zland(iwell) = tz
+          ! Use node tree to find closest node
+          queryxy(1) = tx
+          queryxy(2) = ty
+          call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
+          node = get_well_cell(tx, ty, closenodes, nnear)
+          wellelem(iwell) = node
+          ! While looping over wells, might as well assign modflow
+          ! elevations to wells, as no interpolation is required
+          wellelevtop(iwell,1:nlayers) = topelev(node,1:nlayers)
+          wellelevbot(iwell,1:nlayers) = botelev(node,1:nlayers)
+          if (ncbd > 0) then
+            wellaqtardelevtop(iwell,1:nlayers) = aqtardtopelev(node,1:nlayers)
+            wellaqtardelevbot(iwell,1:nlayers) = aqtardbotelev(node,1:nlayers)
+          end if
         
-        ! MODFLOW
-        node = get_well_cell(tx, ty, closenodes, nnear)
-        wellelem(iwell) = node
-        ! While looping over wells, might as well assign modflow
-        ! elevations to wells, as no interpolation is required
-        wellelevtop(iwell,1:nlayers) = topelev(node,1:nlayers)
-        wellelevbot(iwell,1:nlayers) = botelev(node,1:nlayers)
-        if (ncbd > 0) then
-          wellaqtardelevtop(iwell,1:nlayers) = aqtardtopelev(node,1:nlayers)
-          wellaqtardelevbot(iwell,1:nlayers) = aqtardbotelev(node,1:nlayers)
         end if
+        Zwell(iwell, izone) = tz - td
+      end do
+      
+    else
+      ! GeoZones
+      do i=1, wfilelen
+        read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td, geobylayer(:)
+        ! Well "zone" is discrete depth interval and should not be confused with
+        ! other uses of zone (e.g. pilot points)
+        PcWellZone(iwell, izone) = tpc
+        numZone(iwell) = izone
+        if (izone == 1) then
+          Xwell(iwell) = tx
+          Ywell(iwell) = ty
+          Zland(iwell) = tz
         
-      end if
-      Zwell(iwell, izone) = tz - td
-    end do
+          ! Well geologic zones
+          wellgeozones(:, iwell) = geobylayer(:)
+          ! Counts geozones for reporting and comparing
+          do ilay=1, nlayers
+            call strtracker(nwellgeozones, geobylayer(ilay), &
+                  wellgeonames, newzone)
+          end do
+        
+          ! Use node tree to find closest node
+          queryxy(1) = tx
+          queryxy(2) = ty
+          call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
+          node = get_well_cell(tx, ty, closenodes, nnear)
+          wellelem(iwell) = node
+          ! While looping over wells, might as well assign modflow
+          ! elevations to wells, as no interpolation is required
+          wellelevtop(iwell,1:nlayers) = topelev(node,1:nlayers)
+          wellelevbot(iwell,1:nlayers) = botelev(node,1:nlayers)
+          if (ncbd > 0) then
+            wellaqtardelevtop(iwell,1:nlayers) = aqtardtopelev(node,1:nlayers)
+            wellaqtardelevbot(iwell,1:nlayers) = aqtardbotelev(node,1:nlayers)
+          end if
+        
+        end if
+        Zwell(iwell, izone) = tz - td
+      end do
+    end if
     close(10)
     
     !write(*,'(4x,a)') 'Well file read successfully.'
 
 end subroutine inputwells_modflow
 !-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
+subroutine readNodeGeoZones_modflow()
+  use GLOBAL, ONLY : IUNSTR, NLAY, NROW, NCOL
+  use MakePar
+  use errorhandle
+  implicit none
+!-----------------------------------------------------------------------------!
+! Added 7/1/2019 to facilitate limiting percent coarse interpolation to wells
+! and cells of the same assigned geologic unit. File is assumed to have
+! a heading and row, col followed by the geologic zones of each
+! corresponding layer.
+!  
+!
+! Requires: strtracker (see Tools.f90) to increment zone arrays & counters
+!
+! Author: Leland Scantlebury of S.S. Papadopulos & Associates
+!-----------------------------------------------------------------------------!
   
+  integer                  :: node, i, ilay, izone, ierr, row, col
+  character(30)            :: geobylayer(nlayers)
+  logical                  :: newzone, newzone_lay
+  
+  ! Initialize
+  ngeozones = 0
+  ngeozones_lay = 0
+  
+  write(*,'(2x,2a)') 'Reading Model Geologic Zone File ', trim(geozonefile)
+  open(10, file =trim(geozonefile), status='old', action='read', iostat=ierr)
+  call iostathandler(ierr, trim(geozonefile))
+  read(10, *) ! Header
+
+  do i=1, nnodes
+    read(10, *) row, col, geobylayer
+    geozones(:,(row-1)*ncol + col) = geobylayer
+    ! Track geozones for looping, reporting and comparing
+    do ilay=1, nlayers
+      ! Is this zone new to the layer?
+      call strtracker(ngeozones_lay(ilay), geobylayer(ilay), &
+                      geonames_lay(:, ilay), newzone_lay)
+      ! Handle if new zone for layer
+      if (newzone_lay) then
+        ! Is it a zone we haven't seen in any layer?
+        call strtracker(ngeozones, geobylayer(ilay), &
+                        geonames, newzone)
+      end if
+    end do
+  end do
+  
+  close(10)
+
+end subroutine readNodeGeoZones_modflow
+!-----------------------------------------------------------------------------!
+
 !-----------------------------------------------------------------------------!
   subroutine inputZones_modflow()
     use GLOBAL, ONLY : IUNSTR, NLAY, NROW, NCOL, DELR, DELC, TOP, BOT, NODES

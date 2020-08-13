@@ -10,35 +10,39 @@ MODULE MakePar
     
     SAVE
     ! Parameters
-    integer, parameter       :: max_node_elem_members = 10, &                  ! Maximum number of elements a node is a part of (will stop w/ error if too low)
-                                max_zones = 100, &                             ! Maximum number of zones
-                                USE_IDW = 0
-    real, parameter          :: NODATA=-9999.0
-    
-    real,allocatable         :: wellelevbot(:,:), ssb(:,:), pcwellelem(:,:), &
-                                xwell(:), wellaqtardelevtop(:,:), &
-                                wellelevtop(:,:), nkcmin(:), nsyc(:), &
-                                atnkcmin(:), atdkf(:), nkfmin(:), ywell(:), &
-                                zland(:), aqtardbotelev(:,:), atdkc(:), &
-                                nodex(:), nodey(:), nsyf(:), dkc(:), &
-                                zwell(:,:), naniso(:), khb(:,:), &
-                                pcwellaqtardelem(:,:), atnkfmin(:), nssf(:), &
-                                aqtardtopelev(:,:), nssc(:), kvb(:,:), &
-                                syb(:,:), elevation(:), botelev(:,:), &
-                                wellaqtardelevbot(:,:), topelev(:,:), &
-                                pcnode(:,:), pcnode_aqtard(:,:), &
-                                kvb_aqtard(:,:), dkf(:), &
-                                Thick(:,:), AqTardThick(:,:), &
-                                nodexy(:,:), atnAniso(:)
-    integer,allocatable      :: wellelem(:), pcwellzone(:,:), numzone(:), &
-                                elements(:,:), nodeelem(:,:), nnodeelem(:), &
-                                nodezone(:)
-    integer                  :: nlayers, nnodes, nwell, wfilelen, &
-                                nelements, maxWPoints, pckrige_nwells, &
-                                nzones, zones(max_zones)
-    real                     :: kfk, syp, khp, kvp, kck
-    character(60)            :: outfile
-    character(150)           :: wellfile, zonefile
+    integer, parameter        :: max_node_elem_members = 15, &                 ! Maximum number of elements a node is a part of (will stop w/ error if too low)
+                                 max_zones = 100, &                            ! Maximum number of zones (used for both pilot point and geologic)
+                                 USE_IDW = 0
+    real, parameter           :: NODATA=-9999.0
+                              
+    real,allocatable          :: wellelevbot(:,:), ssb(:,:), pcwellelem(:,:), &
+                                 xwell(:), wellaqtardelevtop(:,:), &
+                                 wellelevtop(:,:), nkcmin(:), nsyc(:), &
+                                 atnkcmin(:), atdkf(:), nkfmin(:), ywell(:), &
+                                 zland(:), aqtardbotelev(:,:), atdkc(:), &
+                                 nodex(:), nodey(:), nsyf(:), dkc(:), &
+                                 zwell(:,:), naniso(:), khb(:,:), &
+                                 pcwellaqtardelem(:,:), atnkfmin(:), nssf(:), &
+                                 aqtardtopelev(:,:), nssc(:), kvb(:,:), &
+                                 syb(:,:), elevation(:), botelev(:,:), &
+                                 wellaqtardelevbot(:,:), topelev(:,:), &
+                                 pcnode(:,:), pcnode_aqtard(:,:), &
+                                 kvb_aqtard(:,:), dkf(:), &
+                                 Thick(:,:), AqTardThick(:,:), &
+                                 nodexy(:,:), atnAniso(:), interbed_thick(:,:)
+    integer,allocatable       :: wellelem(:), pcwellzone(:,:), numzone(:), &
+                                 elements(:,:), nodeelem(:,:), nnodeelem(:), &
+                                 nodezone(:), ngeozones_lay(:)
+    integer                   :: nlayers, nnodes, nwell, wfilelen, &
+                                 nelements, maxWPoints, pckrige_nwells, &
+                                 nzones, zones(max_zones), ngeozones
+    real                      :: kfk, syp, khp, kvp, kck
+    character(30),allocatable :: geozones(:,:), wellgeozones(:,:), &
+                                 geonames_lay(:,:)
+    character(30)             :: geonames(max_zones)
+    character(60)             :: outfile
+    character(150)            :: wellfile, zonefile, geozonefile
+    logical                   :: colocated=.false.
     
     ! Global Trees
     type(tree_master_record), pointer :: nodetree
@@ -143,7 +147,7 @@ subroutine pp_parkrige(ppx, ppy, ppv, npp, ppz, kriged)
   implicit none
 !-----------------------------------------------------------------------------!
 ! Loops over zones kriging pilot point parameter values to nodes
-! Added in v1.0.3
+! Added in v1.0.3 (Internal Numbering)
 !-----------------------------------------------------------------------------!
   
   real,intent(in)          :: ppx(npp), ppy(npp), ppv(npp)
@@ -185,13 +189,19 @@ SUBROUTINE interpolate()
     implicit none
 !-----------------------------------------------------------------------------!
 ! Interpolates from wells to nodes using inverse-distance method
+!
+! Well GeoZones Loop added 7/1/2019
+! Utilizes arrays geonames_lay and ngeozones_lay which list geologic zones
+! ("Units") present in each model layer, based upon geologic node zones
+! -LS
 !-----------------------------------------------------------------------------!
 
-    real                     :: sum1, sum2, weight, dcol
+    real                     :: sum1, sum2, weight, dcol, temppc(nnodes)
     real,allocatable         :: khc(:,:), khf(:,:), kvc(:,:), kvf(:,:), pc(:)
-    integer                  :: iwell, ilay, inode, wcount, count
+    integer                  :: iwell, ilay, inode, igeo, wcount, count
     real                     :: wellxy(nwell,2), wellv(nwell)
     type(tree_master_record),pointer :: welltree
+    character(30)            :: tempzones(nnodes)
     character(60)            :: fmt(2)
 
 !  Avoiding stack overflow by allocating after declaration
@@ -204,28 +214,47 @@ SUBROUTINE interpolate()
     if (USE_IDW == 0) then
       ! Calculate percent coarse at each node by kriging well data by layer
       do ilay=1, nlayers
-        ! Get wells (x,y,val) that have PC for this layer, build kd-tree
-        wcount = 0
-        do iwell=1, nwell
-          if (pcwellelem(iwell, ilay) >= 0.0d0) then
-            wcount = wcount + 1
-            wellv(wcount) = pcwellelem(iwell, ilay)
-            wellxy(wcount,1) = xwell(iwell)
-            wellxy(wcount,2) = ywell(iwell)
+        tempzones = geozones(ilay,1:nnodes)
+        ! Compile wells (x,y,val) that have PC for each layer/geo zone
+        ! Use to build kd-tree for kriging subroutine
+        do igeo=1, ngeozones_lay(ilay)
+          wcount = 0
+          do iwell=1, nwell
+            if ((pcwellelem(iwell, ilay) >= 0.0d0).and.&
+                (wellgeozones(ilay,iwell) == geonames_lay(igeo,ilay))) then
+              wcount = wcount + 1
+              wellv(wcount) = pcwellelem(iwell, ilay)
+              wellxy(wcount,1) = xwell(iwell)
+              wellxy(wcount,2) = ywell(iwell)
+            end if
+          end do
+          if (wcount >= pckrige_nwells) then
+            welltree => create_tree(wellxy(1:wcount,:))
+            ! Pass well tree to kriging routine
+            ! Will ignore nodes not in the target group
+            call spkrige_tree_group(nnodes, nodex, nodey, welltree, nwell, &
+                              wellv, temppc, pckrige_nwells, &
+                              tempzones, geonames_lay(igeo,ilay))
+          else if (wcount > 0) then
+            ! If here, wcount was less than pckrige_nwells but greater than 0
+            write(*,'(4x,a,i8,3a,i3,a)') 'Warning - Layer', ilay, ' - ', &
+                     trim(geonames_lay(igeo,ilay)), ', only ', wcount, ' wells'
+            ! (warns even through it calls the same subroutine)
+            welltree => create_tree(wellxy(1:wcount,:))
+            call spkrige_tree_group(nnodes, nodex, nodey, welltree, nwell, &
+                              wellv, temppc, pckrige_nwells, &
+                              tempzones, geonames_lay(igeo,ilay)) 
+          else
+            write(*,'(4x,a,i8,2a)') 'Warning - No well data in layer ', ilay, &
+                                   'for geologic zone', geonames_lay(igeo,ilay)
+            ! Only affect one zone
+            where (tempzones == geonames_lay(igeo,ilay)) temppc = NODATA
           end if
         end do
-        if (wcount > 0) then
-          welltree => create_tree(wellxy(1:wcount,:))
-      
-          call spkrige_tree(nnodes, nodex, nodey, welltree, nwell,  wellv, &
-                            pc, pckrige_nwells)
-          PcNode(ilay,1:nnodes) = pc(1:nnodes)
-        else
-          write(*,'(4x,a,i8)') 'No well data for layer ', ilay
-          PcNode(ilay,1:nnodes) = NODATA
-        end if
+        ! Copy over
+        PcNode(ilay,1:nnodes) = temppc
       end do
-    else
+    else  ! i.e. USE_IDW == 1
       ! Calculate percent coarse for each node based on normalized inverse-distance
       write(*,'(4x,a)') 'Calculating inverse-distance well-node weights'
       do ilay = 1, nlayers
@@ -235,7 +264,8 @@ SUBROUTINE interpolate()
           sum2 = 0.0
           count = 0            ! LS Added to avoid "no well data" when PC is 0.0 from data
           do iwell = 1, nwell
-            if (PcWellElem(iwell, ilay) >= 0) then
+            if ((PcWellElem(iwell, ilay) >= 0).and.&
+                       (geozones(ilay,inode) == wellgeozones(ilay, iwell))) then
               count = count + 1
               weight = (((Xwell(Iwell) - nodex(inode)) ** 2 &
                        + (Ywell(Iwell) - nodey(inode)) ** 2) ** 0.5) ** 2
@@ -253,7 +283,7 @@ SUBROUTINE interpolate()
         end do
       end do
     end if
-
+    
 ! Use input values to calculate aquifer parameters for each node
     !write(*,'(4x,a)') 'Calculating element aquifer parameters'
     do ilay = 1, nlayers
@@ -460,11 +490,11 @@ end subroutine create_nodetree
 
 !-----------------------------------------------------------------------------!
 
-integer function get_well_element(x, y, closenodes, nnear) result(element)
+integer function get_well_element(x, y, iwell, closenodes, nnear) result(element)
   implicit none
   
   integer                  :: i, j, inode, elem, points, count, node
-  integer, intent(in)      :: nnear, closenodes(nnear)
+  integer, intent(in)      :: nnear, iwell, closenodes(nnear)
   real, intent(in)         :: x, y
   real                     :: elemx(4), elemy(4), inelem, pinpol
   
@@ -494,9 +524,9 @@ outerloop:  do inode=1, nnear
   end do outerloop
   
   if (element == 0) then
-    ! Maybe this should just be a warning?
-    write(*,*) 'ERROR well not found in an element'
-    write(*,*) x, y
+    write(*,'(4x,a)') 'ERROR - Well not inside element. Likely located out of model.'
+    write(*,'(4x,a8,2a18)') 'WellNum', 'X', 'Y'
+    write(*,'(4x,i8,2f18.5)') iwell, x, y
     stop
   end if
   
@@ -504,6 +534,81 @@ outerloop:  do inode=1, nnear
     
 end function get_well_element
 
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
+! - Extra Subroutines
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
+subroutine calc_interbed_thickness()
+  implicit none
+  
+  ! Estimates interbed thickness as percent fine * layer thickness
+  ! Added by Leland Scantlebury July 2019
+  !
+  ! For IWFM, layer thickness is directly read in in variable thick
+  ! However, for MODFLOW support we're just going to use the layer top/bot
+  
+  integer                  :: ilay, inode
+  real                     :: laythick
+  
+  allocate(interbed_thick(nlayers,nnodes))
+  
+  do ilay=1, nlayers
+    do inode=1, nnodes
+      laythick = topelev(inode,ilay) - botelev(inode, ilay)
+      interbed_thick(ilay,inode) = (1 - pcnode(ilay,inode)) * laythick 
+    end do
+  end do
+  
+end subroutine calc_interbed_thickness
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
+subroutine colocate_corrector(xcoords, ycoords, ncoords)
+implicit none
+! Checks for duplicate X,Y values and moves them away from each other.
+!
+! Added by Leland Scantlebury July 2019
+  integer, intent(in)     :: ncoords
+  real, intent(inout)     :: xcoords(ncoords), ycoords(ncoords)
+  integer                 :: i, j, k, ncoloc, max
+  real, parameter         :: move=0.01
+  
+  ! Setup
+  max = 1
+  
+  ! Outer Loop over coordinates
+  do i=1, ncoords
+    ncoloc = 0
+    ! Inner Loop over coordinates to search for pairs
+    do j=1, ncoords
+      ! Skip the outer loop coordinate
+      if (i==j) cycle
+      ! Check for x-y match
+      if (xcoords(i) == xcoords(j).and.ycoords(i) == ycoords(j)) then
+        ! Warn if this is our first match
+        if (colocated == .false.) then
+          colocated = .true.
+          write(*,'(4x,a)') 'Warning - co-located wells. Attempting to move apart for kriging'
+        end if
+        ! Add to count
+        ncoloc = ncoloc + 1
+        ! See if greater than max
+        if (ncoloc > max) max = ncoloc
+        ! Move
+        xcoords(j) = xcoords(j) + move * ncoloc
+        ycoords(j) = ycoords(j) + move * ncoloc
+      end if
+    end do
+  end do
+  
+  if (colocated) then
+    write(*,'(4x,a,i3,a,f6.3)') 'Max co-located wells:',max,' | Max dist moved:', sqrt(2*(max*move)**2)
+  end if
+  
+end subroutine colocate_corrector
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
@@ -525,7 +630,8 @@ subroutine WellAllocate()
              wellelevtop(nwell, nlayers), &
              wellelevbot(nwell, nlayers), &
              wellaqtardelevtop(nwell,nlayers), &
-             wellaqtardelevbot(nwell,nlayers))
+             wellaqtardelevbot(nwell,nlayers), &
+             wellgeozones(nlayers, nwell))                                     ! opposite others, but more efficient...
 
 end subroutine
 !-----------------------------------------------------------------------------!
@@ -552,8 +658,11 @@ subroutine NodeAllocate()
            KvB(nlayers, nnodes), &
            SsB(nlayers, nnodes), &
            SyB(nlayers, nnodes), &
-           KvB_aqtard(nlayers, nnodes),&
-           nodezone(nnodes))
+           KvB_aqtard(nlayers, nnodes), &
+           nodezone(nnodes), &
+           geozones(nlayers, nnodes), &
+           ngeozones_lay(nlayers), &
+           geonames_lay(max_zones,nlayers))
 
 end subroutine 
 !-----------------------------------------------------------------------------!

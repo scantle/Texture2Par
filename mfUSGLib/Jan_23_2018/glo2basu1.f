@@ -440,7 +440,7 @@ C----------------------------------------------------------------------------
       NEQS = NODES
       INCLN = IUNIT(IUCLN)
       IF(INCLN.NE.0) THEN
-        CALL SDIS2CLN1AR(IUCLN)
+!        CALL SDIS2CLN1AR(IUCLN) ! Not needed by T2P
         NEQS = NEQS + NCLNNDS
       ENDIF
 

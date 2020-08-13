@@ -130,6 +130,34 @@ MODULE errorhandle
     
     end subroutine ifailhandler
   !---------------------------------------------------------------------------!
+    
+    subroutine parexceed(par, parstr, message, finalstr, finalreal, finalint)
+      implicit none
+      
+      ! To handle if a hardcoded parameter is exceeded
+      integer                        :: par
+      character(*)                   :: parstr
+      character(*), optional         :: message, finalstr
+      integer, optional              :: finalint
+      real, optional                 :: finalreal
+      
+      write(*,'(3a)') 'Error - ', trim(parstr), ' exceeded!'
+      if (present(message)) then
+        write(*,'(8x,a)') trim(message)
+      end if
+      if (present(finalstr)) then
+        write(*,'(8x,2a)') 'Last value: ', trim(finalstr)
+      else if (present(finalint)) then
+        write(*,'(8x,a,i8)') 'Last value: ', finalint
+      else if (present(finalreal)) then
+        write(*,'(8x,a,f18.5)') 'Last value: ', finalreal
+      end if
+      write(*,'(8x,2a)') 'Recompile with greater value for parameter ', trim(parstr)
+      
+      ! Stops
+      stop
+      
+    end subroutine parexceed
   
 !---------------------------------------------------------------------------!    
     subroutine USGunimplemented()
@@ -357,4 +385,38 @@ real function tridet(x1, y1, x2, y2, x3, y3) result(det)
   return
 
   end function tridet
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
+subroutine strtracker(n, str, strarray, wasnew)
+  implicit none
+!-----------------------------------------------------------------------------!
+! Looks through strarray from 1 to n, looking for str.
+! If it doesn't find str, it adds it to the end of strarray
+! And increases n by 1
+! Reports whether the str was new or not via wasnew (boolean)
+!
+! Author: Leland Scantlebury
+!-----------------------------------------------------------------------------!
+
+    integer, intent(inout)   :: n
+    character(30), intent(inout) :: str, strarray(*)
+    logical, intent(inout)   :: wasnew
+    integer                  :: i
+
+    wasnew = .true.
+    ! Find if str in strarray
+    do i=1, n
+      if (str == strarray(i)) then
+        wasnew = .false.
+      end if
+    end do
+  
+    ! If not, add to it and update n
+    if (wasnew) then 
+      n = n + 1
+      strarray(n) = str
+    end if
+
+end subroutine strtracker
 !-----------------------------------------------------------------------------!

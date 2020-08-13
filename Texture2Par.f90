@@ -26,7 +26,7 @@ program Texture2Par
 
     integer                    :: mytpe, ioerr, ilay, ifail, ppn, atppn, ipp, &
                                   i, ierr,  twell, wpoint, zone, ppcount, &
-                                  modflowflag, zoneflag
+                                  modflowflag, zoneflag, geoflag
     real                       :: a_hmin
     real, allocatable          :: ppx(:), ppy(:), ppKCMin(:), &
                                   ppdKC(:), ppAniso(:), ppKFMin(:), ppdKF(:), &
@@ -58,6 +58,7 @@ program Texture2Par
     call ReadToSymbol(10, '*')
     read(10,*) line
     read(10,*) wellfile
+    read(10,*) geozonefile
     call ReadToSymbol(10, '*')
     
     ! Check if MODFLOW or IWFM
@@ -199,6 +200,24 @@ program Texture2Par
       ppzone   = 1
       ppatzone = 1
     end if
+    
+    ! Read geologic units file
+    if (trim(geozonefile)=='NONE'.or.trim(geozonefile)=='none') then
+      ! No geologic zones
+      ! perhaps a different subroutine should be used instead of dummy values?
+      geoflag = 0
+      ngeozones = 1
+      ngeozones_lay(1:nlayers) = 1
+      geozones(1:nlayers,1:nnodes) = '[NONE]'
+      geonames_lay(1,1:nlayers) = '[NONE]'
+    else
+      geoflag = 1
+      if (modflowflag == 0) then
+        call readNodeGeoZones_IWFM()
+      else if (modflowflag == 1) then
+        call readNodeGeoZones_modflow()
+      end if
+    end if
 
     ! Write Read Summary
     write(6,'("+",2x,a)') 'Setup Summary:                          '
@@ -215,7 +234,8 @@ program Texture2Par
     end if
     !write(*,'(4x,1a32,i)') 'Well File Length: ', wfilelen
     write(*,'(4x,1a32,i)') 'Number of Wells: ', nwell
-    write(*,'(4x,1a32,i,/)') 'Number of Kriging Zones: ', nzones
+    write(*,'(4x,1a32,i)') 'Number of Pilot Point Zones: ', nzones
+    write(*,'(4x,1a32,i,/)') 'Number of Geologic Zones: ', ngeozones
 
 ! Set anistropy and rotation matrix
     call setanis(a_hmin, 0.0)
@@ -223,9 +243,9 @@ program Texture2Par
 ! MODEL SPECIFIC
 ! Call input wells subroutine
     if (modflowflag==0) then
-      call inputwells_IWFM()
+      call inputwells_IWFM(geoflag)
     else if (modflowflag==1) then
-      call inputwells_modflow()
+      call inputwells_modflow(geoflag)
     end if
 
 ! Call Layer Elevation subroutine
@@ -237,6 +257,9 @@ program Texture2Par
                           wellaqtardelevtop, wellaqtardelevbot)
     end if
     ! Modflow Well elevations are assigned during well read
+    
+! Move co-located wells (if issue is really bad this could be run more than once)
+    call colocate_corrector(xwell, ywell, nwell)
 
 ! Call Layer Texture subroutine
     write(6,'("+",2x,a)') 'Calculating Percent Coarse at Nodes      '
@@ -286,6 +309,8 @@ program Texture2Par
 ! Write Output files, routines called depend on model type
     if (modflowflag == 0) then
       if (writeNodeFiles==.true.) then
+        ! Only calculate if writing the file
+        call calc_interbed_thickness()
         write(*,'(2x,a)') 'Writing Node Parameter Files'
         call writeWellFile_IWFM(PcWellElem,       't2p_WellPC.out')
         call writeWellFile_IWFM(PcWellAqtardElem, 't2p_WellAqTardPC.out')
@@ -294,6 +319,7 @@ program Texture2Par
         call writeNodeFile(KvB,    't2p_KvB.out'   )
         call writeNodeFile(SsB,    't2p_SsB.out'   )
         call writeNodeFile(SyB,    't2p_SyB.out'   )
+        call writeNodeFile(interbed_thick,'t2p_InterbedThickness.out')
         call writeNodeFile(PcNode_aqtard, 't2p_NodeAqTardPC.out')
         call writeNodeFile(KvB_aqtard,    't2p_AqTardKvB.out'   )
       else
@@ -303,6 +329,8 @@ program Texture2Par
         
     else if (modflowflag == 1) then
       if (writeNodeFiles==.true.) then
+        ! Only calculate if writing the file
+        call calc_interbed_thickness()
         write(*,'(2x,a)') 'Writing Cell Parameter Files'
         call writeWellFile_modflow(PcWellElem,       't2p_WellPC.out')
         call writeCellFile(PcNode, 't2p_NodePC.out')
@@ -310,6 +338,7 @@ program Texture2Par
         call writeCellFile(KvB,    't2p_KvB.out'   )
         call writeCellFile(SsB,    't2p_SSB.out'   )
         call writeCellFile(SyB,    't2p_SyB.out'   )
+        call writeCellFile(interbed_thick,'t2p_InterbedThickness.out')
         if (ncbd > 0 ) then
           call writeWellFile_modflow(PcWellAqtardElem, 't2p_WellAqTardPC.out')
           call writeCellFile(PcNode_aqtard, 't2p_AqTardNodePC.out')

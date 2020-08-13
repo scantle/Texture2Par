@@ -45,6 +45,7 @@ release/**
 x64/**
 mfUSGLib/Release/**
 mfUSGLib/x64/**
+mfUSGLib/Debug/**
 
 # Extras
 *.7z

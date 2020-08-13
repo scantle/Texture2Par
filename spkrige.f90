@@ -44,7 +44,7 @@ subroutine spkrige(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val)
 !   kriged_val (real array) kriging results
 !-----------------------------------------------------------------------------!
 
-    integer                  :: maxpt, ntot, i, g, n, grouploop
+    integer                  :: maxpt, ntot, i, g, n, grouploop, ier
     integer, allocatable     :: id(:)
     integer, intent(in)      :: nobs, ngrid
     real                     :: value, zkrig
@@ -60,7 +60,13 @@ subroutine spkrige(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val)
     p = 0.d0
     id = 0
     call PSET(p,obsx,obsy,id,nobs,ntot)
-    call decomp(p,id,ntot)
+    call decomp(p,id,ntot, ier)
+
+    if (ier == 1) then
+      write(*,'(2x,a)') 'Error - Kriging Matrix Decomposition Failure.'
+      write(*,'(2x,a)') 'This error is usually caused by co-located values.'
+      stop
+    end if
     
     ! Loop over each grid point
     do i = 1, ngrid
@@ -97,12 +103,11 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
 !    
 ! Requires: PSET, decomp, variogram, doolittle    
 !    
-! Arguments:
 !
 !-----------------------------------------------------------------------------!
 
     integer                  :: maxpt, ntot, i, j, g, n, closeobs(nnear), &
-                                usenear
+                                usenear, ier
     integer, allocatable     :: id(:)
     integer, intent(in)      :: ngrid, nnear, nobs
     real                     :: value, zkrig, queryxy(2), obsdists(nnear), &
@@ -113,8 +118,7 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
     
     type(tree_master_record), pointer, intent(in) :: obstree
 
-    ! A little test that shouldn't come up often (unless debugging)
-    ! Makes the whole tree setup really seem like overkill
+    ! If there's not many datapoints
     if (obstree%N < nnear) then
       write(*,'(4x,a)') 'Well Data < Kriging Tree Search. Adjusting...'
       usenear = obstree%N
@@ -140,7 +144,13 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
       p = 0.d0
       id = 0
       call PSET(p,obsx,obsy,id,usenear,ntot)
-      call decomp(p,id,ntot)
+      call decomp(p,id,ntot, ier)
+
+      if (ier == 1) then
+        write(*,'(2x,a)') 'Error - Kriging Matrix Decomposition Failure.'
+        write(*,'(2x,a)') 'This error is usually caused by co-located wells.'
+        stop
+      end if
       r = 0.d0
       w = 0.d0
       r(ntot) = 1.0d0              ! commented = simple, uncommented = ordinary
@@ -172,16 +182,113 @@ end subroutine spkrige_tree
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
+subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, &
+                              kriged_val, nnear, ggroup, targetgroup)
+    use kd_tree
+    implicit none
+!-----------------------------------------------------------------------------!
+!                       Simple Point Kriging Subroutine
+!                     ***********************************
+!    
+! Groups are set as CHARACTERS(30)
+!-----------------------------------------------------------------------------!
+
+    integer                  :: maxpt, ntot, i, j, g, n, closeobs(nnear), &
+                                usenear, ier
+    integer, allocatable     :: id(:)
+    integer, intent(in)      :: ngrid, nnear, nobs
+    real                     :: value, zkrig, queryxy(2), obsdists(nnear), &
+                                obsx(nnear), obsy(nnear)
+    real, allocatable        :: p(:), r(:), w(:)
+    real, intent(in)         :: gx(ngrid), gy(ngrid), obsval(nobs)
+    real, intent(inout)      :: kriged_val(ngrid)
+    character(30),intent(in) :: ggroup(ngrid), targetgroup
+    
+    type(tree_master_record), pointer, intent(in) :: obstree
+
+    ! If there's not many datapoints
+    if (obstree%N < nnear) then
+      ! Warning moved outside routine
+      !write(*,'(4x,2a)') 'Well Data < Kriging Tree Search in group: ', targetgroup
+      usenear = obstree%N
+    else
+      usenear = nnear
+    end if
+    
+    ntot = usenear + 1              ! +1 for ordinary
+    maxpt = ntot * (ntot + 1) / 2
+    allocate(p(maxpt),r(ntot),w(ntot),id(ntot))
+    
+    ! Loop over each grid point
+    do i = 1, ngrid
+      
+      ! Skip if grid point not in group
+      if (ggroup(i) /= targetgroup) then
+        !kriged_val(i) = nodataval
+        cycle
+      end if
+      
+      ! Get nnear closest observation points
+      queryxy = (/ gx(i), gy(i) /)
+      call n_nearest_to(obstree, queryxy, usenear, closeobs, obsdists)
+      do j=1, usenear
+        obsx(j) = obstree%THE_DATA(closeobs(j),1)
+        obsy(j) = obstree%THE_DATA(closeobs(j),2)
+      end do
+      
+      ! Reset values, matricies for new grid point
+      p = 0.d0
+      id = 0
+      call PSET(p,obsx,obsy,id,usenear,ntot)
+      call decomp(p,id,ntot, ier)
+
+      if (ier == 1) then
+        write(*,'(2x,a)') 'Error - Kriging Matrix Decomposition Failure.'
+        write(*,'(2x,a)') 'This error is usually caused by co-located wells.'
+        stop
+      end if
+      r = 0.d0
+      w = 0.d0
+      r(ntot) = 1.0d0              ! commented = simple, uncommented = ordinary
+      
+      ! Loop over observations
+      do n = 1, usenear
+        call variogram(gx(i),gy(i),0.0d0,obsx(n),obsy(n),0.0d0,value)
+        r(n) = value
+      end do
+      call doolittle(r,p,id,w,ntot)
+      
+      ! Correct for negative weights, if necessary
+      if (minval(w(1:usenear)) < 0.0d0) then
+        call ok_negative_correction(w, usenear)
+      end if
+      
+      value = 0.0d0
+      zkrig = 0.0d0
+      do n=1, usenear
+        zkrig = zkrig + w(n) * obsval(closeobs(n))
+      end do
+      zkrig = zkrig + value
+      kriged_val(i) = zkrig
+    end do
+    
+    deallocate(p, r, w, id)
+
+end subroutine spkrige_tree_group
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
 subroutine spkrige_group(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val, &
                    ggroup, targetgroup)
     implicit none
 !-----------------------------------------------------------------------------!
 !                       Simple Point Kriging Subroutine
 !                     ***********************************
-!    
+!
+! Groups are set as INTEGERS
 !-----------------------------------------------------------------------------!
 
-    integer                  :: maxpt, ntot, i, g, n, grouploop
+    integer                  :: maxpt, ntot, i, g, n, grouploop, ier
     integer, allocatable     :: id(:)
     integer, intent(in)      :: nobs, ngrid
     real                     :: value, zkrig
@@ -199,7 +306,13 @@ subroutine spkrige_group(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val, &
     p = 0.d0
     id = 0
     call PSET(p,obsx,obsy,id,nobs,ntot)
-    call decomp(p,id,ntot)
+    call decomp(p,id,ntot, ier)
+
+    if (ier == 1) then
+      write(*,'(2x,a)') 'Error - Kriging Matrix Decomposition Failure.'
+      write(*,'(2x,a)') 'This error is usually caused by co-located pilot points.'
+      stop
+    end if
     
     ! Loop over each grid point
     do i = 1, ngrid
@@ -397,7 +510,7 @@ end subroutine
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-subroutine decomp(p,id,ntot)
+subroutine decomp(p,id,ntot,ier)
     implicit none
 !*** DECOMPOSITION TO GET LOWER TRIANGULAR S MATRIX
     integer                :: id,ier,ks,jm1,k,js,is,is1,j,i,i1,ntot
@@ -431,8 +544,54 @@ subroutine decomp(p,id,ntot)
    91     IER=1
    92     CONTINUE
       return
-      end subroutine decomp
+end subroutine decomp
 !-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
+subroutine decomp_debug(p,id,ntot,plen)
+    implicit none
+!*** DECOMPOSITION TO GET LOWER TRIANGULAR S MATRIX
+    integer                :: id,ier,ks,jm1,k,js,is,is1,j,i,i1,ntot,plen
+    real                   :: p,sum,p1,p2
+    dimension              :: p(plen),id(ntot)
+    logical                :: debug
+
+      IER=0
+      P(1)=1./P(1)
+      DO 65 J=2,NTOT
+      DO 65 I=J,NTOT
+        KS=ID(I)
+        JM1=J-1
+        SUM=0.
+        DO 55 K=1,JM1
+          JS=ID(K)
+          IS=JS+I-K
+          IS1=JS+J-K
+          P1=P(IS)
+          P2=P(IS1)
+          IF (P1) 39,55,39
+39         IF (P2) 50,55,50
+50         SUM=SUM+P1*P2*P(JS)
+55         CONTINUE
+        I1=ID(J)+I-J
+        P(I1)=P(I1)-SUM
+        IF (I-J) 65,70,65
+70       IF(P(KS)) 90,91,90
+90       P(KS)=1./P(KS)
+65       CONTINUE
+      GOTO 92
+91     IER=1
+92     CONTINUE
+
+      if (ier == 1) then
+        pause
+        stop
+      end if
+       
+      return
+      end subroutine decomp_debug
+!-----------------------------------------------------------------------------!
+
 
 !-----------------------------------------------------------------------
 subroutine variogram(x1,y1,z1,x2,y2,z2,value)
