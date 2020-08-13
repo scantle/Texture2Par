@@ -390,7 +390,7 @@ subroutine writeWellFile_IWFM(v, filename)
   integer                  :: iwell, ilay
   character(60)            :: fmt(2)
   
-  write(6,'(4x,a,a35)') 'Writing:', filename
+  write(*,'(4x,a,a35)') 'Writing:', filename
 
   write(fmt(1),'("(2a10,",i5,"i14)")') nlayers
   write(fmt(2),'("(2i10,",i5,"es14.5)")') nlayers
@@ -418,7 +418,7 @@ subroutine writeNodeFile(v, filename)
   integer                  :: inode, ilay
   character(60)            :: fmt(2)
   
-  write(6,'(4x,a,a35)') 'Writing :', filename
+  write(*,'(4x,a,a35)') 'Writing:', filename
 
   write(fmt(1),'("(2a8,2a18,",i5,"i14)")') nlayers
   write(fmt(2),'("(2i8,2f18.5,",i5,"e14.5)")') nlayers
@@ -656,7 +656,7 @@ subroutine readOneLine(infile,iinfile,cline)
     
     !================================================================================
     ! error statements
-900 write(6,901) trim(infile)
+900 write(*,901) trim(infile)
 901 format(/,' *** Unexpected end to file ',a,' ***',/)
       stop
 999 end subroutine readOneLine

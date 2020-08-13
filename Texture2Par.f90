@@ -40,7 +40,7 @@ program Texture2Par
     logical                    :: writenodefiles
     
 ! Intel-Fortran specific way of writing to same command line line
-    open(6, carriagecontrol='fortran')  ! Uses removed by VB
+!    open(6, carriagecontrol='fortran')  ! Uses removed by VB
     
     ! Write Flag
     write(*,'(/,8x,a)') '   Texture2Par v1.0.0'
@@ -49,7 +49,7 @@ program Texture2Par
     ! Read input file
     ierr = 0
     writeNodeFiles = .false.
-    write(6,'(/,2x,a)') 'Reading input file'
+    write(*,'(/,2x,a)') 'Reading input file'
     open(10, file='Texture2Par.in', status='old', action='read', &
          iostat = ierr)
     call iostathandler(ierr, 'Texture2Par.in')
@@ -116,6 +116,7 @@ program Texture2Par
     read(10,*) Syp
     
     ! Aquifer Pilot Point section
+    ! TODO: Add descriptive error when not all pilot point parameters are present
     call ReadToSymbol(10, '*')
     call FindSectionLength(10, ppn, '*')
     allocate(ppx(ppn), ppy(ppn), ppKCMin(ppn), ppdKC(ppn), ppKFMin(ppn), &
@@ -143,11 +144,11 @@ program Texture2Par
 
     ! MODEL SPECIFIC
     if (modflowflag == 0) then
-      write(6,'(2x,a)') 'Reading IWFM Input Files'
+      write(*,'(2x,a)') 'Reading IWFM Input Files'
       call readIWFM()
       call create_nodetree()
     else if (modflowflag == 1) then
-      write(6,'(2x,a)') 'Reading MODFLOW Input Files'
+      write(*,'(2x,a)') 'Reading MODFLOW Input Files'
       call read_modflow(simfile)
       call calcCellCenters_global()
       call create_nodetree()
@@ -221,7 +222,7 @@ program Texture2Par
     end if
 
     ! Write Read Summary
-    write(6,'(2x,a)') 'Setup Summary:                          '
+    write(*,'(2x,a)') 'Setup Summary:                          '
     write(*,'(4x,1a32,i)') 'Number of aquifer pilot points: ', ppn
     write(*,'(4x,1a32,i)') 'Number of aquitard pilot points ', atppn
     write(*, '(4x,1a32,i)') 'Number of Layers: ', nlayers
@@ -250,7 +251,7 @@ program Texture2Par
     end if
 
 ! Call Layer Elevation subroutine
-    write(6,'(2x,a)') 'Calculating Layer Elevations at Wells'
+    write(*,'(2x,a)') 'Calculating Layer Elevations at Wells'
     if (modflowflag == 0) then
       call layerelevation(TopElev, BotElev, wellelevtop, wellelevbot)
       ! For aquitard                        
@@ -263,7 +264,7 @@ program Texture2Par
     call colocate_corrector(xwell, ywell, nwell)
 
 ! Call Layer Texture subroutine
-    write(6,'(2x,a)') 'Calculating Percent Coarse at Nodes      '
+    write(*,'(2x,a)') 'Calculating Percent Coarse at Nodes      '
     outfile = 'PcWellElem.out'
     call layertexture(wellelevtop, wellelevbot, PcWellElem)
     ! If IWFM or if there are MODFLOW confining beds
@@ -274,7 +275,7 @@ program Texture2Par
 
     ! Krige from pilot points to nodes
     ! Aquifer Parameters - KCMin, DeltaKC, KFMin, DeltaKF, SsC, SsF, SyC, Aniso
-    write(6,'(2x,a)') 'Kriging Aquifer Pilot Point Parameters     '
+    write(*,'(2x,a)') 'Kriging Aquifer Pilot Point Parameters     '
     call pp_parkrige(ppx, ppy, ppKCMin,  ppn, ppzone, nKCMin)
     call pp_parkrige(ppx, ppy, ppdKC,    ppn, ppzone, dKC)
     call pp_parkrige(ppx, ppy, ppKFMin,  ppn, ppzone, nKFMin)
@@ -289,7 +290,7 @@ program Texture2Par
     if ((modflowflag == 0).or.(ncbd > 0 )) then
       if (atppn > 0) then
         ! Aquitard Parameters - KCMin, DeltaKC, KFMin, DeltaKF, Aniso
-        write(6,'(2x,a)') 'Kriging Aquitard Pilot Point Parameters     '
+        write(*,'(2x,a)') 'Kriging Aquitard Pilot Point Parameters     '
         call pp_parkrige(ppatx, ppaty, ppatKCMin,  atppn, ppatzone, atnKCMin)
         call pp_parkrige(ppatx, ppaty, ppatdKC,    atppn, ppatzone, atdKC)
         call pp_parkrige(ppatx, ppaty, ppatKFMin,  atppn, ppatzone, atnKFMin)
@@ -297,13 +298,13 @@ program Texture2Par
         call pp_parkrige(ppatx, ppaty, ppatAnisoC, atppn, ppatzone, atnAnisoC)
         call pp_parkrige(ppatx, ppaty, ppatAnisoF, atppn, ppatzone, atnAnisoF)
       else
-        write(6,'(2x,a,/)') 'No Aquitard Pilot Points - Skipping       '
+        write(*,'(2x,a,/)') 'No Aquitard Pilot Points - Skipping       '
         atnKCMin = -999; atdKC= -999; atnKFMin = -999; atdKF = -999
       end if
     end if
     
 ! Call interpolate subroutines (Well PC to Node Aquifer parameter)
-    write(6,'(2x,a)') 'Calculating Node Aquifer Parameters           '
+    write(*,'(2x,a)') 'Calculating Node Aquifer Parameters           '
     call interpolate()
     if ((modflowflag == 0).or.(ncbd > 0 )) then
       call interpolate_aqtard()

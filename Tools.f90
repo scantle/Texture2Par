@@ -77,7 +77,7 @@ MODULE errorhandle
       implicit none
   !-----------------------------------------------------------------------------!
   ! Handles some simple errors returned by iostat during I/O operations
-  ! Some codes may be specific to the Intel Fortran Compiler.
+  ! Error codes may be specific to the Intel Fortran Compiler.
   ! STOPS IF IT FINDS AN ERROR
   !
   ! Error Code Source: https://software.intel.com/en-us/node/678472
