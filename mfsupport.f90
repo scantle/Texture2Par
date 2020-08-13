@@ -146,7 +146,7 @@ SUBROUTINE inputwells_modflow(readzones)
     if (readzones == 0) then
       ! No GeoZones
       nwellgeozones = 1
-      wellgeozones(1:nlayers,1:nwell) = '[NONE]'
+      wellgeozones(1:nwell,1:nlayers) = '[NONE]'
       do i=1, wfilelen
         read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td
         ! Well "zone" is discrete depth interval and should not be confused with
@@ -190,7 +190,7 @@ SUBROUTINE inputwells_modflow(readzones)
           Zland(iwell) = tz
         
           ! Well geologic zones
-          wellgeozones(:, iwell) = geobylayer(:)
+          wellgeozones(iwell,:) = geobylayer(:)
           ! Counts geozones for reporting and comparing
           do ilay=1, nlayers
             call strtracker(nwellgeozones, geobylayer(ilay), &
@@ -256,7 +256,7 @@ subroutine readNodeGeoZones_modflow()
 
   do i=1, nnodes
     read(10, *) row, col, geobylayer
-    geozones(:,(row-1)*ncol + col) = geobylayer
+    geozones((row-1)*ncol + col,:) = geobylayer
     ! Track geozones for looping, reporting and comparing
     do ilay=1, nlayers
       ! Is this zone new to the layer?

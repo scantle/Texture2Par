@@ -209,7 +209,7 @@ program Texture2Par
       geoflag = 0
       ngeozones = 1
       ngeozones_lay(1:nlayers) = 1
-      geozones(1:nlayers,1:nnodes) = '[NONE]'
+      geozones(1:nnodes,1:nlayers) = '[NONE]'
       geonames_lay(1,1:nlayers) = '[NONE]'
     else
       geoflag = 1

@@ -217,14 +217,14 @@ SUBROUTINE interpolate()
     if (USE_IDW == 0) then
       ! Calculate percent coarse at each node by kriging well data by layer
       do ilay=1, nlayers
-        tempzones = geozones(ilay,1:nnodes)
+        tempzones = geozones(1:nnodes,ilay)
         ! Compile wells (x,y,val) that have PC for each layer/geo zone
         ! Use to build kd-tree for kriging subroutine
         do igeo=1, ngeozones_lay(ilay)
           wcount = 0
           do iwell=1, nwell
             if ((pcwellelem(iwell, ilay) >= 0.0d0).and.&
-                (wellgeozones(ilay,iwell) == geonames_lay(igeo,ilay))) then
+                (wellgeozones(iwell,ilay) == geonames_lay(igeo,ilay))) then
               wcount = wcount + 1
               wellv(wcount) = pcwellelem(iwell, ilay)
               wellxy(wcount,1) = xwell(iwell)
@@ -268,7 +268,7 @@ SUBROUTINE interpolate()
           count = 0            ! LS Added to avoid "no well data" when PC is 0.0 from data
           do iwell = 1, nwell
             if ((PcWellElem(iwell, ilay) >= 0).and.&
-                       (geozones(ilay,inode) == wellgeozones(ilay, iwell))) then
+                       (geozones(inode,ilay) == wellgeozones(iwell,ilay))) then
               count = count + 1
               weight = (((Xwell(Iwell) - nodex(inode)) ** 2 &
                        + (Ywell(Iwell) - nodey(inode)) ** 2) ** 0.5) ** 2
@@ -640,7 +640,7 @@ subroutine WellAllocate()
              wellelevbot(nwell, nlayers), &
              wellaqtardelevtop(nwell,nlayers), &
              wellaqtardelevbot(nwell,nlayers), &
-             wellgeozones(nlayers, nwell))                                     ! opposite others, but more efficient...
+             wellgeozones(nwell, nlayers))
 
 end subroutine
 !-----------------------------------------------------------------------------!
@@ -671,7 +671,7 @@ subroutine NodeAllocate()
            SyB(nlayers, nnodes), &
            KvB_aqtard(nlayers, nnodes), &
            nodezone(nnodes), &
-           geozones(nlayers, nnodes), &
+           geozones(nnodes, nlayers), &
            ngeozones_lay(nlayers), &
            geonames_lay(max_zones,nlayers))
 
