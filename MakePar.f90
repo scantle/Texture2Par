@@ -148,7 +148,6 @@ subroutine pp_parkrige(ppx, ppy, ppv, npp, ppz, kriged)
   implicit none
 !-----------------------------------------------------------------------------!
 ! Loops over zones kriging pilot point parameter values to nodes
-! Added in v1.0.3 (Internal Numbering)
 !-----------------------------------------------------------------------------!
   
   real,intent(in)          :: ppx(npp), ppy(npp), ppv(npp)
@@ -357,7 +356,6 @@ SUBROUTINE interpolate_aqtard()
     character(60),allocatable:: fmt(:)
     type(tree_master_record),pointer :: welltree
     
-!  Avoiding stack overflow by allocating after declaration
     allocate(KhC(nlayers, nnodes), &
              KhF(nlayers, nnodes), &
              KvC(nlayers, nnodes), &
@@ -486,8 +484,8 @@ subroutine create_nodetree()
   
   integer                  :: i
   
-  ! Slightly frustrating reassignment into a single xy array
-  ! Someday memory usage could be improved by modifying KDTree
+  ! Reassignment into a single xy array
+  ! memory usage could be improved by modifying KDTree
   do i=1, nnodes
     nodexy(i,1) = nodex(i)
     nodexy(i,2) = nodey(i)

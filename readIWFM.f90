@@ -345,7 +345,6 @@ subroutine inputZones_IWFM()
     implicit none
 !-----------------------------------------------------------------------------!
 ! Reads zone file consisting of node number and corresponding pilot point zone
-! Added in v1.3.0
 !-----------------------------------------------------------------------------!    
     integer                :: i, node, zone, ierr
     logical                :: newzone
@@ -450,14 +449,6 @@ subroutine writeIWFMgwfile()
     
   open(13, file=gwtemp, status='old')   ! Temp File
   open(12, file=GWFile, status='replace')   ! New File
-    
-  !do i=1, nskip
-  !  read(13, '(a1000)') line
-  !  write(12,'(a)') trim(line)
-  !end do
-  ! Replaced skip variable with smarter way of finding aquifer parameter
-  ! section. Longer, but hopefully easier for the user.
-  ! Skips one section (comment or data) at a time. - LS 10/9/2018
     
   ! Copy Section Number
   call CopySettingsSection(13, 12, 1)

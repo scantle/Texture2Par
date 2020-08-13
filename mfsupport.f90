@@ -1,8 +1,6 @@
 module MFSupport
   implicit none
   
-! Added in v1.3.1
-  
   SAVE
   real                      :: xoff, yoff, mfrot
   real,allocatable          :: mftop(:,:,:), mfbot(:,:,:), locx(:), locy(:)
@@ -411,7 +409,7 @@ end function get_well_cell
     allocate(locx(nnodes), &
              locy(nnodes)  )
     
-    ! May be better to put into a MakePar routine for allocation
+    ! TODO move to MakePar routine for allocation
     ! Since these are all use for both models
     allocate(nodex(nnodes),              &
              nodey(nnodes),              &

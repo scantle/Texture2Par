@@ -20,7 +20,7 @@ program Texture2Par
 ! Durbin.
 !
 ! 
-! Requires: Texture2Par.in
+! Requires Input File: Texture2Par.in
 !
 !-----------------------------------------------------------------------------!
 
@@ -259,7 +259,7 @@ program Texture2Par
     end if
     ! Modflow Well elevations are assigned during well read
     
-! Move co-located wells (if issue is really bad this could be run more than once)
+! Move co-located wells (if kriging still crashes, well locations need to be revised)
     call colocate_corrector(xwell, ywell, nwell)
 
 ! Call Layer Texture subroutine
