@@ -197,7 +197,7 @@ program Texture2Par
     ! Handle No Zones
     if (zoneflag == 0) then
       nzones   = 1
-      zones(1) = 1
+      zones    = 1
       nodezone = 1
       ppzone   = 1
       ppatzone = 1
