@@ -7,6 +7,15 @@ MODULE IWFM
 ! IWFM Module for Texture2Par
 ! Combination of subroutines written by SSP&A and John Doherty
 ! used for the reading/writing of IWFM files
+!
+! Note on Nodes:
+! - Nodes numbers ("NodeIDs") in IWFM input files can have gaps and might not 
+!   even be sequential (as of Oct 2020). 
+! - NodeIDs are what are read in from the input files (nid for short)
+! - The sequential values used internally in T2P arrays are node indexes
+!   (node for short, somewhat confusingly)
+! - To get a nodeid from a node number, use the nodeid() array
+! - To get a node index from a node id, use the nodebyid() array
 !-----------------------------------------------------------------------------!
   
   SAVE
@@ -26,7 +35,7 @@ subroutine readIWFM()
   implicit none
   
   integer                  :: i, k, ifail, ioerr, ierr, ipos, nreg, intd, &
-                              idum
+                              idum, maxnodeid, nid, node
   integer                  :: ls(100), rs(100)
   real                     :: fact
   character(150)           :: jnk,currfile
@@ -61,19 +70,24 @@ subroutine readIWFM()
     
     allocate(nodex(nnodes),nodey(nnodes), &
               nodeelem(nnodes, max_node_elem_members), &
-              nnodeelem(nnodes),nodexy(nnodes,2))
+              nnodeelem(nnodes),nodexy(nnodes,2), nodeid(nnodes))
     read(12,*) fact
     call readOneLine(elementfile,12,cline)
     BACKSPACE(12)
-      
+    
+    maxnodeid = 0
     do i=1,nnodes
       read(12,*)intd,nodex(i),nodey(i)
+      nodeid(i) = intd
+      if (intd > maxnodeid) maxnodeid = intd
       nodex(i) = nodex(i) * fact
       nodey(i) = nodey(i) * fact
       ! Initialize node-element membership array to 0
       nnodeelem(i) = 0
     end do
     close(12)
+    
+    call setup_nodeindex_byid(maxnodeid)
     
 ! Read elements file
 !    write(*,'(2x,a)') 'Reading IWFM elements file...'
@@ -112,6 +126,16 @@ subroutine readIWFM()
     BACKSPACE(12)     
     do i=1,nelements
       READ(12,*)intd,(elements(intd,k),k=1,4)
+      ! Translate nodeid to node index for each connection LS 10/28/2020
+      do k=1,4
+        if (elements(intd,k) > 0) then
+          if (nodebyid(elements(intd,k)) < 1) then
+            write(*,*) 'ERROR! Invalid node ID in Element File = ', elements(intd,k)
+            stop
+          end if
+          elements(intd,k) = nodebyid(elements(intd,k))
+        end if
+      end do
       ! Add to node-element relationship array
       ! So we can identify by node what element we're in
       call add_elem2nodeelem(intd)
@@ -146,23 +170,28 @@ subroutine readIWFM()
     BACKSPACE(12)
     do i=1,nnodes
       call readOneLine(nodefile,12,cline)
-      read(cline,*) idum,Elevation(i),((AqTardThick(i,k),Thick(i,k)),k=1,nlayers)
+      read(cline,*) nid, Elevation(nodebyid(nid)),((AqTardThick(nodebyid(nid),k),Thick(nodebyid(nid),k)),k=1,nlayers)
       ! Adjust for Factor
-      Elevation(i) = Elevation(i) * fact
-      AqTardThick(i,1:nlayers) = AqTardThick(i,1:nlayers) * fact
-      Thick(i,1:nlayers)       = Thick(i,1:nlayers)       * fact
+      node = nodebyid(nid)
+      if (node < 1) then
+        write(*,*) 'ERROR! Invalid node ID in Stratigraphy File = ', elements(intd,k)
+        stop
+      end if
+      Elevation(node)             = Elevation(node) * fact
+      AqTardThick(node,1:nlayers) = AqTardThick(node,1:nlayers) * fact
+      Thick(node,1:nlayers)       = Thick(node,1:nlayers)       * fact
       do k = 1,nlayers
         ! Aquitard layer is above aquifer layer
         if (k.eq.1) then
-          AqTardTopElev(i,k) = Elevation(i)
-          AqTardBotElev(i,k) = AqTardTopElev(i,k)-AqTardThick(i,k)
-          TopElev(i,k) = Elevation(i)-AqTardThick(i,k)
-          BotElev(i,k) = TopElev(i,k)-Thick(i,k)
+          AqTardTopElev(node,k) = Elevation(node)
+          AqTardBotElev(node,k) = AqTardTopElev(node,k)-AqTardThick(node,k)
+          TopElev(node,k) = Elevation(i)-AqTardThick(node,k)
+          BotElev(node,k) = TopElev(node,k)-Thick(node,k)
         else
-          AqTardTopElev(i,k) = BotElev(i,k-1)
-          AqTardBotElev(i,k) = AqTardTopElev(i,k) - AqTardThick(i,k)
-          TopElev(i,k) = BotElev(i,k-1)-AqTardThick(i,k)
-          BotElev(i,k) = TopElev(i,k)-Thick(i,k)
+          AqTardTopElev(node,k) = BotElev(node,k-1)
+          AqTardBotElev(node,k) = AqTardTopElev(node,k) - AqTardThick(node,k)
+          TopElev(node,k) = BotElev(node,k-1)-AqTardThick(node,k)
+          BotElev(node,k) = TopElev(node,k)-Thick(node,k)
         endif
       end do
     end do  
@@ -301,9 +330,11 @@ subroutine readNodeGeoZones_IWFM()
 ! Requires: strtracker (see Tools.f90) to increment zone arrays & counters
 !
 ! Author: Leland Scantlebury of S.S. Papadopulos & Associates
+!
+! Updated 10/28/2020 by LS to use nodeids
 !-----------------------------------------------------------------------------!
   
-  integer                  :: node, i, ilay, izone, ierr
+  integer                  :: nid, node, i, ilay, izone, ierr
   character(30)            :: geobylayer(nlayers)
   logical                  :: newzone, newzone_lay
   
@@ -317,7 +348,12 @@ subroutine readNodeGeoZones_IWFM()
   read(10, *) ! Header
   
   do i=1, nnodes
-    read(10, *) node, geobylayer
+    read(10, *) nid, geobylayer
+    node = nodebyid(nid)
+    if (node < 1) then
+      write(*,*) 'ERROR! Invalid node ID in Geologic Zone File = ', nid
+      stop
+    end if
     geozones(node,:) = geobylayer
     ! Track geozones for looping, reporting and comparing
     do ilay=1, nlayers
@@ -345,8 +381,10 @@ subroutine inputZones_IWFM()
     implicit none
 !-----------------------------------------------------------------------------!
 ! Reads zone file consisting of node number and corresponding pilot point zone
+!
+! Updated 10/28/2020 by LS to use nodeids
 !-----------------------------------------------------------------------------!    
-    integer                :: i, node, zone, ierr
+    integer                :: i, nid, node, zone, ierr
     logical                :: newzone
     
     ! Set
@@ -356,7 +394,12 @@ subroutine inputZones_IWFM()
     call iostathandler(ierr, trim(zonefile))
     read(10,*)   ! Header
     do while (ierr == 0)
-      read(10,*,iostat=ierr) node, zone
+      read(10,*,iostat=ierr) nid, zone
+      node = nodebyid(nid)
+      if (node < 1) then
+        write(*,*) 'ERROR! Invalid node ID in Pilot Point Zone File = ',nid
+        stop
+      end if
       nodezone(node) = zone
       ! Is this a new zone?
       newzone = .true.
@@ -428,7 +471,7 @@ subroutine writeNodeFile(v, filename)
   write(20,fmt(1)) 'Node', 'Zone', 'X', 'Y', (ilay, ilay=1, nlayers)
   ! Values
   do inode = 1, nnodes
-    write(20,fmt(2)) inode, nodezone(inode), nodex(inode), nodey(inode), &
+    write(20,fmt(2)) nodeid(inode), nodezone(inode), nodex(inode), nodey(inode), &
                      (v(ilay, inode), ilay=1,nlayers)
   end do
   
@@ -498,7 +541,7 @@ subroutine writeIWFMgwfile()
   do i=1, nnodes
     do ilay=1, nlayers
       if (ilay.eq.1) then
-        write(12,'(i13,f14.8,e12.3,f14.8,f14.8,f14.8)') i, KhB(ilay,i), SsB(ilay,i), SyB(ilay,i), KvB_aqtard(ilay,i), KvB(ilay,i)
+        write(12,'(i13,f14.8,e12.3,f14.8,f14.8,f14.8)') nodeid(i), KhB(ilay,i), SsB(ilay,i), SyB(ilay,i), KvB_aqtard(ilay,i), KvB(ilay,i)
       else
         write(12,'(13x,f14.8,e12.3,f14.8,f14.8,f14.8)') KhB(ilay,i), SsB(ilay,i), SyB(ilay,i), KvB_aqtard(ilay,i), KvB(ilay,i)
       end if
@@ -607,7 +650,46 @@ subroutine add_elem2nodeelem(intd)
     end if
   end do
 
-  end subroutine add_elem2nodeelem
+end subroutine add_elem2nodeelem
+
+!-----------------------------------------------------------------------------!
+
+subroutine setup_nodeindex_byid(maxnodeid)
+!-----------------------------------------------------------------------------!
+! Sets up the nodebyid array so that it is easy to find the node index
+! of any node by the nodeid. This comes in handy when reading subsequent files
+! that refer to the node by the nodeid. Prevents having to loop through the
+! whole array. If Fortran had 'maps' (C++) or 'dictionaries' (python) that
+! would be a more ideal (efficient) data structure
+! This structure could potentially have large gaps wasting memory.
+! - LS 10/28/2020
+!-----------------------------------------------------------------------------!
+  use MakePar
+  use errorhandle
+  implicit none
+  
+  integer, intent(in)        :: maxnodeid
+  integer                    :: i
+
+  ! We're allocating an array based on the maximum number
+  ! So a quick check to make sure it's not too big of a number!
+  if (maxnodeid > max_nodeid) then
+    call parexceed(maxnodeid, 'max_nodeid', &
+                          'Failed during creation of nodebyid')
+  end if
+  
+  allocate(nodebyid(maxnodeid))
+  
+  ! Initialize all values to a negative number so we can easily check whether
+  ! a nodeid is valid
+  nodebyid = -1
+  
+  ! Fill array
+  do i=1, nnodes
+    nodebyid(nodeid(i)) = i
+  end do
+
+end subroutine setup_nodeindex_byid
 
 !-----------------------------------------------------------------------------!
     

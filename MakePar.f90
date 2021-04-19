@@ -12,7 +12,8 @@ MODULE MakePar
     ! Parameters
     integer, parameter        :: max_node_elem_members = 15, &                 ! Maximum number of elements a node is a part of (will stop w/ error if too low)
                                  max_zones = 100, &                            ! Maximum number of zones (used for both pilot point and geologic)
-                                 USE_IDW = 0
+                                 USE_IDW = 0, &
+                                 max_nodeid=5E6                                ! Maximum nodeid value (to prevent enormous array allocation)
     real, parameter           :: NODATA=-9999.0
                               
     real,allocatable          :: wellelevbot(:,:), ssb(:,:), pcwellelem(:,:), &
@@ -33,7 +34,8 @@ MODULE MakePar
                                  interbed_thick(:,:)
     integer,allocatable       :: wellelem(:), pcwellzone(:,:), numzone(:), &
                                  elements(:,:), nodeelem(:,:), nnodeelem(:), &
-                                 nodezone(:), ngeozones_lay(:)
+                                 nodezone(:), ngeozones_lay(:), nodeid(:), &
+                                 nodebyid(:)
     integer                   :: nlayers, nnodes, nwell, wfilelen, &
                                  nelements, maxWPoints, pckrige_nwells, &
                                  nzones, zones(max_zones), ngeozones
