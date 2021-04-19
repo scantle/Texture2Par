@@ -308,10 +308,7 @@ SUBROUTINE interpolate()
                                 (KvC(ilay, inode) ** KVp)) + &
                                 ((1 - PcNode(ilay, inode)) * &
                                  (KvF(ilay, inode) ** KVp))) ** (1.0 / KVp)
-! SsB has been modified so that
-! SsC = SskeC + SskvC
-! SsF = SskeF + SskvF
-! -LS 9/7/2017
+
             SsB(ilay, inode) = (PcNode(ilay, inode) * (nSsC(inode))) + &
                                ((1 - PcNode(ilay, inode)) * (nSsF(inode)))
             SyB(ilay, inode) = ((PcNode(ilay, inode) * (nSyC(inode) ** Syp)) + &
