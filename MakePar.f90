@@ -39,7 +39,7 @@ MODULE MakePar
     integer                   :: nlayers, nnodes, nwell, wfilelen, &
                                  nelements, maxWPoints, pckrige_nwells, &
                                  nzones, zones(max_zones), ngeozones
-    real                      :: kfk, syp, khp, kvp, kck
+    real                      :: kfk, syp, ssp, khp, kvp, kck
     character(30),allocatable :: geozones(:,:), wellgeozones(:,:), &
                                  geonames_lay(:,:)
     character(30)             :: geonames(max_zones)
@@ -309,8 +309,12 @@ SUBROUTINE interpolate()
                                 ((1 - PcNode(ilay, inode)) * &
                                  (KvF(ilay, inode) ** KVp))) ** (1.0 / KVp)
 
-            SsB(ilay, inode) = (PcNode(ilay, inode) * (nSsC(inode))) + &
-                               ((1 - PcNode(ilay, inode)) * (nSsF(inode)))
+!            SsB(ilay, inode) = (PcNode(ilay, inode) * (nSsC(inode))) + &
+!                               ((1 - PcNode(ilay, inode)) * (nSsF(inode)))
+! LS 12/16/2021 - Added Ssp to allow Ss to use a power law function
+            SsB(ilay, inode) = ((PcNode(ilay, inode) * (nSsC(inode) ** Ssp)) + &
+                                ((1 - PcNode(ilay, inode)) * (nSsF(inode) ** &
+                                  Ssp))) ** (1.0 / Ssp)
             SyB(ilay, inode) = ((PcNode(ilay, inode) * (nSyC(inode) ** Syp)) + &
                                 ((1 - PcNode(ilay, inode)) * (nSyF(inode) ** &
                                   Syp))) ** (1.0 / Syp)

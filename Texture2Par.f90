@@ -114,6 +114,7 @@ program Texture2Par
     read(10,*) KHp
     read(10,*) KVp
     read(10,*) Syp
+    read(10,*) Ssp
     
     ! Aquifer Pilot Point section
     ! TODO: Add descriptive error when not all pilot point parameters are present
