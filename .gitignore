@@ -48,4 +48,5 @@ mfUSGLib/x64/**
 mfUSGLib/Debug/**
 
 # Extras
+*.vfproj.*
 *.7z
