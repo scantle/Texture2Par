@@ -39,7 +39,7 @@ MODULE MakePar
     integer                   :: nlayers, nnodes, nwell, wfilelen, &
                                  nelements, maxWPoints, pckrige_nwells, &
                                  nzones, zones(max_zones), ngeozones
-    real                      :: kfk, syp, ssp, khp, kvp, kck
+    real                      :: kfk, stp, khp, kvp, kck
     character(30),allocatable :: geozones(:,:), wellgeozones(:,:), &
                                  geonames_lay(:,:)
     character(30)             :: geonames(max_zones)
@@ -311,13 +311,13 @@ SUBROUTINE interpolate()
 
 !            SsB(ilay, inode) = (PcNode(ilay, inode) * (nSsC(inode))) + &
 !                               ((1 - PcNode(ilay, inode)) * (nSsF(inode)))
-! LS 12/16/2021 - Added Ssp to allow Ss to use a power law function
-            SsB(ilay, inode) = ((PcNode(ilay, inode) * (nSsC(inode) ** Ssp)) + &
+! LS 1/6/2022 Storage parameters now share a common power law term, stp
+            SsB(ilay, inode) = ((PcNode(ilay, inode) * (nSsC(inode) ** Stp)) + &
                                 ((1 - PcNode(ilay, inode)) * (nSsF(inode) ** &
-                                  Ssp))) ** (1.0 / Ssp)
-            SyB(ilay, inode) = ((PcNode(ilay, inode) * (nSyC(inode) ** Syp)) + &
+                                  Stp))) ** (1.0 / Stp)
+            SyB(ilay, inode) = ((PcNode(ilay, inode) * (nSyC(inode) ** Stp)) + &
                                 ((1 - PcNode(ilay, inode)) * (nSyF(inode) ** &
-                                  Syp))) ** (1.0 / Syp)
+                                  Stp))) ** (1.0 / Stp)
 
 ! Removing these, not used in model - LS 9/7/2017
 !            SskeB(ilay, inode) = (PcNode(ilay, inode) * SskeC) + &
