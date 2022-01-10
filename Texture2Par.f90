@@ -15,11 +15,11 @@ program Texture2Par
 ! Converts well percent course with depth (1 or 0) data to aquifer parameters
 ! at specified nodes. Intended to work with input/output files of the
 ! Integrated Water Flow Model (IWFM) with added support for MODFLOW 2000/2005.
-! Written by Leland Scantlebury and Marinko Karanovic of S.S. Papadopulos & 
+! Written by Leland Scantlebury and Marinko Karanovic of S.S. Papadopulos &
 ! Associates, based on original method and VBA program created by Timothy J.
 ! Durbin.
 !
-! 
+!
 ! Requires Input File: Texture2Par.in
 !
 !-----------------------------------------------------------------------------!
@@ -32,16 +32,16 @@ program Texture2Par
                                   ppdKC(:), ppAnisoC(:), ppAnisoF(:), &
                                   ppKFMin(:), ppdKF(:), ppSsC(:), ppSsF(:), &
                                   ppSyC(:), ppSyF(:), ppatx(:), ppaty(:), &
-                                  ppatKCMin(:), ppatdKC(:), ppatKFMin(:), & 
+                                  ppatKCMin(:), ppatdKC(:), ppatKFMin(:), &
                                   ppatdKF(:), ppatAnisoC(:), ppatAnisoF(:)
     integer,allocatable        :: ppZone(:), ppatZone(:)
     character(150)             :: jnk,fpath_line
     character(1000)            :: line
     logical                    :: writenodefiles
-    
+
 ! Intel-Fortran specific way of writing to same command line line
 !    open(6, carriagecontrol='fortran')  ! Uses removed by VB
-    
+
     ! Write Flag
     write(*,'(/,8x,a)') '   Texture2Par v1.0.0'
     write(*,'(8x,a)')   '------------------------'
@@ -53,14 +53,14 @@ program Texture2Par
     open(10, file='Texture2Par.in', status='old', action='read', &
          iostat = ierr)
     call iostathandler(ierr, 'Texture2Par.in')
-    
+
     ! Read in model type and well file
     call ReadToSymbol(10, '*')
     read(10,*) line
     read(10,*) wellfile
     read(10,*) geozonefile
     call ReadToSymbol(10, '*')
-    
+
     ! Check if MODFLOW or IWFM
     if (index(line,'IWFM')) then
       modflowflag = 0
@@ -91,12 +91,12 @@ program Texture2Par
       read(10,*) yoff
       read(10,*) mfrot
     end if
-    
+
     ! Node output setting
     call ReadToSymbol(10, '*')
     read(10,*) line
     if (trim(line)=='True') writeNodeFiles = .true.
-    
+
     ! Variogram Settings
     call ReadToSymbol(10, '*')
     read(10,*) itype
@@ -106,7 +106,7 @@ program Texture2Par
     read(10,*) ang1
     read(10,*) nugget
     read(10,*) pckrige_nwells
-    
+
     ! Soil Settings
     call ReadToSymbol(10, '*')
     read(10,*) KCk
@@ -114,7 +114,7 @@ program Texture2Par
     read(10,*) KHp
     read(10,*) KVp
     read(10,*) Stp
-    
+
     ! Aquifer Pilot Point section
     ! TODO: Add descriptive error when not all pilot point parameters are present
     call ReadToSymbol(10, '*')
@@ -127,7 +127,7 @@ program Texture2Par
                  ppdKF(ipp), ppSsC(ipp), ppSsF(ipp), ppSyC(ipp),ppSyF(ipp), &
                  ppAnisoC(ipp), ppAnisoF(ipp), ppZone(ipp)
     end do
-    
+
     ! Aquitard Pilot Point section
     !read(10,*)    !call ReadToSymbol(10, '*')
     call ReadToSymbol(10, '*')
@@ -140,6 +140,7 @@ program Texture2Par
                  ppatKFMin(ipp), ppatdKF(ipp), ppatAnisoC(ipp), &
                  ppatAnisoF(ipp), ppatZone(ipp)
     end do
+
     close(10)
 
     ! MODEL SPECIFIC
@@ -153,7 +154,7 @@ program Texture2Par
       call calcCellCenters_global()
       call create_nodetree()
     end if
-    
+
     ! Pre-read Well file for file length, nwells, maxWPoints
     open(10, file = trim(wellfile), status='old', iostat = ierr)
     call iostathandler(ierr, trim(wellfile))
@@ -174,7 +175,7 @@ program Texture2Par
     ! Allocate now that many dimensions are known
     call WellAllocate()
     call NodeAllocate()
-    
+
     ! Read Node Zone file, unless zonefile was set to NONE
     if (modflowflag == 0) then
       if (trim(zonefile)=='NONE'.or.trim(zonefile)=='none') then
@@ -193,7 +194,7 @@ program Texture2Par
         call inputZones_modflow()
       end if
     end if
-    
+
     ! Handle No Zones
     if (zoneflag == 0) then
       nzones   = 1
@@ -202,7 +203,7 @@ program Texture2Par
       ppzone   = 1
       ppatzone = 1
     end if
-    
+
     ! Read geologic units file
     if (trim(geozonefile)=='NONE'.or.trim(geozonefile)=='none') then
       ! No geologic zones
@@ -254,12 +255,12 @@ program Texture2Par
     write(*,'(2x,a)') 'Calculating Layer Elevations at Wells'
     if (modflowflag == 0) then
       call layerelevation(TopElev, BotElev, wellelevtop, wellelevbot)
-      ! For aquitard                        
+      ! For aquitard
       call layerelevation(AqTardTopElev, AqTardBotElev, &
                           wellaqtardelevtop, wellaqtardelevbot)
     end if
     ! Modflow Well elevations are assigned during well read
-    
+
 ! Move co-located wells (if kriging still crashes, well locations need to be revised)
     call colocate_corrector(xwell, ywell, nwell)
 
@@ -286,7 +287,7 @@ program Texture2Par
     call pp_parkrige(ppx, ppy, ppSyF,    ppn, ppzone, nSyF)
     call pp_parkrige(ppx, ppy, ppAnisoC, ppn, ppzone, nAnisoC)
     call pp_parkrige(ppx, ppy, ppAnisoF, ppn, ppzone, nAnisoF)
-    
+
     if ((modflowflag == 0).or.(ncbd > 0 )) then
       if (atppn > 0) then
         ! Aquitard Parameters - KCMin, DeltaKC, KFMin, DeltaKF, Aniso
@@ -302,14 +303,14 @@ program Texture2Par
         atnKCMin = -999; atdKC= -999; atnKFMin = -999; atdKF = -999
       end if
     end if
-    
+
 ! Call interpolate subroutines (Well PC to Node Aquifer parameter)
     write(*,'(2x,a)') 'Calculating Node Aquifer Parameters           '
     call interpolate()
     if ((modflowflag == 0).or.(ncbd > 0 )) then
       call interpolate_aqtard()
     end if
-    
+
 ! Write Output files, routines called depend on model type
     if (modflowflag == 0) then
       if (writeNodeFiles==.true.) then
@@ -330,7 +331,7 @@ program Texture2Par
         write(*,'(2x,a)') 'WriteNodeFiles set to FALSE - no parameter files written'
       end if
         call writeIWFMgwfile()
-        
+
     else if (modflowflag == 1) then
       if (writeNodeFiles==.true.) then
         ! Only calculate if writing the file

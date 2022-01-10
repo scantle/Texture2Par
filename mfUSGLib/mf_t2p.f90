@@ -32,7 +32,7 @@
 
       ! copy of CUNIT (from mfusg.f)
       character*4               :: CUNIT(niunit)
-      
+
       DATA CUNIT/'BCF6', 'WEL ', 'DRN ', 'RIV ', 'EVT ', 'EVS ', 'GHB ', &  !  7  et time series is now EVS as ETS is for segmented ET
                  'RCH ', 'RTS ', 'TIB ', 'DPF ', 'OC  ', 'SMS ', 'PCB ', &  ! 14
                  'BCT ', 'FHB ', 'RES ', 'STR ', 'IBS ', 'CHD ', 'HFB6', &  ! 21
@@ -42,7 +42,7 @@
                  'hyd ', 'SFR ', 'UPW ', 'GAGE', 'LVDA', '    ', 'lmt6', &  ! 49 (LS: added UPW)
                  'MNW2', 'MNWI', 'MNW1', 'KDEP', 'SUB ', 'UZF ', 'gwm ', &  ! 56 (ctm: added MNW2 and MNWI and moved MNW1)
                  'SWT ', 'PATH', 'PTH ', 'GLO ', '    ', '    ', '    ', &  ! 63 (ctm: added glo)
-                 'TVM ', 36*'    '/      
+                 'TVM ', 36*'    '/
 
 
       ! initialize
@@ -57,10 +57,10 @@
 
       ! read modflow nam and basic and dis data
       call glo2bas8ar(mf_iin,CUNIT,VERSION,24,31,32,maxunit,12,headng,26,MFVNAM,29,27,30,36)
-      
+
       ! Set unstructured return variables
       !mfunst = IUNSTR
- 
+
       ! close modflow name file
       close(mf_iin)
 
@@ -75,9 +75,9 @@
       subroutine get_modflow_arrlens(snlay, snrow, sncol, snodes)
         use GLOBAL, ONLY : IUNSTR,NLAY,NROW,NCOL,DELR,DELC,TOP,BOT,NODES
         implicit none
-        
+
         integer, intent(out)      :: snlay, snrow, sncol, snodes
-        
+
         snlay = NLAY
         snrow = NROW
         sncol = NCOL

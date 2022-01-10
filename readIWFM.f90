@@ -9,15 +9,15 @@ MODULE IWFM
 ! used for the reading/writing of IWFM files
 !
 ! Note on Nodes:
-! - Nodes numbers ("NodeIDs") in IWFM input files can have gaps and might not 
-!   even be sequential (as of Oct 2020). 
+! - Nodes numbers ("NodeIDs") in IWFM input files can have gaps and might not
+!   even be sequential (as of Oct 2020).
 ! - NodeIDs are what are read in from the input files (nid for short)
 ! - The sequential values used internally in T2P arrays are node indexes
 !   (node for short, somewhat confusingly)
 ! - To get a nodeid from a node number, use the nodeid() array
 ! - To get a node index from a node id, use the nodebyid() array
 !-----------------------------------------------------------------------------!
-  
+
   SAVE
   integer, parameter                  :: NUM_WORD_DIM=100
   integer, dimension(NUM_WORD_DIM)    :: left_word, right_word
@@ -25,21 +25,21 @@ MODULE IWFM
   character(200)                      :: nodefile, elementfile, prefolder, &
                                          preSimFile, simFile, stratfile, &
                                          gwfile, gwtemp
-  
+
   CONTAINS
-  
+
 !-----------------------------------------------------------------------------!
-  
+
 subroutine readIWFM()
   use fpath
   implicit none
-  
+
   integer                  :: i, k, ifail, ioerr, ierr, ipos, nreg, intd, &
                               idum, maxnodeid, nid, node
   integer                  :: ls(100), rs(100)
   real                     :: fact
   character(150)           :: jnk,currfile
-  
+
   ! Read pre-processor file
 !    write(*,'(2x,a)') 'Reading IWFM pre-processor file...'
     !currfile = adjustl(trim(prefolder)) // adjustl(trim(preSimFile))
@@ -53,7 +53,7 @@ subroutine readIWFM()
     read(12, *, iostat=ierr) nodefile
     read(12, *, iostat=ierr) stratfile
     close(12)
-    
+
 ! Read node file
 !    write(*,'(2x,a)') 'Reading IWFM node file...'
     !currfile = adjustl(trim(prefolder)) // adjustl(trim(nodefile))
@@ -65,16 +65,16 @@ subroutine readIWFM()
     call ifailhandler(ifail, nodefile, cline)
     call intread(ifail,cline(ls(1):rs(1)),nnodes)
     call ifailhandler(ifail, nodefile, cline)
-    
+
     ! TODO : ALLOCATE NODE ROUTINE
-    
+
     allocate(nodex(nnodes),nodey(nnodes), &
               nodeelem(nnodes, max_node_elem_members), &
               nnodeelem(nnodes),nodexy(nnodes,2), nodeid(nnodes))
     read(12,*) fact
     call readOneLine(elementfile,12,cline)
     BACKSPACE(12)
-    
+
     maxnodeid = 0
     do i=1,nnodes
       read(12,*)intd,nodex(i),nodey(i)
@@ -86,9 +86,9 @@ subroutine readIWFM()
       nnodeelem(i) = 0
     end do
     close(12)
-    
+
     call setup_nodeindex_byid(maxnodeid)
-    
+
 ! Read elements file
 !    write(*,'(2x,a)') 'Reading IWFM elements file...'
     !currfile = adjustl(trim(prefolder)) // adjustl(trim(elementfile))
@@ -103,27 +103,27 @@ subroutine readIWFM()
         EXIT
       end if
     end do
-     
+
     call multisplit(ierr,1,ls,rs,cline)
     call intread(ierr,cline(ls(1):rs(1)),nelements)
-    
+
     ! TODO : ALLOCATE ELEMENTS ROUTINE
-    
+
     allocate(elements(nelements,4))
-     
-    call readOneLine(elementfile,12,cline)       
+
+    call readOneLine(elementfile,12,cline)
     call multisplit(ifail,1,ls,rs,cline)
     call ifailhandler(ifail, elementfile, cline)
     call intread(ifail,cline(ls(1):rs(1)),nreg)
     call ifailhandler(ifail, elementfile, cline)
-    call readOneLine(elementfile,12,cline)         
-     
+    call readOneLine(elementfile,12,cline)
+
     do i=1,nreg-1
       call readOneLine(elementfile,12,cline)
     end do
 
     call readOneLine(elementfile,12,cline)
-    BACKSPACE(12)     
+    BACKSPACE(12)
     do i=1,nelements
       READ(12,*)intd,(elements(intd,k),k=1,4)
       ! Translate nodeid to node index for each connection LS 10/28/2020
@@ -141,7 +141,7 @@ subroutine readIWFM()
       call add_elem2nodeelem(intd)
     end do
     close(12)
-     
+
 ! Read Stratigraphy file
 !    write(*,'(2x,a)') 'Reading IWFM stratigraphy file'
     !currfile = adjustl(trim(prefolder)) // adjustl(trim(stratfile))
@@ -194,7 +194,7 @@ subroutine readIWFM()
           BotElev(node,k) = TopElev(node,k)-Thick(node,k)
         endif
       end do
-    end do  
+    end do
     close(12)
 
 ! Read simulation file
@@ -207,7 +207,7 @@ subroutine readIWFM()
     end do
     read(12,*,iostat=ierr) GWfile
     close(12)
-    
+
 end subroutine readIWFM
 
 !-----------------------------------------------------------------------------!
@@ -225,7 +225,7 @@ SUBROUTINE inputwells_IWFM(readzones)
 ! Well GeoZones added 7/1/2019 -LS
 !   Argument "readzones" is a flag for whether GeoZones exist (1 = yes, 0 = no)
 !-----------------------------------------------------------------------------!
-    
+
     integer, parameter       :: nnear=5
     integer                  :: i, iwell, izone, igeo, ilay, tpc, readzones, &
                                 currwellelem, node, nwellgeozones, ierr
@@ -235,7 +235,7 @@ SUBROUTINE inputwells_IWFM(readzones)
     character(30)            :: wellname, geobylayer(nlayers), &
                                 wellgeonames(max_zones)
     logical                  :: newzone
-    
+
     ! Initialize (to prevent issues where compiler does not initilize to 0)
     nwellgeozones = 0
 
@@ -244,14 +244,14 @@ SUBROUTINE inputwells_IWFM(readzones)
     open(10, file =trim(wellfile), status='old', action='read', iostat=ierr)
     call iostathandler(ierr, trim(wellfile))
     read(10,*)                        ! Header
-    
+
     if (readzones == 0) then
       ! No GeoZones
       nwellgeozones = 1
       wellgeozones(1:nwell,1:nlayers) = '[NONE]'
       do i=1, wfilelen
         read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td
-        ! Well "zone" is discrete depth interval counter and should not be 
+        ! Well "zone" is discrete depth interval counter and should not be
         ! confused with other uses of zone (e.g. pilot points, geologic)
         PcWellZone(iwell, izone) = tpc
         numZone(iwell) = izone
@@ -271,7 +271,7 @@ SUBROUTINE inputwells_IWFM(readzones)
       ! GeoZones
       do i=1, wfilelen
         read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td, geobylayer
-        ! Well "zone" is discrete depth interval counter and should not be 
+        ! Well "zone" is discrete depth interval counter and should not be
         ! confused with other uses of zone (e.g. pilot points, geologic)
         PcWellZone(iwell, izone) = tpc
         numZone(iwell) = izone
@@ -279,7 +279,7 @@ SUBROUTINE inputwells_IWFM(readzones)
           Xwell(iwell) = tx
           Ywell(iwell) = ty
           Zland(iwell) = tz
-        
+
           ! Well geologic zones
           wellgeozones(iwell,:) = geobylayer(:)
           ! Counts geozones for reporting and comparing
@@ -287,19 +287,19 @@ SUBROUTINE inputwells_IWFM(readzones)
             call strtracker(nwellgeozones, geobylayer(ilay), &
                   wellgeonames, newzone)
           end do
-        
+
           ! Use node tree to find closest node
           queryxy(1) = tx
           queryxy(2) = ty
           call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
           wellelem(iwell) = get_well_element(tx, ty, iwell, closenodes, nnear)
-        
+
         end if
         Zwell(iwell, izone) = tz - td
       end do
     end if
     close(10)
-    
+
     ! Report if mismatch in model vs well geo zone count
     if (nwellgeozones > ngeozones) then
       ! Just a warning - the extra wells will not be used
@@ -311,7 +311,7 @@ SUBROUTINE inputwells_IWFM(readzones)
       write(*,'(4x,i3,a,i3)') ngeozones, ' vs ', nwellgeozones
       stop
     end if
-    
+
     !write(*,'(4x,a)') 'Well file read successfully.'
 
 end subroutine inputwells_IWFM
@@ -333,20 +333,20 @@ subroutine readNodeGeoZones_IWFM()
 !
 ! Updated 10/28/2020 by LS to use nodeids
 !-----------------------------------------------------------------------------!
-  
+
   integer                  :: nid, node, i, ilay, izone, ierr
   character(30)            :: geobylayer(nlayers)
   logical                  :: newzone, newzone_lay
-  
+
   ! Initialize
   ngeozones = 0
   ngeozones_lay = 0
-  
+
   write(*,'(2x,2a)') 'Reading Model Geologic Zone File ', trim(geozonefile)
   open(10, file =trim(geozonefile), status='old', action='read', iostat=ierr)
   call iostathandler(ierr, trim(geozonefile))
   read(10, *) ! Header
-  
+
   do i=1, nnodes
     read(10, *) nid, geobylayer
     node = nodebyid(nid)
@@ -368,7 +368,7 @@ subroutine readNodeGeoZones_IWFM()
       end if
     end do
   end do
-  
+
   close(10)
 
 end subroutine readNodeGeoZones_IWFM
@@ -383,13 +383,13 @@ subroutine inputZones_IWFM()
 ! Reads zone file consisting of node number and corresponding pilot point zone
 !
 ! Updated 10/28/2020 by LS to use nodeids
-!-----------------------------------------------------------------------------!    
+!-----------------------------------------------------------------------------!
     integer                :: i, nid, node, zone, ierr
     logical                :: newzone
-    
+
     ! Set
     nzones = 0
-    
+
     open(10, file=trim(zonefile), status='old', action='read', iostat=ierr)
     call iostathandler(ierr, trim(zonefile))
     read(10,*)   ! Header
@@ -417,7 +417,7 @@ subroutine inputZones_IWFM()
         zones(nzones) = zone
       end if
     end do
-    
+
     close(10)
 
 end subroutine inputZones_IWFM
@@ -432,7 +432,7 @@ subroutine writeWellFile_IWFM(v, filename)
   character(*),intent(in)  :: filename
   integer                  :: iwell, ilay
   character(60)            :: fmt(2)
-  
+
   write(*,'(4x,a,a35)') 'Writing:', filename
 
   write(fmt(1),'("(2a10,",i5,"i14)")') nlayers
@@ -445,7 +445,7 @@ subroutine writeWellFile_IWFM(v, filename)
   do iwell = 1, nwell
     write(20,fmt(2)) iwell, wellelem(iwell), (v(iwell,ilay), ilay=1, nlayers)
   end do
-  
+
   close(20)
 
 end subroutine writeWellFile_IWFM
@@ -460,7 +460,7 @@ subroutine writeNodeFile(v, filename)
   character(*),intent(in)  :: filename
   integer                  :: inode, ilay
   character(60)            :: fmt(2)
-  
+
   write(*,'(4x,a,a35)') 'Writing:', filename
 
   write(fmt(1),'("(2a8,2a18,",i5,"i14)")') nlayers
@@ -474,7 +474,7 @@ subroutine writeNodeFile(v, filename)
     write(20,fmt(2)) nodeid(inode), nodezone(inode), nodex(inode), nodey(inode), &
                      (v(ilay, inode), ilay=1,nlayers)
   end do
-  
+
   close(20)
 
 end subroutine writeNodeFile
@@ -483,16 +483,16 @@ end subroutine writeNodeFile
 !-----------------------------------------------------------------------------!
 subroutine writeIWFMgwfile()
   implicit none
-    
+
   !integer, intent(in)      :: nskip
   integer                  :: i, ilay, ierr, nouth, noutf, ngroup
   character(1000)          :: line
-  
+
   write(*,'(2x,a)') 'Reading gw temp file, writing new gw file'
-    
+
   open(13, file=gwtemp, status='old')   ! Temp File
   open(12, file=GWFile, status='replace')   ! New File
-    
+
   ! Copy Section Number
   call CopySettingsSection(13, 12, 1)
   ! Copy over the file header
@@ -536,7 +536,7 @@ subroutine writeIWFMgwfile()
   call CopyCommentSection(13, 12)
   call CopySettingsSection(13, 12) ! Units
   call CopyCommentSection(13, 12)
-    
+
   ! Finally ready to write the aquifer parameters!
   do i=1, nnodes
     do ilay=1, nlayers
@@ -548,17 +548,17 @@ subroutine writeIWFMgwfile()
       read(13,*)
     end do
   end do
-    
+
   ! Copy the rest of the file
   do
     read(13, '(a1000)', iostat = ierr) line
     if (ierr /= 0) exit
     write(12,'(a)') adjustl(trim(line))
   end do
-    
+
   close(12)
-  close(13) 
-  
+  close(13)
+
 end subroutine writeIWFMgwfile
 
 !-----------------------------------------------------------------------------!
@@ -568,11 +568,11 @@ end subroutine writeIWFMgwfile
 !-----------------------------------------------------------------------------!
 subroutine CopyCommentSection(copyunit, newunit)
   implicit none
-  
+
   integer,intent(in)       :: copyunit, newunit
   character(1)             :: compare
   character(1000)          :: line
-  
+
   ! Copy lines until there are no more comment lines
   do
     read(copyunit, '(a1000)') line
@@ -591,13 +591,13 @@ end subroutine
 !-----------------------------------------------------------------------------!
 subroutine CopySettingsSection(copyunit, newunit, nlines)
   implicit none
-  
+
   integer,intent(in)       :: copyunit, newunit
   integer                  :: i
   character(1)             :: compare
   character(1000)          :: line
   integer,intent(in),optional  :: nlines
-  
+
   ! If nlines is passed, just copy over that many lines
   if (present(nlines)) then
     do i=1, nlines
@@ -619,16 +619,16 @@ subroutine CopySettingsSection(copyunit, newunit, nlines)
       end if
     end do
   end if
-  
+
 end subroutine
-  
+
 !-----------------------------------------------------------------------------!
 
 subroutine add_elem2nodeelem(intd)
   use MakePar
   use errorhandle
   implicit none
-  
+
   integer                  :: i, j, k, node
   integer, intent(in)      :: intd
   logical                  :: stored
@@ -667,7 +667,7 @@ subroutine setup_nodeindex_byid(maxnodeid)
   use MakePar
   use errorhandle
   implicit none
-  
+
   integer, intent(in)        :: maxnodeid
   integer                    :: i
 
@@ -677,13 +677,13 @@ subroutine setup_nodeindex_byid(maxnodeid)
     call parexceed(maxnodeid, 'max_nodeid', &
                           'Failed during creation of nodebyid')
   end if
-  
+
   allocate(nodebyid(maxnodeid))
-  
+
   ! Initialize all values to a negative number so we can easily check whether
   ! a nodeid is valid
   nodebyid = -1
-  
+
   ! Fill array
   do i=1, nnodes
     nodebyid(nodeid(i)) = i
@@ -692,12 +692,12 @@ subroutine setup_nodeindex_byid(maxnodeid)
 end subroutine setup_nodeindex_byid
 
 !-----------------------------------------------------------------------------!
-    
+
 subroutine intread(IFAIL,CLINE,iTEMP)
       integer, intent(out)            ::IFAIL
       character (len=*), intent(in)   ::cline
       integer, intent(out)            ::iTEMP
- 
+
 ! -- Subroutine intREAD reads an integer number from a string.
 
 
@@ -707,20 +707,20 @@ subroutine intread(IFAIL,CLINE,iTEMP)
 !       itemp:    return integer
 
        CHARACTER*6 AFMT
- 
+
        IFAIL=0
        AFMT='(i   )'
        WRITE(AFMT(3:5),'(I3)') LEN(CLINE)
        READ(CLINE,AFMT,ERR=100) iTEMP
 
        RETURN
- 
+
 100    IFAIL=1
        RETURN
 end subroutine intread
-  
+
 !-----------------------------------------------------------------------------!
-  
+
 subroutine readOneLine(infile,iinfile,cline)
 !   read and return one line from a file, skipping lines that are commented out
 
@@ -735,7 +735,7 @@ subroutine readOneLine(infile,iinfile,cline)
             (cline(1:1).eq.'*').or.(cline(1:1).eq.'#')) go to 100    ! skip comment line
 
     go to 999 ! skip past error statements to end of subroutine
-    
+
     !================================================================================
     ! error statements
 900 write(*,901) trim(infile)
@@ -744,9 +744,9 @@ subroutine readOneLine(infile,iinfile,cline)
 999 end subroutine readOneLine
 
 !-----------------------------------------------------------------------------!
-    
+
     SUBROUTINE multisplit(IFAIL,NUM,LW,RW,CLINE)
- 
+
 ! -- Subroutine multisplit splits a string into blank-delimited fragments.
 
 ! -- Subroutine arguments are as follows:-
@@ -758,7 +758,7 @@ subroutine readOneLine(infile,iinfile,cline)
 
 ! -- Author:-
 !       John Doherty
- 
+
        INTEGER IFAIL,NW,NBLC,J,I
        INTEGER NUM,NBLNK
        INTEGER LW(NUM),RW(NUM)
@@ -794,13 +794,13 @@ subroutine readOneLine(infile,iinfile,cline)
 40     RW(NW)=I-1
        J=RW(NW)
        GO TO 5
- 
+
     END subroutine multisplit
 
 !-----------------------------------------------------------------------------!
 
   subroutine TABREM(CLINE)
- 
+
 ! -- Subroutine TABREM removes tabs from a string.
 
 ! -- Subroutine arguments are as follows:-
@@ -809,13 +809,13 @@ subroutine readOneLine(infile,iinfile,cline)
 
        INTEGER I
        CHARACTER*(*) CLINE
- 
+
        DO 10 I=1,LEN(CLINE)
 10     IF(ICHAR(CLINE(I:I)).EQ.9) CLINE(I:I)=' '
- 
+
        RETURN
   end subroutine tabrem
 
 !-----------------------------------------------------------------------------!
-  
+
 end module IWFM

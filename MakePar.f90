@@ -7,7 +7,7 @@ MODULE MakePar
 ! Some subroutines were originally VBA subroutines written by Tim Durbin
 ! Author: Leland Scantlebury of S.S. Papadopulos & Associates
 !-----------------------------------------------------------------------------!
-    
+
     SAVE
     ! Parameters
     integer, parameter        :: max_node_elem_members = 15, &                 ! Maximum number of elements a node is a part of (will stop w/ error if too low)
@@ -15,7 +15,7 @@ MODULE MakePar
                                  USE_IDW = 0, &
                                  max_nodeid=5E6                                ! Maximum nodeid value (to prevent enormous array allocation)
     real, parameter           :: NODATA=-9999.0
-                              
+
     real,allocatable          :: wellelevbot(:,:), ssb(:,:), pcwellelem(:,:), &
                                  xwell(:), wellaqtardelevtop(:,:), &
                                  wellelevtop(:,:), nkcmin(:), nsyc(:), &
@@ -46,7 +46,7 @@ MODULE MakePar
     character(60)             :: outfile
     character(150)            :: wellfile, zonefile, geozonefile
     logical                   :: colocated=.false.
-    
+
     ! Global Trees
     type(tree_master_record), pointer :: nodetree
 
@@ -72,7 +72,7 @@ SUBROUTINE layerelevation(top_elev, bot_elev, result_top, result_bot)
 
     result_top = 0.0
     result_bot = 0.0
-    
+
     call IDW(nwell, xwell, ywell, wellelem, result_top, nnodes, nlayers, &
              nodex, nodey, top_elev, nelements, elements)
     call IDW(nwell, xwell, ywell, wellelem, result_bot, nnodes, nlayers, &
@@ -86,7 +86,7 @@ SUBROUTINE layertexture(well_topelev, well_botelev, pcwellout)
     implicit none
 !-----------------------------------------------------------------------------!
 ! This subprogram calculates the proportion of coarse-grained material at each
-! well within an element layer, where the well at least partially penetrates 
+! well within an element layer, where the well at least partially penetrates
 ! the element layer.
 !
 ! Arguments:
@@ -94,7 +94,7 @@ SUBROUTINE layertexture(well_topelev, well_botelev, pcwellout)
 !    - well_botelev - Bottom elevation at every well
 !    - pcwellout    - Percent coarse at each well element
 !-----------------------------------------------------------------------------!
-    
+
     real,intent(in)          :: well_topelev(nwell, nlayers), &
                                 well_botelev(nwell, nlayers)
     real,intent(inout)       :: pcwellout(nwell, nlayers)
@@ -151,14 +151,14 @@ subroutine pp_parkrige(ppx, ppy, ppv, npp, ppz, kriged)
 !-----------------------------------------------------------------------------!
 ! Loops over zones kriging pilot point parameter values to nodes
 !-----------------------------------------------------------------------------!
-  
+
   real,intent(in)          :: ppx(npp), ppy(npp), ppv(npp)
   real,intent(inout)       :: kriged(nnodes)
   integer,intent(in)       :: ppz(npp), npp
-  
+
   integer                  :: i, ipp, ppcount, zone
   real                     :: pzx(npp), pzy(npp), pzv(npp)
-  
+
   ! Loop over zones
   do i=1, nzones
     zone = zones(i)    ! Zones do not necessarily have to be in any order
@@ -181,7 +181,7 @@ subroutine pp_parkrige(ppx, ppy, ppv, npp, ppz, kriged)
       stop
     end if
   end do
-  
+
 end subroutine pp_parkrige
 !-----------------------------------------------------------------------------!
 
@@ -214,7 +214,7 @@ SUBROUTINE interpolate()
              pc(nnodes))
     allocate(wellxy(nwell,2), wellv(nwell),temppc(nnodes))
     allocate(tempzones(nnodes),fmt(2))
-    
+
     if (USE_IDW == 0) then
       ! Calculate percent coarse at each node by kriging well data by layer
       do ilay=1, nlayers
@@ -247,7 +247,7 @@ SUBROUTINE interpolate()
             welltree => create_tree(wellxy(1:wcount,:))
             call spkrige_tree_group(nnodes, nodex, nodey, welltree, nwell, &
                               wellv, temppc, pckrige_nwells, &
-                              tempzones, geonames_lay(igeo,ilay)) 
+                              tempzones, geonames_lay(igeo,ilay))
           else
             write(*,'(4x,a,i8,2a)') 'Warning - No well data in layer ', ilay, &
                                    'for geologic zone', geonames_lay(igeo,ilay)
@@ -278,7 +278,7 @@ SUBROUTINE interpolate()
               sum2 = sum2 + weight
             end if
           end do
-          if (count > 0) then                               ! LS sum2 > 0 
+          if (count > 0) then                               ! LS sum2 > 0
             PcNode(ilay, inode) = sum1 / sum2
           else
             PcNode(ilay, inode) = -9999.0
@@ -287,7 +287,7 @@ SUBROUTINE interpolate()
         end do
       end do
     end if
-    
+
 ! Use input values to calculate aquifer parameters for each node
     !write(*,'(4x,a)') 'Calculating element aquifer parameters'
     do ilay = 1, nlayers
@@ -334,7 +334,7 @@ SUBROUTINE interpolate()
         end if
       end do
     end do
-    
+
     ! Deallocate
     deallocate(KhC, KhF, KvC, KvF, pc)
     deallocate(wellxy, wellv, temppc)
@@ -358,7 +358,7 @@ SUBROUTINE interpolate_aqtard()
     real,allocatable         :: wellxy(:,:), wellv(:)
     character(60),allocatable:: fmt(:)
     type(tree_master_record),pointer :: welltree
-    
+
     allocate(KhC(nlayers, nnodes), &
              KhF(nlayers, nnodes), &
              KvC(nlayers, nnodes), &
@@ -379,7 +379,7 @@ SUBROUTINE interpolate_aqtard()
             wellxy(wcount,2) = ywell(iwell)
           end if
         end do
-      
+
         ! Only build tree & krige if there's data for the layer
         if (wcount > 0) then
           welltree => create_tree(wellxy(1:wcount,:))
@@ -399,7 +399,7 @@ SUBROUTINE interpolate_aqtard()
             end if
           end do
           if (minval(pcnode_aqtard(ilay,:))<0.0d0) then
-            ! Need to warn if NODATA values were written 
+            ! Need to warn if NODATA values were written
             write(*,'(4x,a,i8)') 'No well data for aquitard layer ', ilay
           end if
         end if
@@ -466,7 +466,7 @@ SUBROUTINE interpolate_aqtard()
         end if
       end do
     end do
-    
+
     ! Deallocate
     deallocate(KhC, KhF, KvC, KvF)
     deallocate(wellxy, wellv)
@@ -484,32 +484,32 @@ end subroutine interpolate_aqtard
 subroutine create_nodetree()
   use kd_tree
   implicit none
-  
+
   integer                  :: i
-  
+
   ! Reassignment into a single xy array
   ! memory usage could be improved by modifying KDTree
   do i=1, nnodes
     nodexy(i,1) = nodex(i)
     nodexy(i,2) = nodey(i)
   end do
-  
+
   nodetree => create_tree(nodexy)
-  
+
 end subroutine create_nodetree
 
 !-----------------------------------------------------------------------------!
 
 integer function get_well_element(x, y, iwell, closenodes, nnear) result(element)
   implicit none
-  
+
   integer                  :: i, j, inode, elem, points, count, node
   integer, intent(in)      :: nnear, iwell, closenodes(nnear)
   real, intent(in)         :: x, y
   real                     :: elemx(4), elemy(4), inelem, pinpol
-  
+
   element = 0
-  
+
   ! Loop over elements of closest node
 outerloop:  do inode=1, nnear
     node = closenodes(inode)
@@ -532,16 +532,16 @@ outerloop:  do inode=1, nnear
       end if
     end do
   end do outerloop
-  
+
   if (element == 0) then
     write(*,'(4x,a)') 'ERROR - Well not inside element. Likely located out of model.'
     write(*,'(4x,a8,2a18)') 'WellNum', 'X', 'Y'
     write(*,'(4x,i8,2f18.5)') iwell, x, y
     stop
   end if
-  
+
   return
-    
+
 end function get_well_element
 
 !-----------------------------------------------------------------------------!
@@ -553,25 +553,25 @@ end function get_well_element
 !-----------------------------------------------------------------------------!
 subroutine calc_interbed_thickness()
   implicit none
-  
+
   ! Estimates interbed thickness as percent fine * layer thickness
   ! Added by Leland Scantlebury July 2019
   !
   ! For IWFM, layer thickness is directly read in in variable thick
   ! However, for MODFLOW support we're just going to use the layer top/bot
-  
+
   integer                  :: ilay, inode
   real                     :: laythick
-  
+
   allocate(interbed_thick(nlayers,nnodes))
-  
+
   do ilay=1, nlayers
     do inode=1, nnodes
       laythick = topelev(inode,ilay) - botelev(inode, ilay)
-      interbed_thick(ilay,inode) = (1 - pcnode(ilay,inode)) * laythick 
+      interbed_thick(ilay,inode) = (1 - pcnode(ilay,inode)) * laythick
     end do
   end do
-  
+
 end subroutine calc_interbed_thickness
 !-----------------------------------------------------------------------------!
 
@@ -585,10 +585,10 @@ implicit none
   real, intent(inout)     :: xcoords(ncoords), ycoords(ncoords)
   integer                 :: i, j, k, ncoloc, max
   real, parameter         :: move=0.01
-  
+
   ! Setup
   max = 1
-  
+
   ! Outer Loop over coordinates
   do i=1, ncoords
     ncoloc = 0
@@ -613,11 +613,11 @@ implicit none
       end if
     end do
   end do
-  
+
   if (colocated) then
     write(*,'(4x,a,i3,a,f6.3)') 'Max co-located wells:',max,' | Max dist moved:', sqrt(2*(max*move)**2)
   end if
-  
+
 end subroutine colocate_corrector
 !-----------------------------------------------------------------------------!
 
@@ -627,7 +627,7 @@ end subroutine colocate_corrector
 
 subroutine WellAllocate()
   implicit none
-  
+
     allocate(Xwell(nwell), &
              Ywell(nwell), &
              Zland(nwell), &
@@ -647,7 +647,7 @@ end subroutine
 !-----------------------------------------------------------------------------!
 subroutine NodeAllocate()
   implicit none
-  
+
   allocate(PcNode(nlayers, nnodes), &
            pcnode_aqtard(nlayers, nnodes), &
            nKCMin(nnodes), &
@@ -676,7 +676,7 @@ subroutine NodeAllocate()
            ngeozones_lay(nlayers), &
            geonames_lay(max_zones,nlayers))
 
-end subroutine 
+end subroutine
 !-----------------------------------------------------------------------------!
 
 END MODULE MakePar

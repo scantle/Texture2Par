@@ -1,6 +1,6 @@
 subroutine IDW(nobs,x,y,ObsElem, InterpValues, nnodes,nlayers,nodex,nodey,NodeVal,nelements,elements)
   implicit none
-  
+
   integer         :: i,j,k,n,m,nelements,nodeID
   integer         :: nnodes,nlayers,nobs
   integer         :: elements(nelements,4),ObsElem(nobs)
@@ -31,45 +31,45 @@ subroutine IDW(nobs,x,y,ObsElem, InterpValues, nnodes,nlayers,nodex,nodey,NodeVa
   end subroutine IDW
 
 !-----------------------------------------------------------------------------!
-  
+
   real function CalcDistance(x1,y1, x2,y2)
     implicit none
     real          :: x1,x2,y1,y2
-    
+
     CalcDistance = sqrt ( (x1-x2)**2 + (y1-y2)**2)
     return
   end function
-  
+
 !-----------------------------------------------------------------------------!
-  
+
 !-----------------------------------------------------------------------------!
   subroutine loc2glo(locx, locy, xoff, yoff, rot, glox, gloy)
     implicit none
-    
+
     real,intent(in)        :: locx, locy, xoff, yoff, rot
     real,intent(out)       :: glox, gloy
     real, parameter        :: DEG2RAD = 3.141592654/180.0
-    
+
     glox = xoff + locx * cos(rot*DEG2RAD) - locy * sin(rot*DEG2RAD)
     gloy = yoff + locy * cos(rot*DEG2RAD) + locx * sin(rot*DEG2RAD)
-  
+
   end subroutine loc2glo
 !-----------------------------------------------------------------------------!
-  
+
 !-----------------------------------------------------------------------------!
   subroutine glo2loc(glox, gloy, xoff, yoff, rot, locx, locy)
     implicit none
-    
+
     real,intent(in)        :: glox, gloy, xoff, yoff, rot
     real,intent(out)       :: locx, locy
     real, parameter        :: DEG2RAD = 3.141592654/180.0
-    
+
     locx = (glox-xoff) * cos(rot*DEG2RAD) + (gloy-yoff) * sin(rot*DEG2RAD)
     locy = (gloy-yoff) * cos(rot*DEG2RAD) - (glox-xoff) * sin(rot*DEG2RAD)
-  
+
   end subroutine glo2loc
 !-----------------------------------------------------------------------------!
-  
+
 MODULE errorhandle
   CONTAINS
   !-----------------------------------------------------------------------------!
@@ -117,30 +117,30 @@ MODULE errorhandle
 
     subroutine ifailhandler(ifail, filename, cline)
       implicit none
-      
+
       ! To handle errors output by intread, multilinesplit
       integer, intent(in)        :: ifail
       character(*), intent(in)   :: filename, cline
-      
+
       if (ifail /= 0) then
         write(*,'(a)') 'Error processing line in ' // trim(filename)
         write(*,'(a)') 'Line: ' // trim(cline)
         stop
       end if
-    
+
     end subroutine ifailhandler
   !---------------------------------------------------------------------------!
-    
+
     subroutine parexceed(par, parstr, message, finalstr, finalreal, finalint)
       implicit none
-      
+
       ! To handle if a hardcoded parameter is exceeded
       integer                        :: par
       character(*)                   :: parstr
       character(*), optional         :: message, finalstr
       integer, optional              :: finalint
       real, optional                 :: finalreal
-      
+
       write(*,'(3a)') 'Error - ', trim(parstr), ' exceeded!'
       if (present(message)) then
         write(*,'(8x,a)') trim(message)
@@ -153,13 +153,13 @@ MODULE errorhandle
         write(*,'(8x,a,f18.5)') 'Last value: ', finalreal
       end if
       write(*,'(8x,2a)') 'Recompile with greater value for parameter ', trim(parstr)
-      
+
       ! Stops
       stop
-      
+
     end subroutine parexceed
-  
-!---------------------------------------------------------------------------!    
+
+!---------------------------------------------------------------------------!
     subroutine USGunimplemented()
       write(*,*) 'ERROR - MODFLOW-USG is not currently supported in Texture2Par'
       write(*,*) 'Please contact lelands@sspa.com'
@@ -167,19 +167,19 @@ MODULE errorhandle
     end subroutine USGunimplemented
   !---------------------------------------------------------------------------!
 
-!---------------------------------------------------------------------------!    
+!---------------------------------------------------------------------------!
     subroutine NotInNam(filetype)
       implicit none
-      
+
       character(*)         :: filetype
-      
+
       write(*,'(2a)') 'ERROR - MODFLOW package is required in the Name file:', trim(filetype)
       stop
     end subroutine NotInNam
   !---------------------------------------------------------------------------!
-    
-  end MODULE errorhandle 
-  
+
+  end MODULE errorhandle
+
 !-----------------------------------------------------------------------------!
 subroutine FindSectionLength(unitno, length, symbol)
   implicit none
@@ -192,13 +192,13 @@ subroutine FindSectionLength(unitno, length, symbol)
 !
 ! Author: Leland Scantlebury, SSP&A
 !-----------------------------------------------------------------------------!
-    
+
     integer, intent(in)        :: unitno
     integer, intent(inout)     :: length
     integer                    :: i, ierr
     character(1), intent(in)   :: symbol
     character(1000)            :: line
-    
+
     length = 0
     do
       read(unitno, *, iostat=ierr) line
@@ -206,11 +206,11 @@ subroutine FindSectionLength(unitno, length, symbol)
       if (line(1:1) == symbol) exit
       length = length + 1
     end do
-    
+
     do i=1, length + 1
       backspace(unitno)
     end do
-    
+
   end subroutine FindSectionLength
 
 !-----------------------------------------------------------------------------!
@@ -219,18 +219,18 @@ subroutine FindSectionLength(unitno, length, symbol)
   subroutine ReadToSymbol(unitno, symchar)
     use ErrorHandle
     implicit none
-    
+
     ! Reads file until a specified symbol is found at the start of a line,
     ! Checks that next line doesn't have symbol, then backspaces
     ! Effictively giving you the next "non-commented" line for reading
     ! Useful for jumping past commented lines
     ! LS 7/10/2018
-    
+
     integer, intent(in)      :: unitno
     integer                  :: ierr
     character(1), intent(in) :: symchar
     character(5)             :: line
-    
+
     ! Find Symbol
     do
       read(unitno, *, iostat=ierr) line
@@ -240,7 +240,7 @@ subroutine FindSectionLength(unitno, length, symbol)
       end if
       if (index(line,symchar) > 0) exit
     end do
-    
+
     ! Make sure following lines don't have symbol
     do
       read(unitno, *, iostat=ierr) line
@@ -248,10 +248,10 @@ subroutine FindSectionLength(unitno, length, symbol)
       if (index(line,symchar) == 0) exit
     end do
     ! End of File is NOT handled in this subroutine
-    
+
     ! Back one line
     backspace(unitno)
-    
+
   end subroutine ReadToSymbol
 !-----------------------------------------------------------------------------!
 
@@ -280,7 +280,7 @@ real function pinpol(px, py, polyx, polyy, npoly) result(inpoly)
   !
   !               Implemented in f90 by Leland Scantlebury
   !---------------------------------------------------------------------------!
-  
+
   integer, intent(in)      :: npoly
   integer                  :: i, next, prev, j
   real, intent(in)         :: px, py, polyx(npoly), polyy(npoly)
@@ -289,9 +289,9 @@ real function pinpol(px, py, polyx, polyy, npoly) result(inpoly)
   logical                  :: snear
   ! Functions
   real                     :: tridet
-  
+
   inpoly = HUGE(1.0)
-  
+
   ! Loop over each side defining the polygon
   do i=1, npoly
     ! Side coordinates, length, distance from x,y
@@ -303,7 +303,7 @@ real function pinpol(px, py, polyx, polyy, npoly) result(inpoly)
     y21 = polyy(next)-y1
     x1p = x1-px
     y1p = y1-py
-    
+
     ! Find where normal of px,py intersects infinite line
     t = -(x1p*x21 + y1p*y21)/(x21**2 + y21**2)
     if (t < 0.0d0) then
@@ -332,7 +332,7 @@ real function pinpol(px, py, polyx, polyy, npoly) result(inpoly)
       cycle
     end if
   end do
-  
+
   if (inpoly < smalld) then
     ! Point lies on the side of the polygon
     inpoly = 0.0d0
@@ -359,11 +359,11 @@ real function pinpol(px, py, polyx, polyy, npoly) result(inpoly)
       inpoly = sign(inpoly, area)
     end if
   end if
-  
+
   return
-    
+
   end function pinpol
-  
+
 !-----------------------------------------------------------------------------!
 
 real function tridet(x1, y1, x2, y2, x3, y3) result(det)
@@ -380,7 +380,7 @@ real function tridet(x1, y1, x2, y2, x3, y3) result(det)
 ! Useful for determining what side of a line a point (x3, y3) is on.
 !-----------------------------------------------------------------------------!
   real, intent(in)         :: x1, y1, x2, y2, x3, y3
-  
+
   det = (x1-x3)*(y2-y3)-(x2-x3)*(y1-y3)
   return
 
@@ -411,9 +411,9 @@ subroutine strtracker(n, str, strarray, wasnew)
         wasnew = .false.
       end if
     end do
-  
+
     ! If not, add to it and update n
-    if (wasnew) then 
+    if (wasnew) then
       n = n + 1
       strarray(n) = str
     end if

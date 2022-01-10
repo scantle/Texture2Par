@@ -50,3 +50,4 @@ mfUSGLib/Debug/**
 # Extras
 *.vfproj.*
 *.7z
+*.cbp
