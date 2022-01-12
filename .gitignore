@@ -51,3 +51,5 @@ mfUSGLib/Debug/**
 *.vfproj.*
 *.7z
 *.cbp
+Texture2Par.layout
+Example/

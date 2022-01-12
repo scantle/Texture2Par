@@ -50,14 +50,6 @@
 		<File RelativePath=".\T2P.ico"/>
 		<File RelativePath=".\T2P.rc"/></Filter>
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
-		<Filter Name="Libraries64_release">
-		<File RelativePath=".\mfUSGLib\x64\Release\mfUSGLib.lib">
-			<FileConfiguration Name="Debug|Win32" ExcludedFromBuild="true"/>
-			<FileConfiguration Name="Release|Win32" ExcludedFromBuild="true"/></File></Filter>
-		<Filter Name="Libraries_release">
-		<File RelativePath=".\mfUSGLib\Release\mfUSGLib.lib">
-			<FileConfiguration Name="Release|x64" ExcludedFromBuild="true"/>
-			<FileConfiguration Name="Debug|x64" ExcludedFromBuild="true"/></File></Filter>
 		<File RelativePath=".\fpath.f90"/>
 		<File RelativePath=".\KDTree.f90"/>
 		<File RelativePath=".\MakePar.f90"/>

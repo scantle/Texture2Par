@@ -15,6 +15,7 @@ MODULE MakePar
                                  USE_IDW = 0, &
                                  max_nodeid=5E6                                ! Maximum nodeid value (to prevent enormous array allocation)
     real, parameter           :: NODATA=-9999.0
+    integer, parameter        :: INODATA=-9999
 
     real,allocatable          :: wellelevbot(:,:), ssb(:,:), pcwellelem(:,:), &
                                  xwell(:), wellaqtardelevtop(:,:), &
@@ -51,6 +52,76 @@ MODULE MakePar
     type(tree_master_record), pointer :: nodetree
 
     CONTAINS
+
+!-----------------------------------------------------------------------------!
+SUBROUTINE read_external_pc(count_n2g, iextlpcfile, extlpcfile)
+    implicit none
+!-----------------------------------------------------------------------------!
+! Find layer elevations at each well using node elevation data.
+! Inverse Distance Weighting is used to determine the elevations.
+!
+
+    integer, intent(in)       :: count_n2g              ! number of external files defining percent coarse
+    character(*), intent(in)  :: iextlpcfile            ! file include the integer array of the method of calculating percent coarse. when ipc == 0, it will be interpolated based on wells otherwise defined by finer net 2 gross data
+    character(150), intent(in):: extlpcfile(count_n2g)  ! file include the integer array of the method of calculating percent coarse. when ipc == 0, it will be interpolated based on wells otherwise defined by finer net 2 gross data
+    integer, parameter        :: nnear=4
+    real                      :: x, y, z, pc
+    real                      :: nodedists(nnear), queryxy(2)
+    integer                   :: closenodes(nnear), iextl, ifile, inode, iline, idummy, ilayer
+    integer                   :: ipc(nnodes,nlayers), nextlpc(nnodes,nlayers)
+
+    pcnode = NODATA
+
+    ! read ibound like ipc
+    open(newunit=ifile, file=trim(iextlpcfile), status='old', iostat=ierr)
+    read(ifile, *) ipc
+    close(ifile)
+
+    do iextl = 1, count_n2g
+      open(newunit=ifile, file=trim(extlpcfile(iextl)), status='old', iostat=ierr)
+      read(ifile,*,iostat=ierr) line ! Header
+      where(ipc==iextl)
+        nextlpc = 0
+        pcnode = 0
+      end where
+      iline = 0
+      do
+        read(ifile,*,iostat=ierr) x, y, z, pc ! coordinates and
+        if (ierr /= 0) exit
+        iline = iline + 1
+        if (pc<0 .or. pc>1.) then
+          write(*,'(A,I9)'), 'Incorrect percent coarse identified in file '//trim(extlpcfile(iextl))//' Line ', iline
+          stop
+        end if
+        ! find the point location (from inputwells_IWFM and inputwells_modflow, which these two should be combined)
+        queryxy(1) = x
+        queryxy(2) = y
+        call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
+        if (modflowflag==0) then
+          inode = get_well_element(x, y, idummy, closenodes, nnear)
+        else if (modflowflag==1) then
+          inode = get_well_cell(x, y, closenodes, nnear)
+        end if
+        ! find layer the texture is located in
+        ilayer = binarySearch(topelev(inode,), z, outside_ok=.true.)
+        ! add the percent value and count
+        pcnode(ilayer,inode)  = pcnode(ilayer,inode) + pc
+        nextlpc(inode,ilayer) = nextlpc(inode,ilayer) + 1
+      end do
+      ! check if all the nodes are defined externally
+      if (any(pack(nextlpc, ipc==i)==0)) then
+          write(*,'(A)'), 'Some model cells do not contain percent coarse in file '//trim(extlpcfile(i))
+          stop
+      end if
+    end do
+    where(ipc > 0)
+      ! calculate the average
+      pcnode = pcnode / nextlpc
+      ! create fake geozones for external
+      geozones = 'external!pc'
+    end where
+end subroutine layerelevation
+!-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
 SUBROUTINE layerelevation(top_elev, bot_elev, result_top, result_bot)
@@ -281,7 +352,7 @@ SUBROUTINE interpolate()
           if (count > 0) then                               ! LS sum2 > 0
             PcNode(ilay, inode) = sum1 / sum2
           else
-            PcNode(ilay, inode) = -9999.0
+            PcNode(ilay, inode) = -9999.0 !! MOU: only in the geozone?
             write(*,'(4x,a,i8)') 'No well data for node ', inode
           end if
         end do
@@ -293,7 +364,7 @@ SUBROUTINE interpolate()
     do ilay = 1, nlayers
       do inode = 1, nnodes
         Dcol = elevation(inode) - ((topelev(inode,ilay) + botelev(inode, ilay)) / 2.0)
-        if (PcNode(ilay, inode) >= 0.0d0) then
+        if (PcNode(ilay, inode) >= 0.0d0) then ! MOU: todo change to where statement
             KhC(ilay, inode) = nKCMin(inode) + (dKC(inode) * &
                                exp(-1.0 * KCk * Dcol))
             KhF(ilay, inode) = nKFMin(inode) + (dKF(inode) * &
@@ -672,7 +743,7 @@ subroutine NodeAllocate()
            SyB(nlayers, nnodes), &
            KvB_aqtard(nlayers, nnodes), &
            nodezone(nnodes), &
-           geozones(nnodes, nlayers), &
+           geozones(nnodes, nlayers), &  ! MOU: why this is not (nlayer, nnode)?
            ngeozones_lay(nlayers), &
            geonames_lay(max_zones,nlayers))
 
