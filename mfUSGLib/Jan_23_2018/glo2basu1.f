@@ -351,12 +351,12 @@ C11-----CHECK FOR MAJOR OPTIONS.
 20      CONTINUE
         ! LS for Texture2Par
         ! Don't care if it's an file type we don't know, just don't open it
-        WRITE(IOUT,'(A)') 
+        WRITE(IOUT,'(A)')
         WRITE(IOUT,21) LINE(ITYP1:ITYP2)
 21      FORMAT(1X,'Texture2Par - Ignoring File: ',A, '(not needed)')
         GO TO 10
-        !CALL USTOP(' ')  
-        
+        !CALL USTOP(' ')
+
 30      CONTINUE
       END IF
 C
@@ -439,7 +439,7 @@ C2------READ CONNECTED LINE NETWORK (CLN) DIMENSIONING AND CONNECTIVITY INPUT
 C----------------------------------------------------------------------------
       NEQS = NODES
       INCLN = IUNIT(IUCLN)
-      INBCT = IUNIT(IUBCT)
+      INBCT = IUNIT(15)
       IF(INCLN.NE.0) THEN
         CALL SDIS2CLN1AR(IUCLN,INBCT)
         NEQS = NEQS + NCLNNDS

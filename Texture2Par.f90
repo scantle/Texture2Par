@@ -6,6 +6,7 @@ program Texture2Par
   use errorhandle
   use MFSupport
   use utl
+  use io
   implicit none
 
 !-----------------------------------------------------------------------------!
@@ -27,7 +28,7 @@ program Texture2Par
 
     integer                    :: mytpe, ioerr, ilay, ifail, ppn, atppn, ipp, &
                                   i, ierr,  twell, wpoint, zone, ppcount, &
-                                  modflowflag, zoneflag, geoflag,ifile,count_n2g
+                                  modflowflag, zoneflag, geoflag,ifile
     real                       :: a_hmin
     real, allocatable          :: ppx(:), ppy(:), ppKCMin(:), &
                                   ppdKC(:), ppAnisoC(:), ppAnisoF(:), &
@@ -36,9 +37,8 @@ program Texture2Par
                                   ppatKCMin(:), ppatdKC(:), ppatKFMin(:), &
                                   ppatdKF(:), ppatAnisoC(:), ppatAnisoF(:)
     integer,allocatable        :: ppZone(:), ppatZone(:)
-    character(150)             :: jnk,fpath_line,fmtHK,fmtVK,fmtSS,fmtSY
-    character(1000)            :: line, prefix
-    character(150)             :: extlpcfile(99), iextlpcfile
+    character(150)             :: jnk,fpath_line
+    character(1000)            :: line
     logical                    :: writenodefiles
 
 ! Intel-Fortran specific way of writing to same command line line
@@ -47,8 +47,15 @@ program Texture2Par
     ! Write Flag
     write(*,'(/,8x,a)') '   Texture2Par v1.0.0'
     write(*,'(8x,a)')   '------------------------'
+
     CALL GETCWD(line)
     print*, 'Current Directory: ', trim(line)
+
+    ! check if there is command line argument
+    if (nargs()>1) then
+      call get_command_argument(1, line)
+      call read_options(trim(line))
+    end if
 
     ! Read input file
     ierr = 0
@@ -145,35 +152,6 @@ program Texture2Par
                  ppatAnisoF(ipp), ppatZone(ipp)
     end do
 
-
-    ! OPTIONAL read external net2gross
-    count_n2g = 0
-    call ReadToSymbol(10, '*', ierr)
-    if (ierr == 0) then
-      read(10,*) iextlpcfile
-      ierr = 0
-      do
-        count_n2g = count_n2g + 1
-        read(10,*,iostat=ierr) extlpcfile(count_n2g)
-        if (ierr /= 0) exit
-        if (index(extlpcfile(count_n2g), '*')>0) then
-          count_n2g = count_n2g - 1
-          backspace(10)
-          exit
-        end if
-      end do
-    end if
-
-    ! OPTIONAL read output section
-    prefix = ''
-    call ReadToSymbol(10, '*', ierr)
-    if (ierr == 0) then
-      read(10,*) prefix
-      read(10,*) fmtHK
-      read(10,*) fmtVK
-      read(10,*) fmtSY
-      read(10,*) fmtSS
-    end if
     close(10)
 
     ! MODEL SPECIFIC
@@ -273,9 +251,9 @@ program Texture2Par
     write(*,'(4x,1a32,i)') 'Number of Pilot Point Zones: ', nzones
     write(*,'(4x,1a32,i,/)') 'Number of Geologic Zones: ', ngeozones
 
-    if (count_n2g>0)  then
+    if (count_extlpc>0)  then
       write(*,'(2x,a)') 'Reading External Percent Coarse'
-      call read_external_pc(count_n2g, iextlpcfile, extlpcfile)
+      call read_external_pc(modflowflag)
     end if
 
 ! Set anistropy and rotation matrix
@@ -391,23 +369,10 @@ program Texture2Par
         write(*,'(2x,a)') 'WriteCellFiles set to FALSE - no parameter files written'
       end if
       call readwriteFlowPackage()
-      call clear_modflow_memory()
+      !call clear_modflow_memory()
     end if
 
-    if (prefix/='') then
-      open(newunit=ifile, file=trim(prefix)//'.hk', status='replace')
-      write(ifile, '(('//trim(fmtHK)//'))') KhB
-      close(ifile)
-      open(newunit=ifile, file=trim(prefix)//'.vk', status='replace')
-      write(ifile, '(('//trim(fmtVK)//'))') KvB
-      close(ifile)
-      open(newunit=ifile, file=trim(prefix)//'.ss', status='replace')
-      write(ifile, '(('//trim(fmtSS)//'))') SsB
-      close(ifile)
-      open(newunit=ifile, file=trim(prefix)//'.sy', status='replace')
-      write(ifile, '(('//trim(fmtSy)//'))') SyB
-      close(ifile)
-    end if
+    call write_data()
 
     write(*,'(/,2x,a)') 'Program finished!'
 

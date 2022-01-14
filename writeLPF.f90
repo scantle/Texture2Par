@@ -139,11 +139,10 @@
       integer,intent(in)   :: out
 
       ! Location
-      character*12         :: loc='INTERNAL'
+      character*12         :: loc='INTERNAL    '
+
 
       ! MODFLOW variables
-      REAL, DIMENSION(:,:),ALLOCATABLE  ::TEMP
-      REAL, DIMENSION (:), ALLOCATABLE :: TEMPPL
 
       CHARACTER*24 ANAME(15),STOTXT
       CHARACTER*4 PTYP
@@ -171,15 +170,7 @@
       real, parameter      :: zero=0.0d0
 
       ! For FMTIN in array headers
-      fmt = ' (10e12.4)          '
-
-      ! Create writehelper
-      do k=1,nlay
-        do i=1,nrow
-          wh(i,k)      = (k-1)*nrow*ncol+(i-1)*ncol+1
-          wh(i,nlay+k) = (k-1)*nrow*ncol+(i)*ncol
-        end do
-      end do
+      fmt = ' (FREE)             '
 
 !3------DEFINE DATA FOR EACH LAYER -- VIA READING OR NAMED PARAMETERS.
       DO K=1,NLAY
@@ -188,96 +179,68 @@
         !knend   =  k    * nrow * ncol
 
 !3A-----WRITE HORIZONTAL HYDRAULIC CONDUCTIVITY (HK)
-        WRITE(OUT,22) adjustl(loc),1.0,fmt,-1,ANAME(1),' Layer',K
-        DO i=1, nrow
-!          write(OUT,'(10es12.4)') HK(wh(i,k):wh(i,nlay+k))
-          write(OUT,'(10es12.4)') KhB(k,(i-1)*ncol+1:i*ncol)
-        end do
+        call write_array(KhB, kk, ANAME(1))
 
  !3B-----WRITE HORIZONTAL ANISOTROPY IF CHANI IS NON-ZERO
         IF(CHANI(K).LE.ZERO) THEN
-          WRITE(OUT,22) adjustl(loc),1.0,fmt,-1,ANAME(2),' LAYER ',K
-          DO i=1, nrow
-            write(OUT,'(10es12.4)') HANI(wh(i,k):wh(i,nlay+k))
-          end do
+          call write_array(HANI, kk, ANAME(2))
         END IF
 
 !3C-----WRITE VERTICAL HYDRAULIC CONDUCTIVITY
-        WRITE(OUT,22) adjustl(loc),1.0,fmt,-1,ANAME(3),' LAYER ',K
-        DO i=1, nrow
-!          write(OUT,'(10es12.4)') VKA(wh(i,k):wh(i,nlay+k))
-          write(OUT,'(10es12.4)') KvB(k,(i-1)*ncol+1:i*ncol)
-        end do
+        call write_array(KvB, kk, ANAME(3))
 
 !3D-----DEFINE SPECIFIC STORAGE OR STORAGE COEFFICIENT IN ARRAY SC1 IF TRANSIENT.
         IF(ITRSS.NE.0) THEN
-          WRITE(OUT,22) adjustl(loc),1.0,fmt,-1,ANAME(6),' LAYER ',K
-          DO i=1, nrow
-!            write(OUT,'(10es12.4)') SC1(wh(i,k):wh(i,nlay+k))
-            write(OUT,'(10es12.4)') SsB(k,(i-1)*ncol+1:i*ncol)
-          end do
+          call write_array(SsB, kk, ANAME(6))
         end if
 
 !3E-----WRITE SPECIFIC YIELD IN ARRAY SC2 IF TRANSIENT AND LAYER IS
 !3E-----IS CONVERTIBLE.
       IF(LAYTYP(K).NE.0) THEN
          IF(ITRSS.NE.0) THEN
-          WRITE(OUT,22) adjustl(loc),1.0,fmt,-1,ANAME(7),' LAYER ',K
-          DO i=1, nrow
-!            write(OUT,'(10es12.4)') SC2(wh(i,k):wh(i,nlay+k))
-            write(OUT,'(10es12.4)') SyB(k,(i-1)*ncol+1:i*ncol)
-          end do
-         end if
+          call write_array(SyB, kk, ANAME(7))
+         END IF
       end if
 
 !3F-----WRITE CONFINING BED VERTICAL HYDRAULIC CONDUCTIVITY (VKCB)
       IF(LAYCBD(K).NE.0) THEN
-        WRITE(OUT,22) adjustl(loc),1.0,fmt,-1,ANAME(5),' LAYER ',K
-        DO i=1, nrow
-!          write(OUT,'(10es12.4)') VKCB(wh(i,k):wh(i,nlay+k))
-          write(OUT,'(10es12.4)') KvB_aqtard(k,(i-1)*ncol+1:i*ncol)
-        end do
+        call write_array(KvB_aqtard, kk, ANAME(5))
       end if
 
 !3G-----READ WETDRY CODES IF WETTING CAPABILITY HAS BEEN INVOKED
 !3G-----(LAYWET NOT 0).
       IF(LAYWET(K).NE.0) THEN
-        WRITE(OUT,22) adjustl(loc),1.0,fmt,-1,ANAME(8),' LAYER ',K
-        DO i=1, nrow
-          write(OUT,'(10es12.4)') WETDRY(wh(i,k):wh(i,nlay+k))
-        end do
+        call write_array(WETDRY, kk, ANAME(8))
       end if
 
 !3H-----WRITE alpha, beta, sr, brook
       if(LAYCON(k) == 5) then
-        WRITE(OUT,22) adjustl(loc),1.0,fmt,-1,ANAME(11),' LAYER ',K
-        DO i=1, nrow
-          write(OUT,'(10es12.4)') alpha(wh(i,k):wh(i,nlay+k))
-        end do
-        WRITE(OUT,22) adjustl(loc),1.0,fmt,-1,ANAME(12),' LAYER ',K
-        DO i=1, nrow
-          write(OUT,'(10es12.4)') beta(wh(i,k):wh(i,nlay+k))
-        end do
-        WRITE(OUT,22) adjustl(loc),1.0,fmt,-1,ANAME(13),' LAYER ',K
-        DO i=1, nrow
-          write(OUT,'(10es12.4)') sr(wh(i,k):wh(i,nlay+k))
-        end do
-        WRITE(OUT,22) adjustl(loc),1.0,fmt,-1,ANAME(14),' LAYER ',K
-        DO i=1, nrow
-          write(OUT,'(10es12.4)') brook(wh(i,k):wh(i,nlay+k))
-        end do
+        call write_array(alpha, kk, ANAME(11))
+        call write_array(beta , kk, ANAME(12))
+        call write_array(sr   , kk, ANAME(13))
+        call write_array(brook, kk, ANAME(14))
         IF(IBPN.GT.0)THEN
-          WRITE(OUT,22) adjustl(loc),1.0,fmt,-1,ANAME(15),' LAYER ',K
-          DO i=1, nrow
-            write(OUT,'(10es12.4)') bP(wh(i,k):wh(i,nlay+k))
-          end do
+          call write_array(bP   , kk, ANAME(15))
         end if
       end if
 
       END DO
 
 ! Format for all layer parameter description lines
-22    FORMAT(a12,f5.2,a20,i10,' #',a30,a7,i5)   ! LOCAT CNSTNT FMTIN IPRN label layertext layer#
-
+  contains
+  subroutine write_array(array, ilay, ANAME1)
+    real :: array(*)
+    real, allocatable :: tmp(:,:,:)
+    CHARACTER*24 ANAME1
+    integer ilay
+    integer shape(3)
+    shape = (/NCOL,NROW,NLAY/)
+    tmp = reshape(array(1:NCOL*NROW*NLAY),shape)
+    WRITE(OUT,22) loc,1.0,fmt,-1,ANAME1,' LAYER ',ilay
+    DO i=1, nrow
+      write(OUT,'(10es12.4)') tmp(:,i,ilay)
+    end do
+22  FORMAT(a12,f5.2,a20,i10,' #',a30,a7,i5)   ! LOCAT CNSTNT FMTIN IPRN label layertext layer#
+  end subroutine write_array
   end SUBROUTINE t2p_SGWF2LPFU1S
 !-----------------------------------------------------------------------------!

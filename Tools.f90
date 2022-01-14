@@ -220,6 +220,7 @@ subroutine FindSectionLength(unitno, length, symbol)
 module utl
 
   contains
+
   function binarySearch(sorted, x, outside_ok, ascending) result(iloc)
     ! search the location to insert x in a sorted (descending) array
     integer               :: imid, ileft, iright, itmp
@@ -279,7 +280,8 @@ module utl
     iloc = ileft
 
   end function
-
+  
+  
   subroutine ReadToSymbol(unitno, symchar, kerr)
     use ErrorHandle
     implicit none

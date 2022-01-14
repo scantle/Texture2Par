@@ -457,7 +457,7 @@ subroutine writeCellFile(v, filename)
   use MakePar
   implicit none
 
-  real,intent(in)          :: v(nlayers,nnodes)
+  real,intent(in)          :: v(nnodes, nlayers)
   character(*),intent(in)  :: filename
   integer                  :: inode, ilay, row, col
   character(60)            :: fmt(2)
@@ -474,7 +474,7 @@ subroutine writeCellFile(v, filename)
   do inode = 1, nnodes
     call node2rowcol(inode, row, col)
     write(20,fmt(2)) row, col, nodezone(inode), nodex(inode), nodey(inode), &
-                     (v(ilay, inode), ilay=1,nlayers)
+                     (v(inode, ilay), ilay=1,nlayers)
   end do
 
   close(20)
