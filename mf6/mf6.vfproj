@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<VisualStudioProject ProjectType="typeStaticLibrary" ProjectCreator="Intel Fortran" Keyword="Static Library" Version="11.0" ProjectIdGuid="{1BBF0F95-E0B1-4404-85B8-4794FAAD44B7}">
+	<Platforms>
+		<Platform Name="Win32"/>
+		<Platform Name="x64"/></Platforms>
+	<Configurations>
+		<Configuration Name="Debug|Win32" ConfigurationType="typeStaticLibrary">
+				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" WarnInterfaces="true" Traceback="true" BoundsCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebugDLL"/>
+				<Tool Name="VFLibrarianTool"/>
+				<Tool Name="VFResourceCompilerTool"/>
+				<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
+				<Tool Name="VFCustomBuildTool"/>
+				<Tool Name="VFPreLinkEventTool"/>
+				<Tool Name="VFPreBuildEventTool"/>
+				<Tool Name="VFPostBuildEventTool"/></Configuration>
+		<Configuration Name="Debug|x64" ConfigurationType="typeStaticLibrary">
+				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" WarnInterfaces="true" RealKIND="realKIND8" Traceback="true" BoundsCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebugDLL"/>
+				<Tool Name="VFLibrarianTool"/>
+				<Tool Name="VFResourceCompilerTool"/>
+				<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+				<Tool Name="VFCustomBuildTool"/>
+				<Tool Name="VFPreLinkEventTool"/>
+				<Tool Name="VFPreBuildEventTool"/>
+				<Tool Name="VFPostBuildEventTool"/></Configuration>
+		<Configuration Name="Release|Win32" ConfigurationType="typeStaticLibrary">
+				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" RuntimeLibrary="rtMultiThreadedDLL"/>
+				<Tool Name="VFLibrarianTool"/>
+				<Tool Name="VFResourceCompilerTool"/>
+				<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
+				<Tool Name="VFCustomBuildTool"/>
+				<Tool Name="VFPreLinkEventTool"/>
+				<Tool Name="VFPreBuildEventTool"/>
+				<Tool Name="VFPostBuildEventTool"/></Configuration>
+		<Configuration Name="Release|x64" ConfigurationType="typeStaticLibrary">
+				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" Preprocess="preprocessYes" RuntimeLibrary="rtMultiThreadedDLL"/>
+				<Tool Name="VFLibrarianTool"/>
+				<Tool Name="VFResourceCompilerTool"/>
+				<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+				<Tool Name="VFCustomBuildTool"/>
+				<Tool Name="VFPreLinkEventTool"/>
+				<Tool Name="VFPreBuildEventTool"/>
+				<Tool Name="VFPostBuildEventTool"/></Configuration></Configurations>
+	<Files>
+		<Filter Name="Header Files" Filter="fi;fd"/>
+		<Filter Name="Resource Files" Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"/>
+		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\ArrayHandlers.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\ArrayReaders.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Timing\ats.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\BlockParser.f90"/>
+		<File RelativePath=".\Utilities\compilerversion.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Model\ModelUtilities\Connections.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\Constants.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\defmacro.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Model\ModelUtilities\DiscretizationBase.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Model\ModelUtilities\DisvGeom.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\genericutils.f90"/>
+		<File RelativePath=".\Model\GroundWaterFlow\gwf3dis8.f90"/>
+		<File RelativePath=".\Model\GroundWaterFlow\gwf3disu8.f90"/>
+		<File RelativePath=".\Model\GroundWaterFlow\gwf3disv8.f90"/>
+		<File RelativePath=".\Utilities\HashTable.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\InputOutput.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\kind.f90"/>
+		<File RelativePath=".\Utilities\List.f90"/>
+		<File RelativePath=".\Utilities\ListReader.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\Memory\Memory.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\Memory\MemoryHelper.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\Memory\MemoryList.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\Memory\MemoryManager.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\Memory\MemorySetHandler.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\Message.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\OpenSpec.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\Sim.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\SimVariables.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Utilities\SmoothingFunctions.f90"/>
+		<File RelativePath=".\Utilities\Sparse.f90"/>
+		<File RelativePath=".\Utilities\Table.f90"/>
+		<File RelativePath=".\Utilities\TableTerm.f90"/>
+		<File RelativePath="D:\Cloud\Dropbox\FortranCode\Texture2Par\mf6\Timing\tdis.f90"/>
+		<File RelativePath=".\Utilities\TimeSeries\TimeArray.f90"/>
+		<File RelativePath=".\Utilities\TimeSeries\TimeArraySeries.f90"/>
+		<File RelativePath=".\Utilities\TimeSeries\TimeArraySeriesLink.f90"/>
+		<File RelativePath=".\Utilities\TimeSeries\TimeArraySeriesManager.f90"/>
+		<File RelativePath=".\Utilities\TimeSeries\TimeSeries.f90"/>
+		<File RelativePath=".\Utilities\TimeSeries\TimeSeriesFileList.f90"/>
+		<File RelativePath=".\Utilities\TimeSeries\TimeSeriesLink.f90"/>
+		<File RelativePath=".\Utilities\TimeSeries\TimeSeriesManager.f90"/>
+		<File RelativePath=".\Utilities\TimeSeries\TimeSeriesRecord.f90"/>
+		<File RelativePath=".\Utilities\version.f90"/></Filter></Files>
+	<Globals/></VisualStudioProject>

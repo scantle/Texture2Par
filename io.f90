@@ -1,10 +1,10 @@
 
 module io
-  character(1024)               :: prefix = '', extlpcfile(100)='', ipcfile=''
+  character(1024)               :: prefix='', ipcfile='', extlpcfile(100)='', mfdis='', mf6dis='', mf6disv='', mf6disu=''
   character(24)                 :: fmtHK,fmtVK,fmtSS,fmtSY
   integer                       :: count_extlpc = 0
-
-  namelist /options/ prefix,fmtHK,fmtVK,fmtSS,fmtSY,extlpcfile,ipcfile
+  logical                       :: mf6
+  namelist /options/ prefix,fmtHK,fmtVK,fmtSS,fmtSY,extlpcfile,ipcfile,mfdis,mf6dis,mf6disv,mf6disu
 contains
 
 
@@ -29,11 +29,7 @@ contains
       print *, 'ipcfile is not defined in namelist.'
       stop
     end if
-    if (count_extlpc==0 .and. ipcfile /= '') then
-      print *, 'extlpcfile is not defined in namelist.'
-      stop
-    end if
-
+    mf6 = (mf6dis/='' .or. mf6disu/=''.or. mf6disv/='')
   end subroutine
 
 !-----------------------------------------------------------------------------!
@@ -56,7 +52,7 @@ contains
     open(newunit=ifile, file=trim(ipcfile), status='old')
     read(ifile, *) ipc
     close(ifile)
-    print*, ipc
+    
     print *, 'Reading External Percent Coarse Files:'
     do iextl = 1, count_extlpc
       print *, '  '//trim(extlpcfile(iextl))
@@ -103,6 +99,76 @@ contains
       geozones = geoname_extlpc
     end where
   end subroutine read_external_pc
+
+  subroutine read_mf6dis()
+    use BaseDisModule,          only:  DisBaseType
+    use GwfDisModule,           only:  dis_cr, GwfDisType
+    use GwfDisvModule,          only:  disv_cr, GwfDisvType
+    use GwfDisuModule,          only:  disu_cr, GwfDisuType
+    use InputOutputModule,      only:  openfile
+    use MakePar,                only:  nnodes, nlayers, nodex, nodey, nzones, botelev, topelev, elevation, aqtardtopelev, aqtardbotelev
+    use MFSupport,              only:  allocate_modflow, xoff, yoff, mfrot
+    use GLOBAL,                 ONLY:  NLAY, NROW, NCOL, DELR, DELC,LAYCBD
+    ! dummy
+    class(DisBaseType), pointer     :: dis  => null()
+    integer                         :: indis
+    integer                         :: iout = 6
+    integer                         :: k
+    character(:),allocatable        :: name_model
+
+    name_model = 'T2P_MF6'
+
+    if(mf6dis /= '') then
+      open(newunit=indis, file=mf6dis, status='old')
+      call dis_cr(dis, name_model, indis, iout)
+    elseif(mf6disv /= '') then
+      open(newunit=indis, file=mf6disv, status='old')
+      call disv_cr(dis, name_model, indis, iout)
+    elseif(indisv6 /= '') then
+      open(newunit=indis, file=mf6disu, status='old')
+      call disu_cr(dis, name_model, indis, iout)
+    else
+      return
+    endif
+    ! read file
+    call dis%dis_df()
+
+    ! prepare data for T2P
+    xoff = dis%xorigin
+    yoff = dis%yorigin
+    mfrot = dis%angrot
+    
+    select type(dis)
+    type is (GwfDisType)
+      print*, 'Regular MF6 Grid with Layer, Row, Column: ', dis%mshape
+      ! todo: prepare data for T2P
+      nlayers = dis%nlay
+      allocate(NLAY, NROW, NCOL)
+      NLAY = dis%nlay
+      NROW = dis%nrow
+      NCOL = dis%ncol
+      nnodes = dis%nrow * dis%ncol
+
+      if (.not. allocated(DELR)) allocate(DELR(NCOL))
+      if (.not. allocated(DELC)) allocate(DELC(NROW))
+      if (.not. allocated(LAYCBD)) allocate(LAYCBD(NLAY))
+      DELR = dis%delr
+      DELC = dis%delc
+
+      call allocate_modflow()
+      Elevation            = dis%top
+      botelev              = reshape(dis%bot, (/nnodes, nlayers/))
+      topelev(:,1)         = dis%top
+      topelev(:,2:nlayers) = botelev(:,:(nlayers-1))
+      aqtardtopelev = NODATA
+      aqtardbotelev = NODATA
+    type is (GwfDisvType)
+      print*, 'DISv Grid Layer, Not supported yet'
+      stop
+    type is (GwfDisuType)
+      print*, 'Unstructured Grid, Not supported yet'
+    end select
+  end subroutine
 
   subroutine write_data()
     use MakePar, only: KhB,KvB,SsB,SyB

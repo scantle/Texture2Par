@@ -411,14 +411,14 @@ end function get_well_cell
 
     ! TODO move to MakePar routine for allocation
     ! Since these are all use for both models
-    allocate(nodex(nnodes),              &
-             nodey(nnodes),              &
-             nodexy(nnodes,2),           &
-             Elevation(nnodes),          &
-             topelev(nnodes,nlay),       &
-             botelev(nnodes,nlay),       &
-             aqtardtopelev(nnodes,nlay), &
-             aqtardbotelev(nnodes,nlay)  )
+    allocate(nodex(nnodes),                 &
+             nodey(nnodes),                 &
+             nodexy(nnodes,2),              &
+             Elevation(nnodes),             &
+             topelev(nnodes,nlayers),       &
+             botelev(nnodes,nlayers),       &
+             aqtardtopelev(nnodes,nlayers), &
+             aqtardbotelev(nnodes,nlayers)  )
 
   end subroutine allocate_modflow
 !-----------------------------------------------------------------------------!

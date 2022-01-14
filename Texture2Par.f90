@@ -160,8 +160,12 @@ program Texture2Par
       call readIWFM()
       call create_nodetree()
     else if (modflowflag == 1) then
-      write(*,'(2x,a)') 'Reading MODFLOW Input Files'
-      call read_modflow(simfile)
+      if (mf6) then
+        call read_mf6dis()
+      else
+        write(*,'(2x,a)') 'Reading MODFLOW Input Files'
+        call read_modflow(simfile)
+      end if
       call calcCellCenters_global()
       call create_nodetree()
     end if
@@ -252,7 +256,6 @@ program Texture2Par
     write(*,'(4x,1a32,i,/)') 'Number of Geologic Zones: ', ngeozones
 
     if (count_extlpc>0)  then
-      write(*,'(2x,a)') 'Reading External Percent Coarse'
       call read_external_pc(modflowflag)
     end if
 
@@ -368,11 +371,15 @@ program Texture2Par
       else
         write(*,'(2x,a)') 'WriteCellFiles set to FALSE - no parameter files written'
       end if
-      call readwriteFlowPackage()
-      !call clear_modflow_memory()
+      if (mf6) then
+        call write_data()
+      else
+        call readwriteFlowPackage()
+        !call clear_modflow_memory()
+      end if
     end if
 
-    call write_data()
+
 
     write(*,'(/,2x,a)') 'Program finished!'
 
