@@ -29,11 +29,11 @@ MODULE MakePar
                                  syb(:,:), elevation(:), botelev(:,:), &
                                  wellaqtardelevbot(:,:), topelev(:,:), &
                                  pcnode(:,:), pcnode_aqtard(:,:), &
-                                 kvb_aqtard(:,:), dkf(:), &
+                                 kvb_aqtard(:,:), dkf(:), pcwellzone(:,:), &
                                  Thick(:,:), AqTardThick(:,:), &
                                  nodexy(:,:), atnAnisoC(:), atnAnisoF(:), &
                                  interbed_thick(:,:)
-    integer,allocatable       :: wellelem(:), pcwellzone(:,:), numzone(:), &
+    integer,allocatable       :: wellelem(:), numzone(:), &
                                  elements(:,:), nodeelem(:,:), nnodeelem(:), &
                                  nodezone(:), ngeozones_lay(:), nodeid(:), &
                                  nodebyid(:)

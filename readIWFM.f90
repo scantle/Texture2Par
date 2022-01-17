@@ -227,10 +227,10 @@ SUBROUTINE inputwells_IWFM(readzones)
 !-----------------------------------------------------------------------------!
 
     integer, parameter       :: nnear=5
-    integer                  :: i, iwell, izone, igeo, ilay, tpc, readzones, &
+    integer                  :: i, iwell, izone, igeo, ilay, readzones, &
                                 currwellelem, node, nwellgeozones, ierr
     integer                  :: closenodes(nnear)
-    real                     :: depth, tx, ty, tz, td
+    real                     :: depth, tx, ty, tz, td, tpc
     real                     :: nodedists(nnear), queryxy(2)
     character(30)            :: wellname, geobylayer(nlayers), &
                                 wellgeonames(max_zones)

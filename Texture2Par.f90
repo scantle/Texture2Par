@@ -220,14 +220,15 @@ program Texture2Par
     end if
 
     ! Read geologic units file
+    geozones = '[NONE]'
+    ngeozones = 1
+    ngeozones_lay(1:nlayers) = 1
+    geozones(1:nnodes,1:nlayers) = '[NONE]'
+    geonames_lay(1,1:nlayers) = '[NONE]'
     if (trim(geozonefile)=='NONE'.or.trim(geozonefile)=='none') then
       ! No geologic zones
       ! perhaps a different subroutine should be used instead of dummy values?
       geoflag = 0
-      ngeozones = 1
-      ngeozones_lay(1:nlayers) = 1
-      geozones(1:nnodes,1:nlayers) = '[NONE]'
-      geonames_lay(1,1:nlayers) = '[NONE]'
     else
       geoflag = 1
       if (modflowflag == 0) then

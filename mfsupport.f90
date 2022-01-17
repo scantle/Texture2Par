@@ -123,10 +123,10 @@ SUBROUTINE inputwells_modflow(readzones)
 !-----------------------------------------------------------------------------!
 
     integer, parameter       :: nnear=4
-    integer                  :: i, iwell, izone, igeo, ilay, tpc, readzones, &
+    integer                  :: i, iwell, izone, igeo, ilay, readzones, &
                                 currwellelem, node, ierr, nwellgeozones
     integer                  :: closenodes(nnear)
-    real                     :: depth, tx, ty, tz, td
+    real                     :: depth, tx, ty, tz, td, tpc
     real                     :: nodedists(nnear), queryxy(2)
     character(30)            :: wellname, geobylayer(nlayers), &
                                 wellgeonames(max_zones)
@@ -318,15 +318,22 @@ end subroutine readNodeGeoZones_modflow
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-integer function get_well_cell(x, y, closenodes, nnear) result(cell)
+integer function get_well_cell(x, y, closenodes, nnear, outsideok) result(cell)
   implicit none
 
   real, intent(in)         :: x, y
   integer, intent(in)      :: nnear, closenodes(nnear)
+  logical, optional        :: outsideok
   integer                  :: i
   real                     :: xl, yl, xmin, xmax, ymin, ymax
+  logical                  :: outsideok_tmp
 
   cell = 0
+  if (present(outsideok)) then
+    outsideok_tmp = outsideok
+  else
+    outsideok_tmp = .false.
+  end if
   ! Check each cell center to see if well belongs
   do i=1, nnear
     call getCellBounds_local(closenodes(i), xmin, xmax, ymin, ymax)
@@ -337,7 +344,7 @@ integer function get_well_cell(x, y, closenodes, nnear) result(cell)
     end if
   end do
 
-  if (cell == 0) then
+  if (cell == 0 .and. .not. outsideok_tmp) then
     ! Maybe this should just be a warning?
     write(*,*) 'ERROR well not found in a MODFLOW cell'
     write(*,*) x, y
