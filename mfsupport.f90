@@ -445,7 +445,7 @@ subroutine writeWellFile_modflow(v, filename)
   write(fmt(1),'("(3a10,",i5,"i14)")') nlayers
   write(fmt(2),'("(3i10,",i5,"es14.5)")') nlayers
 
-  open(20, file=trim(filename), status='replace', action='write', buffered='YES')
+  open(20, file=trim(filename), status='replace', action='write')
   ! Header
   write(20,fmt(1)) 'Well', 'Row', 'Col', (ilay, ilay=1, nlayers)
   ! Values
@@ -474,7 +474,7 @@ subroutine writeCellFile(v, filename)
   write(fmt(1),'("(3a8,2a18,",i5,"i14)")') nlayers
   write(fmt(2),'("(3i8,2f18.5,",i5,"e14.5)")') nlayers
 
-  open(20, file=trim(filename), status='replace', action='write', buffered='YES')
+  open(20, file=trim(filename), status='replace', action='write')
   ! Header
   write(20,fmt(1)) 'Row', 'Col', 'Zone', 'X', 'Y', (ilay, ilay=1, nlayers)
   ! Values

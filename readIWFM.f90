@@ -38,6 +38,7 @@ subroutine readIWFM()
                               idum, maxnodeid, nid, node
   integer                  :: ls(100), rs(100)
   real                     :: fact
+  real, allocatable        :: tmp(:)
   character(150)           :: jnk,currfile
 
   ! Read pre-processor file
@@ -160,6 +161,7 @@ subroutine readIWFM()
              AqTardThick  (nnodes,nlayers), &
              AqTardTopElev(nnodes,nlayers), &
              AqTardBotElev(nnodes,nlayers)  )
+    allocate(tmp(nlayers*2+1))
     topelev = 0.0
     botelev = 0.0
     AqTardTopElev = 0.0
@@ -170,9 +172,14 @@ subroutine readIWFM()
     BACKSPACE(12)
     do i=1,nnodes
       call readOneLine(nodefile,12,cline)
-      read(cline,*) nid, Elevation(nodebyid(nid)),((AqTardThick(nodebyid(nid),k),Thick(nodebyid(nid),k)),k=1,nlayers)
+      read(cline,*) nid, tmp
       ! Adjust for Factor
       node = nodebyid(nid)
+      Elevation(node) = tmp(1)
+      do k=1,nlayers
+        AqTardThick(node,k) = tmp(12*k)
+        Thick(node,k) = tmp(12*k+1)
+      end do
       if (node < 1) then
         write(*,*) 'ERROR! Invalid node ID in Stratigraphy File = ', elements(intd,k)
         stop
@@ -438,7 +445,7 @@ subroutine writeWellFile_IWFM(v, filename)
   write(fmt(1),'("(2a10,",i5,"i14)")') nlayers
   write(fmt(2),'("(2i10,",i5,"es14.5)")') nlayers
 
-  open(20, file=trim(filename), status='replace', action='write', buffered='YES')
+  open(20, file=trim(filename), status='replace', action='write')
   ! Header
   write(20,fmt(1)) 'Well', 'Element', (ilay, ilay=1, nlayers)
   ! Values
@@ -466,7 +473,7 @@ subroutine writeNodeFile(v, filename)
   write(fmt(1),'("(2a8,2a18,",i5,"i14)")') nlayers
   write(fmt(2),'("(2i8,2f18.5,",i5,"e14.5)")') nlayers
 
-  open(20, file=trim(filename), status='replace', action='write', buffered='YES')
+  open(20, file=trim(filename), status='replace', action='write')
   ! Header
   write(20,fmt(1)) 'Node', 'Zone', 'X', 'Y', (ilay, ilay=1, nlayers)
   ! Values
@@ -541,7 +548,7 @@ subroutine writeIWFMgwfile()
   do i=1, nnodes
     do ilay=1, nlayers
       if (ilay.eq.1) then
-        write(12,'(i13,f14.8,e12.3,f14.8,f14.8,f14.8)') nodeid(i), KhB(ilay,i), SsB(ilay,i), SyB(ilay,i), KvB_aqtard(ilay,i), KvB(ilay,i)
+        write(12,'(i13,f14.8,e12.3,f14.8,f14.8,f14.8)')nodeid(i),KhB(ilay,i),SsB(ilay,i),SyB(ilay,i),KvB_aqtard(ilay,i),KvB(ilay,i)
       else
         write(12,'(13x,f14.8,e12.3,f14.8,f14.8,f14.8)') KhB(ilay,i), SsB(ilay,i), SyB(ilay,i), KvB_aqtard(ilay,i), KvB(ilay,i)
       end if

@@ -572,7 +572,7 @@ implicit none
       ! Check for x-y match
       if (xcoords(i) == xcoords(j).and.ycoords(i) == ycoords(j)) then
         ! Warn if this is our first match
-        if (colocated == .false.) then
+        if (colocated .eqv. .false.) then
           colocated = .true.
           write(*,'(4x,a)') 'Warning - co-located wells. Attempting to move apart for kriging'
         end if

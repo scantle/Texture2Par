@@ -52,7 +52,7 @@ program Texture2Par
     print*, 'Current Directory: ', trim(line)
 
     ! check if there is command line argument
-    if (nargs()>1) then
+    if (command_argument_count()>1) then
       call get_command_argument(1, line)
       call read_options(trim(line))
     end if
@@ -73,9 +73,9 @@ program Texture2Par
     call ReadToSymbol(10, '*')
 
     ! Check if MODFLOW or IWFM
-    if (index(line,'IWFM')) then
+    if (index(line,'IWFM')>0) then
       modflowflag = 0
-    else if (index(line, 'MODFLOW')) then
+    else if (index(line, 'MODFLOW')>0) then
       modflowflag = 1
     else
       write(*,'(a)') 'Error - Invalid Model Type. Stopping.'
@@ -240,21 +240,21 @@ program Texture2Par
 
     ! Write Read Summary
     write(*,'(2x,a)') 'Setup Summary:                          '
-    write(*,'(4x,1a32,i)') 'Number of aquifer pilot points: ', ppn
-    write(*,'(4x,1a32,i)') 'Number of aquitard pilot points ', atppn
-    write(*, '(4x,1a32,i)') 'Number of Layers: ', nlayers
+    write(*,'(4x,1a32,i10)') 'Number of aquifer pilot points: ', ppn
+    write(*,'(4x,1a32,i10)') 'Number of aquitard pilot points ', atppn
+    write(*, '(4x,1a32,i10)') 'Number of Layers: ', nlayers
     if (modflowflag == 0) then
-      write(*, '(4x,1a32,i)') 'Number of Nodes: ', nnodes
-      write(*, '(4x,1a32,i)') 'Number of Elements: ', nelements
+      write(*, '(4x,1a32,i10)') 'Number of Nodes: ', nnodes
+      write(*, '(4x,1a32,i10)') 'Number of Elements: ', nelements
     else if (modflowflag == 1) then
       ! Perhaps "cells per layer"
-      write(*, '(4x,1a32,i)') 'Number of Cells: ', nnodes
-      write(*, '(4x,1a32,i)') 'Quasi-3D Confining Beds: ', ncbd
+      write(*, '(4x,1a32,i10)') 'Number of Cells: ', nnodes
+      write(*, '(4x,1a32,i10)') 'Quasi-3D Confining Beds: ', ncbd
     end if
     !write(*,'(4x,1a32,i)') 'Well File Length: ', wfilelen
-    write(*,'(4x,1a32,i)') 'Number of Wells: ', nwell
-    write(*,'(4x,1a32,i)') 'Number of Pilot Point Zones: ', nzones
-    write(*,'(4x,1a32,i,/)') 'Number of Geologic Zones: ', ngeozones
+    write(*,'(4x,1a32,i10)') 'Number of Wells: ', nwell
+    write(*,'(4x,1a32,i10)') 'Number of Pilot Point Zones: ', nzones
+    write(*,'(4x,1a32,i10,/)') 'Number of Geologic Zones: ', ngeozones
 
     if (count_extlpc>0)  then
       call read_external_pc(modflowflag)
@@ -333,7 +333,7 @@ program Texture2Par
 
 ! Write Output files, routines called depend on model type
     if (modflowflag == 0) then
-      if (writeNodeFiles==.true.) then
+      if (writeNodeFiles) then
         ! Only calculate if writing the file
         call calc_interbed_thickness()
         write(*,'(2x,a)') 'Writing Node Parameter Files'
@@ -353,7 +353,7 @@ program Texture2Par
         call writeIWFMgwfile()
 
     else if (modflowflag == 1) then
-      if (writeNodeFiles==.true.) then
+      if (writeNodeFiles) then
         ! Only calculate if writing the file
         call calc_interbed_thickness()
         write(*,'(2x,a)') 'Writing Cell Parameter Files'

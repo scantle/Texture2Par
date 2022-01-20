@@ -44,14 +44,13 @@ contains
     real                        :: x, y, z, pc
     real                        :: nodedists(nnear), queryxy(2)
     integer                     :: closenodes(nnear), iextl, ifile, inode, iline, idummy, ilayer, ierr
-    integer                     :: ipc(nnodes,nlayers), nextlpc(nnodes,nlayers)
-    character(1024)             :: line
-    character(:), allocatable   :: tmpstr
+    integer, allocatable        :: ipc(:,:), nextlpc(:,:)
+    character(1024)             :: line, tmpstr
 
     pcnode = NODATA
-
+    allocate(ipc(nnodes,nlayers), nextlpc(nnodes,nlayers))
     ! read ibound like ipc
-    tmpstr = trim(ipcfile)
+    tmpstr = adjustl(trim(ipcfile))
     call UPCASE(tmpstr)
     if (tmpstr(:8) == 'CONSTANT') then
       read(tmpstr(9:), *) idummy
@@ -66,7 +65,7 @@ contains
     nextlpc = 0
     print *, 'Reading External Percent Coarse Files:'
     do iextl = 1, count_extlpc
-      print *, '  '//trim(extlpcfile(iextl))
+      print *, ' - '//trim(extlpcfile(iextl))
       open(newunit=ifile, file=trim(extlpcfile(iextl)), status='old')
       read(ifile,*,iostat=ierr) line ! Header
       where(ipc==iextl)
@@ -99,15 +98,19 @@ contains
         nextlpc(inode,ilayer) = nextlpc(inode,ilayer) + 1
       end do
       ! check if all the nodes are defined externally
+      write(tmpstr, *) count(nextlpc>0)
+      write(*,'(A)'), '  - The percent coarse in '//trim(adjustl(tmpstr))//' model cells have been defined.'
       if (any(pack(nextlpc, ipc==iextl)==0)) then
-        write(*,'(A)'), 'Some model cells do not contain percent coarse in file '//trim(extlpcfile(iextl))
+        write(*,'(A)'), '    - Some model cells do not contain percent coarse in the file.'
         if (nonexistok) then
-          write(*,'(A)'), '  Percent coarse in these cells will be kriged from well logs.'
+          write(*,'(A)'), '    - Percent coarse in these cells will be kriged from well logs.'
           !where (ipc==iextl .and. nextlpc==0) ipc = 0 ! convert to kriging of no percent coarse is found in a cell
         else
           stop
         end if
       end if
+      close(ifile)
+      write(*,'(A)'), 'Some model cells do not contain percent coarse in file '//trim(extlpcfile(iextl))
     end do
     where(ipc > 0 .and. nextlpc>0)
       ! calculate the average
@@ -123,7 +126,7 @@ contains
     use GwfDisvModule,          only:  disv_cr, GwfDisvType
     use GwfDisuModule,          only:  disu_cr, GwfDisuType
     use InputOutputModule,      only:  openfile, getunit
-    use MakePar,                only:  nnodes, nlayers, nodex, nodey, nzones, botelev, topelev, elevation, aqtardtopelev, aqtardbotelev
+    use MakePar,                only:  nnodes,nlayers,nodex,nodey,nzones,botelev,topelev,elevation,aqtardtopelev,aqtardbotelev
     use MFSupport,              only:  allocate_modflow, xoff, yoff, mfrot
     use GLOBAL,                 ONLY:  NLAY, NROW, NCOL, DELR, DELC,LAYCBD
     ! dummy
@@ -142,7 +145,7 @@ contains
     elseif(mf6disv /= '') then
       open(unit=indis, file=mf6disv, status='old')
       call disv_cr(dis, name_model, indis, iout)
-    elseif(indisv6 /= '') then
+    elseif(mf6disu /= '') then
       open(unit=indis, file=mf6disu, status='old')
       call disu_cr(dis, name_model, indis, iout)
     else
@@ -178,9 +181,11 @@ contains
       DELC = dis%delc
 
       call allocate_modflow()
-      Elevation            = dis%top
-      botelev              = reshape(dis%bot, (/nnodes, nlayers/))
-      topelev(:,1)         = dis%top
+      Elevation            = reshape(dis%top2d,(/nnodes/))
+      do k = 1, NLAY
+        botelev(:,k)       = reshape(dis%bot3d(:,:,k), (/nnodes/))
+      end do
+      topelev(:,1)         = Elevation
       topelev(:,2:nlayers) = botelev(:,:(nlayers-1))
       aqtardtopelev = NODATA
       aqtardbotelev = NODATA
@@ -193,7 +198,7 @@ contains
   end subroutine
 
   subroutine write_data()
-    use MakePar, only: KhB,KvB,SsB,SyB
+    use MakePar, only: KhB,KvB,SsB,SyB,pcnode
     if (prefix/='') then
       open(newunit=ifile, file=trim(prefix)//'.hk', status='replace')
       write(ifile, '('//trim(fmtHK)//')') KhB
@@ -206,6 +211,9 @@ contains
       close(ifile)
       open(newunit=ifile, file=trim(prefix)//'.sy', status='replace')
       write(ifile, '('//trim(fmtSy)//')') SyB
+      close(ifile)
+      open(newunit=ifile, file=trim(prefix)//'.pc', status='replace')
+      write(ifile, '(20f10.6)') pcnode
       close(ifile)
     end if
   end subroutine

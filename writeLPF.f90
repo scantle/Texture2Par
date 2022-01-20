@@ -81,7 +81,7 @@
       WRITE(OUT,fmt(1)) (LAYAVG(K),K=1,NLAY)
       WRITE(OUT,fmt(2)) (CHANI(K),K=1,NLAY)
       WRITE(OUT,fmt(1)) (LAYVKA(K),K=1,NLAY)
-      if (gwftype=='UPW') then
+      if (gwftyp=='UPW') then
         WRITE(OUT,fmt(1)) (0,K=1,NLAY)
       else
         WRITE(OUT,fmt(1)) (LAYWET(K),K=1,NLAY)
