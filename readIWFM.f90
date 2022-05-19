@@ -214,6 +214,7 @@ end subroutine readIWFM
 SUBROUTINE inputwells_IWFM(readzones)
     use MakePar
     use kd_tree
+    use str_utls
     use errorhandle
     implicit none
 
@@ -320,6 +321,7 @@ end subroutine inputwells_IWFM
 !-----------------------------------------------------------------------------!
 subroutine readNodeGeoZones_IWFM()
   use MakePar
+  use str_utls
   implicit none
 !-----------------------------------------------------------------------------!
 ! Added 7/1/2019 to facilitate limiting percent coarse interpolation to wells

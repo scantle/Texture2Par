@@ -110,6 +110,7 @@ module MFSupport
 SUBROUTINE inputwells_modflow(readzones)
     use MakePar
     use kd_tree
+    use str_utls
     use errorhandle
     implicit none
 
@@ -225,6 +226,7 @@ end subroutine inputwells_modflow
 subroutine readNodeGeoZones_modflow()
   use GLOBAL, ONLY : IUNSTR, NLAY, NROW, NCOL
   use MakePar
+  use str_utls
   use errorhandle
   implicit none
 !-----------------------------------------------------------------------------!

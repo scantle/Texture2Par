@@ -4,6 +4,7 @@ program Texture2Par
   use IWFM
   use Krige
   use errorhandle
+  use str_utls
   use MFSupport
   implicit none
 
@@ -62,9 +63,9 @@ program Texture2Par
     call ReadToSymbol(10, '*')
     
     ! Check if MODFLOW or IWFM
-    if (index(line,'IWFM')) then
+    if (index(to_upper(trim(line)),'IWFM')) then
       modflowflag = 0
-    else if (index(line, 'MODFLOW')) then
+    else if (index(to_upper(trim(line)), 'MODFLOW')) then
       modflowflag = 1
     else
       write(*,'(a)') 'Error - Invalid Model Type. Stopping.'
@@ -95,7 +96,7 @@ program Texture2Par
     ! Node output setting
     call ReadToSymbol(10, '*')
     read(10,*) line
-    if (trim(line)=='True') writeNodeFiles = .true.
+    if (to_upper(trim(line))=='TRUE') writeNodeFiles = .true.
     
     ! Variogram Settings
     call ReadToSymbol(10, '*')
@@ -114,6 +115,9 @@ program Texture2Par
     read(10,*) KHp
     read(10,*) KVp
     read(10,*) Stp
+    ! Handle p==0 - power-law function is discountinuous at 0
+    if (KHp == 0.0) KHp = tiny(KHp)
+    if (KVp == 0.0) KVp = tiny(KVp)
     
     ! Aquifer Pilot Point section
     ! TODO: Add descriptive error when not all pilot point parameters are present
@@ -177,7 +181,7 @@ program Texture2Par
     
     ! Read Node Zone file, unless zonefile was set to NONE
     if (modflowflag == 0) then
-      if (trim(zonefile)=='NONE'.or.trim(zonefile)=='none') then
+      if (to_upper(trim(zonefile))=='NONE') then
         zoneflag = 0
       else
         ! External file
@@ -185,7 +189,7 @@ program Texture2Par
         call inputZones_IWFM()
       end if
     else if (modflowflag == 1) then
-      if (trim(mfzonename)=='NONE'.or.trim(mfzonename)=='none') then
+      if (to_upper(trim(mfzonename))=='NONE') then
         zoneflag = 0
       else
         ! Translate MODFLOW zones file to node arrays
@@ -204,7 +208,7 @@ program Texture2Par
     end if
     
     ! Read geologic units file
-    if (trim(geozonefile)=='NONE'.or.trim(geozonefile)=='none') then
+    if (to_upper(trim(geozonefile))=='NONE') then
       ! No geologic zones
       ! perhaps a different subroutine should be used instead of dummy values?
       geoflag = 0
