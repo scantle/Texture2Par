@@ -14,7 +14,7 @@ MODULE MakePar
                                  max_zones = 100, &                            ! Maximum number of zones (used for both pilot point and geologic)
                                  USE_IDW = 0, &
                                  max_nodeid=5E6                                ! Maximum nodeid value (to prevent enormous array allocation)
-    real, parameter           :: NODATA=-9999.0
+    real, parameter           :: NODATA=-999.0
                               
     real,allocatable          :: wellelevbot(:,:), ssb(:,:), pcwellelem(:,:), &
                                  xwell(:), wellaqtardelevtop(:,:), &
@@ -281,7 +281,7 @@ SUBROUTINE interpolate()
           if (count > 0) then                               ! LS sum2 > 0 
             PcNode(ilay, inode) = sum1 / sum2
           else
-            PcNode(ilay, inode) = -9999.0
+            PcNode(ilay, inode) = -999.0
             write(*,'(4x,a,i8)') 'No well data for node ', inode
           end if
         end do
@@ -416,7 +416,7 @@ SUBROUTINE interpolate_aqtard()
             sum2 = 0.0
             count = 0
             do iwell = 1, nwell
-              if (PcWellAqtardElem(iwell, ilay) > -1e-5) then                   ! PcWellAqtardElem is -9999 if blank
+              if (PcWellAqtardElem(iwell, ilay) > -1e-5) then                   ! PcWellAqtardElem is -999 if blank
                 count = count + 1
                 weight = (((Xwell(Iwell) - nodex(inode)) ** 2 &
                          + (Ywell(Iwell) - nodey(inode)) ** 2) ** 0.5) ** 2
@@ -428,7 +428,7 @@ SUBROUTINE interpolate_aqtard()
             if (count > 0) then
               pcnode_aqtard(ilay, inode) = sum1 / sum2
             else
-              pcnode_aqtard(ilay, inode) = -9999.0
+              pcnode_aqtard(ilay, inode) = -999.0
               write(*,'(4x,a,i8)') 'No well data for node ', inode
             end if
           else
