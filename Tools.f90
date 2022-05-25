@@ -112,6 +112,31 @@ MODULE errorhandle
       end if
 
     end subroutine iostathandler
+  
+  !-----------------------------------------------------------------------------!
+    
+    subroutine iomsghandler(ierr, cerr)
+      implicit none
+  !-----------------------------------------------------------------------------!
+  ! Handles some simple errors returned by iostat during I/O operations
+  ! Error codes may be specific to the Intel Fortran Compiler.
+  ! STOPS IF IT FINDS AN ERROR
+  !
+  ! Error Code Source: https://software.intel.com/en-us/node/678472
+  !
+  ! Author: Leland Scantlebury, SSP&A
+  !-----------------------------------------------------------------------------!
+
+      integer, intent(in)        :: ierr
+      character(256),intent(in)  :: cerr
+
+  ! Only does something if iostat is not zero
+      if (ierr /= 0) then
+        write(*, '(2a)') 'Error - ', cerr
+        stop
+      end if
+
+    end subroutine iomsghandler
 
 !-----------------------------------------------------------------------------!
 

@@ -37,6 +37,7 @@ program Texture2Par
                                   ppatdKF(:), ppatAnisoC(:), ppatAnisoF(:)
     integer,allocatable        :: ppZone(:), ppatZone(:)
     character(150)             :: jnk,fpath_line
+    character(256)             :: cerr
     character(1000)            :: line
     logical                    :: writenodefiles
     
@@ -52,8 +53,8 @@ program Texture2Par
     writeNodeFiles = .false.
     write(*,'(/,2x,a)') 'Reading input file'
     open(10, file='Texture2Par.in', status='old', action='read', &
-         iostat = ierr)
-    call iostathandler(ierr, 'Texture2Par.in')
+         iostat = ierr,  iomsg=cerr)
+    call iomsghandler(ierr, cerr)
     
     ! Read in model type and well file
     call ReadToSymbol(10, '*')
