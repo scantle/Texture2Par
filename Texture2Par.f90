@@ -160,8 +160,8 @@ program Texture2Par
     end if
     
     ! Pre-read Well file for file length, nwells, maxWPoints
-    open(10, file = trim(wellfile), status='old', iostat = ierr)
-    call iostathandler(ierr, trim(wellfile))
+    open(10, file = trim(wellfile), status='old', iostat = ierr,  iomsg=cerr)
+    call iomsghandler(ierr, cerr)
     read(10,*)                                    ! Header
     ioerr = 0
     wfilelen = 0

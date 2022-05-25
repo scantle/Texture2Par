@@ -39,13 +39,14 @@ subroutine readIWFM()
   integer                  :: ls(100), rs(100)
   real                     :: fact
   character(150)           :: jnk,currfile
+  character(256)           :: cerr
   
   ! Read pre-processor file
 !    write(*,'(2x,a)') 'Reading IWFM pre-processor file...'
     !currfile = adjustl(trim(prefolder)) // adjustl(trim(preSimFile))
     call fpath_join(prefolder, presimfile, currfile)
-    open(12, file=trim(currfile), status='old', action='read', iostat=ierr)
-    call iostathandler(ierr, currfile)
+    open(12, file=trim(currfile), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
     do i = 1,4
       call readOneLine(preSimFile, 12, cline)
     end do
@@ -58,8 +59,8 @@ subroutine readIWFM()
 !    write(*,'(2x,a)') 'Reading IWFM node file...'
     !currfile = adjustl(trim(prefolder)) // adjustl(trim(nodefile))
     call fpath_join(prefolder, nodefile, currfile)
-    open(12, file=trim(currfile), status='old', action='read', iostat=ierr)
-    call iostathandler(ierr, currfile)
+    open(12, file=trim(currfile), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
     call readOneLine(nodefile,12,cline)
     call multisplit(ifail,1,ls,rs,cline)
     call ifailhandler(ifail, nodefile, cline)
@@ -93,8 +94,8 @@ subroutine readIWFM()
 !    write(*,'(2x,a)') 'Reading IWFM elements file...'
     !currfile = adjustl(trim(prefolder)) // adjustl(trim(elementfile))
     call fpath_join(prefolder, elementfile, currfile)
-    open(12, file=trim(currfile), status='old', action='read', iostat=ierr)
-    call iostathandler(ierr, currfile)
+    open(12, file=trim(currfile), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
     do
       call readOneLine(elementfile,12,cline)
       !cline= adjustl(trim(cline))
@@ -146,8 +147,8 @@ subroutine readIWFM()
 !    write(*,'(2x,a)') 'Reading IWFM stratigraphy file'
     !currfile = adjustl(trim(prefolder)) // adjustl(trim(stratfile))
     call fpath_join(prefolder, stratfile, currfile)
-    open(12, file=trim(currfile), status='old', action='read', iostat=ierr)
-    call iostathandler(ierr, currfile)
+    open(12, file=trim(currfile), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
     call readOneLine(nodefile,12,cline)
     call multisplit(ifail,1,ls,rs,cline)
     call ifailhandler(ifail, stratfile, cline)
@@ -200,8 +201,8 @@ subroutine readIWFM()
 ! Read simulation file
 !    write(*,'(2x,a)') 'Reading simulation file'
     currfile = adjustl(trim(simfile))
-    open(12, file=trim(currfile), status='old', action='read', iostat=ierr)
-    call iostathandler(ierr, currfile)
+    open(12, file=trim(currfile), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
     do i= 1,4
       call readOneLine(simfile,12,cline)
     end do
@@ -235,6 +236,7 @@ SUBROUTINE inputwells_IWFM(readzones)
     real                     :: nodedists(nnear), queryxy(2)
     character(30)            :: wellname, geobylayer(nlayers), &
                                 wellgeonames(max_zones)
+    character(256)           :: cerr
     logical                  :: newzone
     
     ! Initialize (to prevent issues where compiler does not initilize to 0)
@@ -242,8 +244,8 @@ SUBROUTINE inputwells_IWFM(readzones)
 
     ! Read well file
     write(*,'(2x,2a)') 'Reading Well File ', trim(wellfile)
-    open(10, file =trim(wellfile), status='old', action='read', iostat=ierr)
-    call iostathandler(ierr, trim(wellfile))
+    open(10, file =trim(wellfile), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
     read(10,*)                        ! Header
     
     if (readzones == 0) then
@@ -338,6 +340,7 @@ subroutine readNodeGeoZones_IWFM()
   
   integer                  :: nid, node, i, ilay, izone, ierr
   character(30)            :: geobylayer(nlayers)
+  character(256)           :: cerr
   logical                  :: newzone, newzone_lay
   
   ! Initialize
@@ -345,8 +348,8 @@ subroutine readNodeGeoZones_IWFM()
   ngeozones_lay = 0
   
   write(*,'(2x,2a)') 'Reading Model Geologic Zone File ', trim(geozonefile)
-  open(10, file =trim(geozonefile), status='old', action='read', iostat=ierr)
-  call iostathandler(ierr, trim(geozonefile))
+  open(10, file =trim(geozonefile), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
   read(10, *) ! Header
   
   do i=1, nnodes
@@ -388,12 +391,13 @@ subroutine inputZones_IWFM()
 !-----------------------------------------------------------------------------!    
     integer                :: i, nid, node, zone, ierr
     logical                :: newzone
+    character(256)         :: cerr
     
     ! Set
     nzones = 0
     
-    open(10, file=trim(zonefile), status='old', action='read', iostat=ierr)
-    call iostathandler(ierr, trim(zonefile))
+    open(10, file=trim(zonefile), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
     read(10,*)   ! Header
     do while (ierr == 0)
       read(10,*,iostat=ierr) nid, zone

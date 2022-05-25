@@ -131,6 +131,7 @@ SUBROUTINE inputwells_modflow(readzones)
     real                     :: nodedists(nnear), queryxy(2)
     character(30)            :: wellname, geobylayer(nlayers), &
                                 wellgeonames(max_zones)
+    character(265)           :: cerr
     logical                  :: newzone
     
     ! Initialize (to prevent issues where compiler does not initilize to 0)
@@ -138,8 +139,8 @@ SUBROUTINE inputwells_modflow(readzones)
 
     ! Read well file
     write(*,'(2x,2a)') 'Reading Well File ', trim(wellfile)
-    open(10, file =trim(wellfile), status='old', action='read', iostat=ierr)
-    call iostathandler(ierr, trim(wellfile))
+    open(10, file =trim(wellfile), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
     read(10,*)                        ! Header
     
     if (readzones == 0) then
@@ -243,6 +244,7 @@ subroutine readNodeGeoZones_modflow()
   
   integer                  :: node, i, ilay, izone, ierr, row, col
   character(30)            :: geobylayer(nlayers)
+  character(256)           :: cerr
   logical                  :: newzone, newzone_lay
   
   ! Initialize
@@ -250,8 +252,8 @@ subroutine readNodeGeoZones_modflow()
   ngeozones_lay = 0
   
   write(*,'(2x,2a)') 'Reading Model Geologic Zone File ', trim(geozonefile)
-  open(10, file =trim(geozonefile), status='old', action='read', iostat=ierr)
-  call iostathandler(ierr, trim(geozonefile))
+  open(10, file =trim(geozonefile), status='old', action='read', iostat=ierr, iomsg=cerr)
+  call iomsghandler(ierr, cerr)
   read(10, *) ! Header
 
   do i=1, nnodes
@@ -491,7 +493,7 @@ end subroutine writeCellFile
     implicit none
     
     integer                :: ierr, upwflag
-    character(300)         :: fname
+    character(300)         :: fname, cerr
     logical                :: lop
     
     write(*,'(2x,2(a,3a))') 'Reading temp ', gwftyp, ', writing new ', gwftyp
@@ -501,16 +503,18 @@ end subroutine writeCellFile
     if (lop) close(IUNIT(layfile))
     
     ! Initialize MODFLOW LPF values with template LPF file (user provided)
-    open(IUNIT(layfile),file=trim(layfiletemp),iostat=ierr,status='old')
-    call iostathandler(ierr,layfiletemp)
+    open(IUNIT(layfile),file=trim(layfiletemp),iostat=ierr,status='old',&
+         iomsg=cerr)
+    call iomsghandler(ierr, cerr)
     upwflag = 0
     if (gwftyp=='UPW') upwflag = 1
     CALL GWF2BCFU1AR(IUNIT(1),IUNIT(22),IUNIT(layfile),IUNIT(64), upwflag)
     close(IUNIT(layfile))
     
     ! Re-open actual LPF file and OVERWRITE
-    open(IUNIT(layfile),file=trim(fname),iostat=ierr,status='replace')
-    call iostathandler(ierr,fname)
+    open(IUNIT(layfile),file=trim(fname),iostat=ierr,status='replace',&
+         iomsg=cerr)
+    call iomsghandler(ierr, cerr)
     call writeGWFP(IUNIT(layfile))
     close(IUNIT(layfile))
     
