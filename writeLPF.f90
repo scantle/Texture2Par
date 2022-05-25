@@ -80,7 +80,8 @@
       WRITE(OUT,fmt(1)) (LAYTYP(K),K=1,NLAY)
       WRITE(OUT,fmt(1)) (LAYAVG(K),K=1,NLAY)
       WRITE(OUT,fmt(2)) (CHANI(K),K=1,NLAY)
-      WRITE(OUT,fmt(1)) (LAYVKA(K),K=1,NLAY)
+      !WRITE(OUT,fmt(1)) (LAYVKA(K),K=1,NLAY) 
+      WRITE(OUT,fmt(1)) (0,K=1,NLAY) ! LAYVKA Forced to 0 - LS, VB 5/24/2022
       if (gwftype=='UPW') then
         WRITE(OUT,fmt(1)) (0,K=1,NLAY)
       else

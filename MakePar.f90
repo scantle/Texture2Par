@@ -31,8 +31,8 @@ MODULE MakePar
                                  kvb_aqtard(:,:), dkf(:), &
                                  Thick(:,:), AqTardThick(:,:), &
                                  nodexy(:,:), atnAnisoC(:), atnAnisoF(:), &
-                                 interbed_thick(:,:)
-    integer,allocatable       :: wellelem(:), pcwellzone(:,:), numzone(:), &
+                                 interbed_thick(:,:), pcwellzone(:,:)
+    integer,allocatable       :: wellelem(:), numzone(:), &
                                  elements(:,:), nodeelem(:,:), nnodeelem(:), &
                                  nodezone(:), ngeozones_lay(:), nodeid(:), &
                                  nodebyid(:)

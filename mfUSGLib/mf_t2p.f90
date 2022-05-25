@@ -20,7 +20,7 @@
       character*200             :: namfname
       integer,parameter         :: mf_iin=141,  &
                                    niunit=100,  &
-                                   maxunit=199
+                                   maxunit=1000
       character*80              :: headng(2)
 
       ! versioning (from mfusg.f)
