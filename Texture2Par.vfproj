@@ -54,7 +54,6 @@
 		<File RelativePath=".\KDTree.f90"/>
 		<File RelativePath=".\MakePar.f90"/>
 		<File RelativePath=".\mfsupport.f90"/>
-		<File RelativePath=".\mfUSGLib\Debug\mfUSGLib.lib"/>
 		<File RelativePath=".\readIWFM.f90"/>
 		<File RelativePath=".\spkrige.f90"/>
 		<File RelativePath=".\Texture2Par.f90"/>
