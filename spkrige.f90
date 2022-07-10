@@ -1,6 +1,6 @@
 MODULE Krige
   implicit none
-  
+
     SAVE
     integer, parameter         :: maxrot = 1, ind = 1, &                       ! one matrix
                                   ang2=0.0, ang3=0.0                           ! no z-dimension (2D)
@@ -12,21 +12,21 @@ MODULE Krige
     ! Note: Z-values are all set to zero. There is no interpolation done in the
     !       z-direction since well pc values and pilot points effectively
     !       have no z-value
-    
+
     ! Note: number of rotation matricies is currently hardcoded to 1 (maxrot)
     !    (more than that number would need to be changed to implement multiple)
 
   CONTAINS
-  
+
   !-----------------------------------------------------------------------------!
 subroutine spkrige(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val)
     implicit none
 !-----------------------------------------------------------------------------!
 !                       Simple Point Kriging Subroutine
 !                     ***********************************
-!    
-! Requires: PSET, decomp, variogram, doolittle    
-!    
+!
+! Requires: PSET, decomp, variogram, doolittle
+!
 ! Arguments:
 !   nobs (int) number of observations
 !   ngrid (int) number of grid points
@@ -67,7 +67,7 @@ subroutine spkrige(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val)
       write(*,'(2x,a)') 'This error is usually caused by co-located values.'
       stop
     end if
-    
+
     ! Loop over each grid point
     do i = 1, ngrid
       r = 0.d0
@@ -100,9 +100,9 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
 !-----------------------------------------------------------------------------!
 !                       Simple Point Kriging Subroutine
 !                     ***********************************
-!    
-! Requires: PSET, decomp, variogram, doolittle    
-!    
+!
+! Requires: PSET, decomp, variogram, doolittle
+!
 !
 !-----------------------------------------------------------------------------!
 
@@ -115,7 +115,7 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
     real, allocatable        :: p(:), r(:), w(:)
     real, intent(in)         :: gx(ngrid), gy(ngrid), obsval(nobs)
     real, intent(inout)      :: kriged_val(ngrid)
-    
+
     type(tree_master_record), pointer, intent(in) :: obstree
 
     ! If there's not many datapoints
@@ -125,11 +125,11 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
     else
       usenear = nnear
     end if
-    
+
     ntot = usenear + 1              ! +1 for ordinary
     maxpt = ntot * (ntot + 1) / 2
     allocate(p(maxpt),r(ntot),w(ntot),id(ntot))
-    
+
     ! Loop over each grid point
     do i = 1, ngrid
       ! Get nnear closest observation points
@@ -139,7 +139,7 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
         obsx(j) = obstree%THE_DATA(closeobs(j),1)
         obsy(j) = obstree%THE_DATA(closeobs(j),2)
       end do
-      
+
       ! Reset values, matricies for new grid point
       p = 0.d0
       id = 0
@@ -154,19 +154,19 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
       r = 0.d0
       w = 0.d0
       r(ntot) = 1.0d0              ! commented = simple, uncommented = ordinary
-      
+
       ! Loop over observations
       do n = 1, usenear
         call variogram(gx(i),gy(i),0.0d0,obsx(n),obsy(n),0.0d0,value)
         r(n) = value
       end do
       call doolittle(r,p,id,w,ntot)
-      
+
       ! Correct for negative weights, if necessary
       if (minval(w(1:usenear)) < 0.0d0) then
         call ok_negative_correction(w, usenear)
       end if
-      
+
       value = 0.0d0
       zkrig = 0.0d0
       do n=1, usenear
@@ -175,7 +175,7 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
       zkrig = zkrig + value
       kriged_val(i) = zkrig
     end do
-    
+
     deallocate(p, r, w, id)
 
 end subroutine spkrige_tree
@@ -189,7 +189,7 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, &
 !-----------------------------------------------------------------------------!
 !                       Simple Point Kriging Subroutine
 !                     ***********************************
-!    
+!
 ! Groups are set as CHARACTERS(30)
 !-----------------------------------------------------------------------------!
 
@@ -203,7 +203,7 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, &
     real, intent(in)         :: gx(ngrid), gy(ngrid), obsval(nobs)
     real, intent(inout)      :: kriged_val(ngrid)
     character(30),intent(in) :: ggroup(ngrid), targetgroup
-    
+
     type(tree_master_record), pointer, intent(in) :: obstree
 
     ! If there's not many datapoints
@@ -214,20 +214,20 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, &
     else
       usenear = nnear
     end if
-    
+
     ntot = usenear + 1              ! +1 for ordinary
     maxpt = ntot * (ntot + 1) / 2
     allocate(p(maxpt),r(ntot),w(ntot),id(ntot))
-    
+
     ! Loop over each grid point
     do i = 1, ngrid
-      
+
       ! Skip if grid point not in group
       if (ggroup(i) /= targetgroup) then
         !kriged_val(i) = nodataval
         cycle
       end if
-      
+
       ! Get nnear closest observation points
       queryxy = (/ gx(i), gy(i) /)
       call n_nearest_to(obstree, queryxy, usenear, closeobs, obsdists)
@@ -235,7 +235,7 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, &
         obsx(j) = obstree%THE_DATA(closeobs(j),1)
         obsy(j) = obstree%THE_DATA(closeobs(j),2)
       end do
-      
+
       ! Reset values, matricies for new grid point
       p = 0.d0
       id = 0
@@ -250,19 +250,19 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, &
       r = 0.d0
       w = 0.d0
       r(ntot) = 1.0d0              ! commented = simple, uncommented = ordinary
-      
+
       ! Loop over observations
       do n = 1, usenear
         call variogram(gx(i),gy(i),0.0d0,obsx(n),obsy(n),0.0d0,value)
         r(n) = value
       end do
       call doolittle(r,p,id,w,ntot)
-      
+
       ! Correct for negative weights, if necessary
       if (minval(w(1:usenear)) < 0.0d0) then
         call ok_negative_correction(w, usenear)
       end if
-      
+
       value = 0.0d0
       zkrig = 0.0d0
       do n=1, usenear
@@ -271,7 +271,7 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, &
       zkrig = zkrig + value
       kriged_val(i) = zkrig
     end do
-    
+
     deallocate(p, r, w, id)
 
 end subroutine spkrige_tree_group
@@ -313,7 +313,7 @@ subroutine spkrige_group(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val, &
       write(*,'(2x,a)') 'This error is usually caused by co-located pilot points.'
       stop
     end if
-    
+
     ! Loop over each grid point
     do i = 1, ngrid
       ! Skip if grid point not in group
@@ -321,7 +321,7 @@ subroutine spkrige_group(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val, &
         !kriged_val(i) = nodataval
         cycle
       end if
-      
+
       r = 0.d0
       w = 0.d0
       r(ntot) = 1.0d0              ! commented = simple, uncommented = ordinary
@@ -331,12 +331,12 @@ subroutine spkrige_group(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val, &
         r(n) = value
       end do
       call doolittle(r,p,id,w,ntot)
-      
+
       ! Correct for negative weights, if necessary
       if (minval(w(1:nobs)) < 0.0d0) then
         call ok_negative_correction(w, nobs)
       end if
-      
+
       value = 0.0d0
       zkrig = 0.0d0
       do n=1, nobs
@@ -354,13 +354,13 @@ end subroutine
 !-----------------------------------------------------------------------------!
   subroutine setanis(a_hmin, a_vert)
     implicit none
-    
+
     real,intent(in)        :: a_hmin, a_vert
-    
+
     ! Sets anis1, anis2 ratios based on ranges aa1, aa2
     anis1 = a_hmin/range
     anis2 = a_vert/range
-    
+
   end subroutine setanis
 !-----------------------------------------------------------------------------!
 
@@ -373,27 +373,27 @@ end subroutine
 ! Weights in Ordinary Kriging" and assigns negative weights to 0 and normalizes
 ! the weight sum back to one
 !-----------------------------------------------------------------------------!
-    
+
     real, intent(inout)    :: wts(nwts)
     integer, intent(in)    :: nwts
     integer                :: i
     real                   :: wtsum
-    
+
     ! Loop over weights, correct negative to positive, add up sum
     wtsum = 0.0
     do i=1, nwts
       if (wts(i) < 0.0d0) wts(i) = 0.0d0
       wtsum = wtsum + wts(i)
     end do
-    
+
     ! Normalize weight sum back to unity
     do i=1, nwts
       wts(i) = wts(i) / wtsum
     end do
-  
+
   end subroutine ok_negative_correction
 !-----------------------------------------------------------------------------!
-  
+
 !-----------------------------------------------------------------------------!
       subroutine setrot()
       implicit none
@@ -593,7 +593,7 @@ subroutine decomp_debug(p,id,ntot,plen)
         pause
         stop
       end if
-       
+
       return
       end subroutine decomp_debug
 !-----------------------------------------------------------------------------!
@@ -605,9 +605,9 @@ subroutine variogram(x1,y1,z1,x2,y2,z2,value)
 !      common block/vario/slope,sill,a
       real           :: x1,y1,z1,x2,y2,z2,value,h,sqdist,tmp
       real,parameter :: epsilon=1.e-10
-      
+
       h = sqdist(x1,y1,z1,x2,y2,z2,ind,MAXROT,rotmat)
-      
+
   ! Check for "zero" distance, return with maximum value
       if (h < epsilon) then
         value = nugget + sill
@@ -674,7 +674,7 @@ end subroutine doolittle
 !-----------------------------------------------------------------------------!
 
   END MODULE Krige
-  
+
 !-----------------------------------------------------------------------------!
 real*8 function sqdist(x1,y1,z1,x2,y2,z2,ind,MAXROT,rotmat)
       implicit none
@@ -692,7 +692,7 @@ real*8 function sqdist(x1,y1,z1,x2,y2,z2,ind,MAXROT,rotmat)
 !   ind              The matrix indicator to initialize
 !   MAXROT           The maximum number of rotation matrices dimensioned
 !   rotmat           The rotation matrices
-!                  
+!
 !
 ! OUTPUT VARIABLES:
 !   sqdist           The squared distance accounting for the anisotropy

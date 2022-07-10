@@ -1,6 +1,6 @@
 module MFSupport
   implicit none
-  
+
   SAVE
   real                      :: xoff, yoff, mfrot
   real,allocatable          :: mftop(:,:,:), mfbot(:,:,:), locx(:), locy(:)
@@ -9,27 +9,27 @@ module MFSupport
   character(10)             :: mfzonename
   character(200)            :: layfiletemp
   logical                   :: lop
-  
+
   CONTAINS
 
 !-----------------------------------------------------------------------------!
   subroutine read_modflow(namfile)
-    
+
 ! MODFLOW globals to import
     use GLOBAL, ONLY : IUNSTR,NLAY,NROW,NCOL,DELR,DELC,TOP,BOT,LAYCBD,IUNIT
     use PARAMMODULE, ONLY: NMLTAR, NZONAR
     use GWFBCFMODULE, ONLY: VKA, SC1, SC2
-    
+
 ! Texture2Par modules
     use MakePar
     use errorhandle
-    
+
     implicit none
-    
+
 ! Local variables
     character(200)         :: namfile
     integer                :: ierr, i, j, k
-    
+
 ! Open modflow files
     call init_modflow_usgs(namfile,ierr,mfmaxunit)
     call iostathandler(ierr)
@@ -43,7 +43,7 @@ module MFSupport
     nnodes = nrow * ncol
     nlayers = nlay
     nzones = NZONAR
-    
+
 ! Handle MODFLOW settings
     ! UPW or LPF (or none)
     layfile = 0
@@ -56,10 +56,10 @@ module MFSupport
       gwftyp = 'UPW'
     end if
     if (layfile==0) call NotInNam('LPF or UPW')
-    
+
 ! Allocate
     call allocate_modflow()
-    
+
 ! Get Top & Bot arrays into node format
     ncbd = 0
     Elevation(1:nnodes) = top(1:nnodes)
@@ -77,19 +77,19 @@ module MFSupport
         aqtardbotelev(1:nnodes,k) = NODATA
       end if
     end do
-    
+
   end subroutine read_modflow
 !-----------------------------------------------------------------------------!
-  
+
 !-----------------------------------------------------------------------------!
   subroutine calcCellCenters_global()
     use GLOBAL, ONLY : NROW, NCOL, DELR, DELC
     use MakePar
     ! Calculates cell centers in global coordinates
-    
+
     integer                :: i, j, n
     real                   :: xbase, ybase
-    
+
     ybase = sum(delc)
     do i=1, nrow
       xbase = 0.0
@@ -102,8 +102,8 @@ module MFSupport
       end do
       ybase = ybase - delc(i)
     end do
-    
-  end subroutine calcCellCenters_global  
+
+  end subroutine calcCellCenters_global
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
@@ -122,7 +122,7 @@ SUBROUTINE inputwells_modflow(readzones)
 ! Well GeoZones added 7/3/2019 -LS
 !   Argument "readzones" is a flag for whether GeoZones exist (1 = yes, 0 = no)
 !-----------------------------------------------------------------------------!
-    
+
     integer, parameter       :: nnear=4
     integer                  :: i, iwell, izone, igeo, ilay, readzones, &
                                 currwellelem, node, ierr, nwellgeozones
@@ -133,7 +133,7 @@ SUBROUTINE inputwells_modflow(readzones)
                                 wellgeonames(max_zones)
     character(265)           :: cerr
     logical                  :: newzone
-    
+
     ! Initialize (to prevent issues where compiler does not initilize to 0)
     nwellgeozones = 0
 
@@ -142,7 +142,7 @@ SUBROUTINE inputwells_modflow(readzones)
     open(10, file =trim(wellfile), status='old', action='read', iostat=ierr, iomsg=cerr)
     call iomsghandler(ierr, cerr)
     read(10,*)                        ! Header
-    
+
     if (readzones == 0) then
       ! No GeoZones
       nwellgeozones = 1
@@ -171,11 +171,11 @@ SUBROUTINE inputwells_modflow(readzones)
             wellaqtardelevtop(iwell,1:nlayers) = aqtardtopelev(node,1:nlayers)
             wellaqtardelevbot(iwell,1:nlayers) = aqtardbotelev(node,1:nlayers)
           end if
-        
+
         end if
         Zwell(iwell, izone) = tz - td
       end do
-      
+
     else
       ! GeoZones
       do i=1, wfilelen
@@ -188,7 +188,7 @@ SUBROUTINE inputwells_modflow(readzones)
           Xwell(iwell) = tx
           Ywell(iwell) = ty
           Zland(iwell) = tz
-        
+
           ! Well geologic zones
           wellgeozones(iwell,:) = geobylayer(:)
           ! Counts geozones for reporting and comparing
@@ -196,7 +196,7 @@ SUBROUTINE inputwells_modflow(readzones)
             call strtracker(nwellgeozones, geobylayer(ilay), &
                   wellgeonames, newzone)
           end do
-        
+
           ! Use node tree to find closest node
           queryxy(1) = tx
           queryxy(2) = ty
@@ -211,13 +211,13 @@ SUBROUTINE inputwells_modflow(readzones)
             wellaqtardelevtop(iwell,1:nlayers) = aqtardtopelev(node,1:nlayers)
             wellaqtardelevbot(iwell,1:nlayers) = aqtardbotelev(node,1:nlayers)
           end if
-        
+
         end if
         Zwell(iwell, izone) = tz - td
       end do
     end if
     close(10)
-    
+
     !write(*,'(4x,a)') 'Well file read successfully.'
 
 end subroutine inputwells_modflow
@@ -235,22 +235,22 @@ subroutine readNodeGeoZones_modflow()
 ! and cells of the same assigned geologic unit. File is assumed to have
 ! a heading and row, col followed by the geologic zones of each
 ! corresponding layer.
-!  
+!
 !
 ! Requires: strtracker (see Tools.f90) to increment zone arrays & counters
 !
 ! Author: Leland Scantlebury of S.S. Papadopulos & Associates
 !-----------------------------------------------------------------------------!
-  
+
   integer                  :: node, i, ilay, izone, ierr, row, col
   character(30)            :: geobylayer(nlayers)
   character(256)           :: cerr
   logical                  :: newzone, newzone_lay
-  
+
   ! Initialize
   ngeozones = 0
   ngeozones_lay = 0
-  
+
   write(*,'(2x,2a)') 'Reading Model Geologic Zone File ', trim(geozonefile)
   open(10, file =trim(geozonefile), status='old', action='read', iostat=ierr, iomsg=cerr)
   call iomsghandler(ierr, cerr)
@@ -272,7 +272,7 @@ subroutine readNodeGeoZones_modflow()
       end if
     end do
   end do
-  
+
   close(10)
 
 end subroutine readNodeGeoZones_modflow
@@ -284,20 +284,20 @@ end subroutine readNodeGeoZones_modflow
     use PARAMMODULE, ONLY: NZONAR, IZON, ZONNAM
     use MakePar
     !
-    
+
     integer                :: i, j, k, zone, namindex
     logical                :: newzone
-    
+
     ! Use MODFLOW Zone array specified in input file to fill zones and
     ! nodezones arrays defined in MakePar
     nzones = 0
-    
+
     do i=1, nzonar
       if (trim(ZONNAM(i))==trim(mfzonename)) then
         namindex = i
       end if
     end do
-    
+
     ! IZON is (NCOL,NROW,NZONAR))
     do i=1, nrow
       do j=1, ncol
@@ -317,19 +317,19 @@ end subroutine readNodeGeoZones_modflow
       end do
     end do
 
-    
-  end subroutine inputZones_modflow  
+
+  end subroutine inputZones_modflow
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
 integer function get_well_cell(x, y, closenodes, nnear) result(cell)
   implicit none
-  
+
   real, intent(in)         :: x, y
   integer, intent(in)      :: nnear, closenodes(nnear)
   integer                  :: i
   real                     :: xl, yl, xmin, xmax, ymin, ymax
-  
+
   cell = 0
   ! Check each cell center to see if well belongs
   do i=1, nnear
@@ -340,7 +340,7 @@ integer function get_well_cell(x, y, closenodes, nnear) result(cell)
       exit
     end if
   end do
-  
+
   if (cell == 0) then
     ! Maybe this should just be a warning?
     write(*,*) 'ERROR well not found in a MODFLOW cell'
@@ -355,64 +355,64 @@ end function get_well_cell
   subroutine getCellBounds_local(node, xmin, xmax, ymin, ymax)
     use MakePar
     use GLOBAL, ONLY : DELR, DELC
-    
+
     integer,intent(in)     :: node
     real,intent(out)       :: xmin,xmax,ymin,ymax
     integer                :: row, col
-    
+
     call node2rowcol(node, row, col)
-    
+
     xmin = locx(node) - 0.5 * delr(col)
     xmax = locx(node) + 0.5 * delr(col)
     ymin = locy(node) - 0.5 * delc(row)
     ymax = locy(node) + 0.5 * delc(row)
-    
-  end subroutine getCellBounds_local  
+
+  end subroutine getCellBounds_local
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
   subroutine getCellBounds_global(node, xmin, xmax, ymin, ymax)
     use MakePar
     use GLOBAL, ONLY : DELR, DELC
-    
+
     ! Not compatible with rotated grids - not currently used in Texture2Par
-    
+
     integer,intent(in)     :: node
     real,intent(out)       :: xmin,xmax,ymin,ymax
     integer                :: row, col
-    
+
     call node2rowcol(node, row, col)
-    
+
     xmin = nodex(node) - 0.5 * delr(col)
     xmax = nodex(node) + 0.5 * delr(col)
     ymin = nodey(node) - 0.5 * delc(row)
     ymax = nodey(node) + 0.5 * delc(row)
-    
-  end subroutine getCellBounds_global  
+
+  end subroutine getCellBounds_global
 !-----------------------------------------------------------------------------!
-  
+
 !-----------------------------------------------------------------------------!
   subroutine node2rowcol(node, row, col)
     use GLOBAL, ONLY : NROW, NCOL
-    
+
     integer,intent(in)     :: node
     integer,intent(out)    :: row, col
-    
+
     row = CEILING(real(node)/real(ncol))
     col = node - (row-1)*ncol
-    
-  end subroutine node2rowcol  
+
+  end subroutine node2rowcol
 !-----------------------------------------------------------------------------!
-  
+
 !-----------------------------------------------------------------------------!
   subroutine allocate_modflow()
     use GLOBAL, ONLY : IUNSTR, NLAY, NROW, NCOL, DELR, DELC, TOP, BOT, NODES
     use MakePar
     implicit none
-    
+
     allocate(locx(nnodes), &
              locy(nnodes)  )
-    
+
     ! TODO move to MakePar routine for allocation
     ! Since these are all use for both models
     allocate(nodex(nnodes),              &
@@ -436,7 +436,7 @@ subroutine writeWellFile_modflow(v, filename)
   character(*),intent(in)  :: filename
   integer                  :: iwell, ilay, row, col
   character(60)            :: fmt(2)
-  
+
   write(*,'(4x,a,a35)') 'Writing:', filename
 
   write(fmt(1),'("(3a10,",i5,"i14)")') nlayers
@@ -450,7 +450,7 @@ subroutine writeWellFile_modflow(v, filename)
     call node2rowcol(wellelem(iwell), row, col)
     write(20,fmt(2)) iwell, row, col, (v(iwell,ilay), ilay=1, nlayers)
   end do
-  
+
   close(20)
 
 end subroutine writeWellFile_modflow
@@ -461,11 +461,11 @@ subroutine writeCellFile(v, filename)
   use MakePar
   implicit none
 
-  real,intent(in)          :: v(nlayers,nnodes)
+  real,intent(in)          :: v(nnodes, nlayers)
   character(*),intent(in)  :: filename
   integer                  :: inode, ilay, row, col
   character(60)            :: fmt(2)
-  
+
   write(*,'(4x,a,a35)') 'Writing:', filename
 
   write(fmt(1),'("(3a8,2a18,",i5,"i14)")') nlayers
@@ -478,30 +478,30 @@ subroutine writeCellFile(v, filename)
   do inode = 1, nnodes
     call node2rowcol(inode, row, col)
     write(20,fmt(2)) row, col, nodezone(inode), nodex(inode), nodey(inode), &
-                     (v(ilay, inode), ilay=1,nlayers)
+                     (v(inode,ilay), ilay=1,nlayers)
   end do
-  
+
   close(20)
 
 end subroutine writeCellFile
 !-----------------------------------------------------------------------------!
-  
+
 !-----------------------------------------------------------------------------!
   subroutine readwriteFlowPackage()
     use GLOBAL, ONLY:IUNIT
     use errorhandle
     implicit none
-    
+
     integer                :: ierr, upwflag
     character(300)         :: fname, cerr
     logical                :: lop
-    
+
     write(*,'(2x,2(a,3a))') 'Reading temp ', gwftyp, ', writing new ', gwftyp
-    
+
     ! If LPF/UPW is open, close it. We need to do a bait-and-switch on MODFLOW
     inquire(unit=IUNIT(layfile), opened=lop, name=fname)
     if (lop) close(IUNIT(layfile))
-    
+
     ! Initialize MODFLOW LPF values with template LPF file (user provided)
     open(IUNIT(layfile),file=trim(layfiletemp),iostat=ierr,status='old',&
          iomsg=cerr)
@@ -510,14 +510,14 @@ end subroutine writeCellFile
     if (gwftyp=='UPW') upwflag = 1
     CALL GWF2BCFU1AR(IUNIT(1),IUNIT(22),IUNIT(layfile),IUNIT(64), upwflag)
     close(IUNIT(layfile))
-    
+
     ! Re-open actual LPF file and OVERWRITE
     open(IUNIT(layfile),file=trim(fname),iostat=ierr,status='replace',&
          iomsg=cerr)
     call iomsghandler(ierr, cerr)
     call writeGWFP(IUNIT(layfile))
     close(IUNIT(layfile))
-    
+
   end subroutine readwriteFlowPackage
 !-----------------------------------------------------------------------------!
 

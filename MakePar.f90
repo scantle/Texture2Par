@@ -7,7 +7,7 @@ MODULE MakePar
 ! Some subroutines were originally VBA subroutines written by Tim Durbin
 ! Author: Leland Scantlebury of S.S. Papadopulos & Associates
 !-----------------------------------------------------------------------------!
-    
+
     SAVE
     ! Parameters
     integer, parameter        :: max_node_elem_members = 15, &                 ! Maximum number of elements a node is a part of (will stop w/ error if too low)
@@ -15,7 +15,7 @@ MODULE MakePar
                                  USE_IDW = 0, &
                                  max_nodeid=5E6                                ! Maximum nodeid value (to prevent enormous array allocation)
     real, parameter           :: NODATA=-999.0
-                              
+
     real,allocatable          :: wellelevbot(:,:), ssb(:,:), pcwellelem(:,:), &
                                  xwell(:), wellaqtardelevtop(:,:), &
                                  wellelevtop(:,:), nkcmin(:), nsyc(:), &
@@ -28,10 +28,10 @@ MODULE MakePar
                                  syb(:,:), elevation(:), botelev(:,:), &
                                  wellaqtardelevbot(:,:), topelev(:,:), &
                                  pcnode(:,:), pcnode_aqtard(:,:), &
-                                 kvb_aqtard(:,:), dkf(:), &
+                                 kvb_aqtard(:,:), dkf(:), pcwellzone(:,:), &
                                  Thick(:,:), AqTardThick(:,:), &
                                  nodexy(:,:), atnAnisoC(:), atnAnisoF(:), &
-                                 interbed_thick(:,:), pcwellzone(:,:)
+                                 interbed_thick(:,:)
     integer,allocatable       :: wellelem(:), numzone(:), &
                                  elements(:,:), nodeelem(:,:), nnodeelem(:), &
                                  nodezone(:), ngeozones_lay(:), nodeid(:), &
@@ -46,7 +46,7 @@ MODULE MakePar
     character(60)             :: outfile
     character(150)            :: wellfile, zonefile, geozonefile
     logical                   :: colocated=.false.
-    
+
     ! Global Trees
     type(tree_master_record), pointer :: nodetree
 
@@ -72,7 +72,7 @@ SUBROUTINE layerelevation(top_elev, bot_elev, result_top, result_bot)
 
     result_top = 0.0
     result_bot = 0.0
-    
+
     call IDW(nwell, xwell, ywell, wellelem, result_top, nnodes, nlayers, &
              nodex, nodey, top_elev, nelements, elements)
     call IDW(nwell, xwell, ywell, wellelem, result_bot, nnodes, nlayers, &
@@ -86,7 +86,7 @@ SUBROUTINE layertexture(well_topelev, well_botelev, pcwellout)
     implicit none
 !-----------------------------------------------------------------------------!
 ! This subprogram calculates the proportion of coarse-grained material at each
-! well within an element layer, where the well at least partially penetrates 
+! well within an element layer, where the well at least partially penetrates
 ! the element layer.
 !
 ! Arguments:
@@ -94,7 +94,7 @@ SUBROUTINE layertexture(well_topelev, well_botelev, pcwellout)
 !    - well_botelev - Bottom elevation at every well
 !    - pcwellout    - Percent coarse at each well element
 !-----------------------------------------------------------------------------!
-    
+
     real,intent(in)          :: well_topelev(nwell, nlayers), &
                                 well_botelev(nwell, nlayers)
     real,intent(inout)       :: pcwellout(nwell, nlayers)
@@ -151,14 +151,14 @@ subroutine pp_parkrige(ppx, ppy, ppv, npp, ppz, kriged)
 !-----------------------------------------------------------------------------!
 ! Loops over zones kriging pilot point parameter values to nodes
 !-----------------------------------------------------------------------------!
-  
+
   real,intent(in)          :: ppx(npp), ppy(npp), ppv(npp)
   real,intent(inout)       :: kriged(nnodes)
   integer,intent(in)       :: ppz(npp), npp
-  
+
   integer                  :: i, ipp, ppcount, zone
   real                     :: pzx(npp), pzy(npp), pzv(npp)
-  
+
   ! Loop over zones
   do i=1, nzones
     zone = zones(i)    ! Zones do not necessarily have to be in any order
@@ -181,7 +181,7 @@ subroutine pp_parkrige(ppx, ppy, ppv, npp, ppz, kriged)
       stop
     end if
   end do
-  
+
 end subroutine pp_parkrige
 !-----------------------------------------------------------------------------!
 
@@ -207,14 +207,14 @@ SUBROUTINE interpolate()
     character(60),allocatable:: fmt(:)
 
 !  Avoiding stack overflow by allocating after declaration
-    allocate(KhC(nlayers, nnodes), &
-             KhF(nlayers, nnodes), &
-             KvC(nlayers, nnodes), &
-             KvF(nlayers, nnodes), &
+    allocate(KhC(nnodes, nlayers), &
+             KhF(nnodes, nlayers), &
+             KvC(nnodes, nlayers), &
+             KvF(nnodes, nlayers), &
              pc(nnodes))
     allocate(wellxy(nwell,2), wellv(nwell),temppc(nnodes))
     allocate(tempzones(nnodes),fmt(2))
-    
+
     if (USE_IDW == 0) then
       ! Calculate percent coarse at each node by kriging well data by layer
       do ilay=1, nlayers
@@ -247,7 +247,7 @@ SUBROUTINE interpolate()
             welltree => create_tree(wellxy(1:wcount,:))
             call spkrige_tree_group(nnodes, nodex, nodey, welltree, nwell, &
                               wellv, temppc, pckrige_nwells, &
-                              tempzones, geonames_lay(igeo,ilay)) 
+                              tempzones, geonames_lay(igeo,ilay))
           else
             write(*,'(4x,a,i8,2a)') 'Warning - No well data in layer ', ilay, &
                                    'for geologic zone', geonames_lay(igeo,ilay)
@@ -256,7 +256,7 @@ SUBROUTINE interpolate()
           end if
         end do
         ! Copy over
-        PcNode(ilay,1:nnodes) = temppc
+        PcNode(1:nnodes,ilay) = temppc
       end do
     else  ! i.e. USE_IDW == 1
       ! Calculate percent coarse for each node based on normalized inverse-distance
@@ -278,63 +278,63 @@ SUBROUTINE interpolate()
               sum2 = sum2 + weight
             end if
           end do
-          if (count > 0) then                               ! LS sum2 > 0 
-            PcNode(ilay, inode) = sum1 / sum2
+          if (count > 0) then                               ! LS sum2 > 0
+            PcNode(inode, ilay) = sum1 / sum2
           else
-            PcNode(ilay, inode) = -999.0
+            PcNode(inode, ilay) = NODATA
             write(*,'(4x,a,i8)') 'No well data for node ', inode
           end if
         end do
       end do
     end if
-    
+
 ! Use input values to calculate aquifer parameters for each node
     !write(*,'(4x,a)') 'Calculating element aquifer parameters'
     do ilay = 1, nlayers
       do inode = 1, nnodes
         Dcol = elevation(inode) - ((topelev(inode,ilay) + botelev(inode, ilay)) / 2.0)
-        if (PcNode(ilay, inode) >= 0.0d0) then
-            KhC(ilay, inode) = nKCMin(inode) + (dKC(inode) * &
+        if (PcNode(inode, ilay) >= 0.0d0) then
+            KhC(inode, ilay) = nKCMin(inode) + (dKC(inode) * &
                                exp(-1.0 * KCk * Dcol))
-            KhF(ilay, inode) = nKFMin(inode) + (dKF(inode) * &
+            KhF(inode, ilay) = nKFMin(inode) + (dKF(inode) * &
                                exp(-1.0 * KFk * Dcol))
-            KvC(ilay, inode) = KhC(ilay, inode) / nAnisoC(inode)
-            KvF(ilay, inode) = KhF(ilay, inode) / nAnisoF(inode)
-            KhB(ilay, inode) = ((PcNode(ilay, inode) * &
-                                (KhC(ilay, inode) ** KHp)) + &
-                                ((1 - PcNode(ilay, inode)) * &
-                                 (KhF(ilay, inode) ** KHp))) ** (1.0 / KHp)
-            KvB(ilay, inode) = ((PcNode(ilay, inode) * &
-                                (KvC(ilay, inode) ** KVp)) + &
-                                ((1 - PcNode(ilay, inode)) * &
-                                 (KvF(ilay, inode) ** KVp))) ** (1.0 / KVp)
+            KvC(inode, ilay) = KhC(inode, ilay) / nAnisoC(inode)
+            KvF(inode, ilay) = KhF(inode, ilay) / nAnisoF(inode)
+            KhB(inode, ilay) = ((PcNode(inode, ilay) * &
+                                (KhC(inode, ilay) ** KHp)) + &
+                                ((1 - PcNode(inode, ilay)) * &
+                                 (KhF(inode, ilay) ** KHp))) ** (1.0 / KHp)
+            KvB(inode, ilay) = ((PcNode(inode, ilay) * &
+                                (KvC(inode, ilay) ** KVp)) + &
+                                ((1 - PcNode(inode, ilay)) * &
+                                 (KvF(inode, ilay) ** KVp))) ** (1.0 / KVp)
 
-!            SsB(ilay, inode) = (PcNode(ilay, inode) * (nSsC(inode))) + &
-!                               ((1 - PcNode(ilay, inode)) * (nSsF(inode)))
+!            SsB(inode, ilay) = (PcNode(inode, ilay) * (nSsC(inode))) + &
+!                               ((1 - PcNode(inode, ilay)) * (nSsF(inode)))
 ! LS 1/6/2022 Storage parameters now share a common power law term, stp
-            SsB(ilay, inode) = ((PcNode(ilay, inode) * (nSsC(inode) ** Stp)) + &
-                                ((1 - PcNode(ilay, inode)) * (nSsF(inode) ** &
+            SsB(inode, ilay) = ((PcNode(inode, ilay) * (nSsC(inode) ** Stp)) + &
+                                ((1 - PcNode(inode, ilay)) * (nSsF(inode) ** &
                                   Stp))) ** (1.0 / Stp)
-            SyB(ilay, inode) = ((PcNode(ilay, inode) * (nSyC(inode) ** Stp)) + &
-                                ((1 - PcNode(ilay, inode)) * (nSyF(inode) ** &
+            SyB(inode, ilay) = ((PcNode(inode, ilay) * (nSyC(inode) ** Stp)) + &
+                                ((1 - PcNode(inode, ilay)) * (nSyF(inode) ** &
                                   Stp))) ** (1.0 / Stp)
 
 ! Removing these, not used in model - LS 9/7/2017
-!            SskeB(ilay, inode) = (PcNode(ilay, inode) * SskeC) + &
-!                                 ((1 - PcNode(ilay, inode)) * SskeF)
-!            SskvB(ilay, inode) = (PcNode(ilay, inode) * SskvC) + &
-!                                 ((1 - PcNode(ilay, inode)) * SskvF)
+!            SskeB(inode, ilay) = (PcNode(inode, ilay) * SskeC) + &
+!                                 ((1 - PcNode(inode, ilay)) * SskeF)
+!            SskvB(inode, ilay) = (PcNode(inode, ilay) * SskvC) + &
+!                                 ((1 - PcNode(inode, ilay)) * SskvF)
         else
-            KhB(ilay, inode) = NODATA
-            KvB(ilay, inode) = NODATA
-            SsB(ilay, inode) = NODATA
-            SyB(ilay, inode) = NODATA
-!            SskeB(ilay, inode) = NODATA
-!            SskvB(ilay, inode) = NODATA
+            KhB(inode, ilay) = NODATA
+            KvB(inode, ilay) = NODATA
+            SsB(inode, ilay) = NODATA
+            SyB(inode, ilay) = NODATA
+!            SskeB(inode, ilay) = NODATA
+!            SskvB(inode, ilay) = NODATA
         end if
       end do
     end do
-    
+
     ! Deallocate
     deallocate(KhC, KhF, KvC, KvF, pc)
     deallocate(wellxy, wellv, temppc)
@@ -358,11 +358,11 @@ SUBROUTINE interpolate_aqtard()
     real,allocatable         :: wellxy(:,:), wellv(:)
     character(60),allocatable:: fmt(:)
     type(tree_master_record),pointer :: welltree
-    
-    allocate(KhC(nlayers, nnodes), &
-             KhF(nlayers, nnodes), &
-             KvC(nlayers, nnodes), &
-             KvF(nlayers, nnodes), &
+
+    allocate(KhC(nnodes, nlayers), &
+             KhF(nnodes, nlayers), &
+             KvC(nnodes, nlayers), &
+             KvF(nnodes, nlayers), &
              pc(nnodes))
     allocate(wellxy(nwell,2), wellv(nwell))
     allocate(fmt(2))
@@ -379,27 +379,27 @@ SUBROUTINE interpolate_aqtard()
             wellxy(wcount,2) = ywell(iwell)
           end if
         end do
-      
+
         ! Only build tree & krige if there's data for the layer
         if (wcount > 0) then
           welltree => create_tree(wellxy(1:wcount,:))
 
           call spkrige_tree(nnodes, nodex, nodey, welltree, nwell,  wellv, &
                             pc, pckrige_nwells)
-          PcNode_aqtard(ilay,1:nnodes) = pc(1:nnodes)
+          PcNode_aqtard(1:nnodes,ilay) = pc(1:nnodes)
         else
           ! Check for layer thickness
           do inode = 1, nnodes
-            if ((aqtardtopelev(inode, ilay) - aqtardbotelev(inode, ilay)) > 1e-6) then
+            if ((aqtardtopelev(inode, ilay) - aqtardbotelev(inode, ilay)) > 0.0d0) then
               ! No wells in layer, despite having thickness
-              pcnode_aqtard(ilay, inode) = NODATA
+              pcnode_aqtard(inode, ilay) = NODATA
             else
               ! No thickness, no problem. PC is 0.0
-              pcnode_aqtard(ilay, inode) = 0.0d0
+              pcnode_aqtard(inode, ilay) = 0.0d0
             end if
           end do
-          if (minval(pcnode_aqtard(ilay,:))<0.0d0) then
-            ! Need to warn if NODATA values were written 
+          if (minval(pcnode_aqtard(:,ilay))<0.0d0) then
+            ! Need to warn if NODATA values were written
             write(*,'(4x,a,i8)') 'No well data for aquitard layer ', ilay
           end if
         end if
@@ -411,7 +411,7 @@ SUBROUTINE interpolate_aqtard()
   !      write(*,'(4x,a,i2)') 'Processing layer ', ilay
         do inode = 1, nnodes
           ! Check to make sure there is aquifer thickness
-          if ((aqtardtopelev(inode, ilay) - aqtardbotelev(inode, ilay)) > 1e-5) then
+          if ((aqtardtopelev(inode, ilay) - aqtardbotelev(inode, ilay)) > 0.0d0) then
             sum1 = 0.0
             sum2 = 0.0
             count = 0
@@ -426,14 +426,14 @@ SUBROUTINE interpolate_aqtard()
               end if
             end do
             if (count > 0) then
-              pcnode_aqtard(ilay, inode) = sum1 / sum2
+              pcnode_aqtard(inode, ilay) = sum1 / sum2
             else
-              pcnode_aqtard(ilay, inode) = -999.0
+              pcnode_aqtard(inode, ilay) = NODATA
               write(*,'(4x,a,i8)') 'No well data for node ', inode
             end if
           else
             ! No thickness - no error, just zero
-            pcnode_aqtard(ilay, inode) = 0.0
+            pcnode_aqtard(inode, ilay) = 0.0
           end if
         end do
       end do
@@ -444,29 +444,29 @@ SUBROUTINE interpolate_aqtard()
     do ilay = 1, nlayers
       do inode = 1, nnodes
         Dcol = elevation(inode) - ((aqtardtopelev(inode,ilay) + aqtardbotelev(inode, ilay)) / 2.0)
-        if (pcnode_aqtard(ilay, inode) >= 0.0d0) then
-            KhC(ilay, inode) = atnKCMin(inode) + (atdKC(inode) * &
+        if (pcnode_aqtard(inode, ilay) >= 0.0d0) then
+            KhC(inode, ilay) = atnKCMin(inode) + (atdKC(inode) * &
                                exp(-1.0 * KCk * Dcol))
-            KhF(ilay, inode) = atnKFMin(inode) + (atdKF(inode) * &
+            KhF(inode, ilay) = atnKFMin(inode) + (atdKF(inode) * &
                                exp(-1.0 * KFk * Dcol))
-            KvC(ilay, inode) = KhC(ilay, inode) / atnAnisoC(inode)
-            KvF(ilay, inode) = KhF(ilay, inode) / atnAnisoF(inode)
+            KvC(inode, ilay) = KhC(inode, ilay) / atnAnisoC(inode)
+            KvF(inode, ilay) = KhF(inode, ilay) / atnAnisoF(inode)
             if ((aqtardtopelev(inode, ilay) - aqtardbotelev(inode, ilay)) > 1e-5) then
               ! Has thickness
-              KvB_aqtard(ilay, inode) = ((pcnode_aqtard(ilay, inode) * &
-                                  (KvC(ilay, inode) ** KVp)) + &
-                                  ((1 - pcnode_aqtard(ilay, inode)) * &
-                                   (KvF(ilay, inode) ** KVp))) ** (1.0 / KVp)
+              KvB_aqtard(inode, ilay) = ((pcnode_aqtard(inode, ilay) * &
+                                  (KvC(inode, ilay) ** KVp)) + &
+                                  ((1 - pcnode_aqtard(inode, ilay)) * &
+                                   (KvF(inode, ilay) ** KVp))) ** (1.0 / KVp)
             else
               ! No Thickness
-              KvB_aqtard(ilay, inode) = 0.0d0
+              KvB_aqtard(inode, ilay) = 0.0d0
             end if
         else
-            KvB_aqtard(ilay, inode) = NODATA
+            KvB_aqtard(inode, ilay) = NODATA
         end if
       end do
     end do
-    
+
     ! Deallocate
     deallocate(KhC, KhF, KvC, KvF)
     deallocate(wellxy, wellv)
@@ -484,32 +484,32 @@ end subroutine interpolate_aqtard
 subroutine create_nodetree()
   use kd_tree
   implicit none
-  
+
   integer                  :: i
-  
+
   ! Reassignment into a single xy array
   ! memory usage could be improved by modifying KDTree
   do i=1, nnodes
     nodexy(i,1) = nodex(i)
     nodexy(i,2) = nodey(i)
   end do
-  
+
   nodetree => create_tree(nodexy)
-  
+
 end subroutine create_nodetree
 
 !-----------------------------------------------------------------------------!
 
 integer function get_well_element(x, y, iwell, closenodes, nnear) result(element)
   implicit none
-  
+
   integer                  :: i, j, inode, elem, points, count, node
   integer, intent(in)      :: nnear, iwell, closenodes(nnear)
   real, intent(in)         :: x, y
   real                     :: elemx(4), elemy(4), inelem, pinpol
-  
+
   element = 0
-  
+
   ! Loop over elements of closest node
 outerloop:  do inode=1, nnear
     node = closenodes(inode)
@@ -532,16 +532,16 @@ outerloop:  do inode=1, nnear
       end if
     end do
   end do outerloop
-  
+
   if (element == 0) then
     write(*,'(4x,a)') 'ERROR - Well not inside element. Likely located out of model.'
     write(*,'(4x,a8,2a18)') 'WellNum', 'X', 'Y'
     write(*,'(4x,i8,2f18.5)') iwell, x, y
     stop
   end if
-  
+
   return
-    
+
 end function get_well_element
 
 !-----------------------------------------------------------------------------!
@@ -553,25 +553,21 @@ end function get_well_element
 !-----------------------------------------------------------------------------!
 subroutine calc_interbed_thickness()
   implicit none
-  
+
   ! Estimates interbed thickness as percent fine * layer thickness
   ! Added by Leland Scantlebury July 2019
   !
   ! For IWFM, layer thickness is directly read in in variable thick
   ! However, for MODFLOW support we're just going to use the layer top/bot
-  
+
   integer                  :: ilay, inode
-  real                     :: laythick
-  
-  allocate(interbed_thick(nlayers,nnodes))
-  
-  do ilay=1, nlayers
-    do inode=1, nnodes
-      laythick = topelev(inode,ilay) - botelev(inode, ilay)
-      interbed_thick(ilay,inode) = (1 - pcnode(ilay,inode)) * laythick 
-    end do
-  end do
-  
+  real, allocatable        :: laythick(:,:)
+
+  allocate(interbed_thick(nnodes,nlayers),laythick(nnodes,nlayers))
+
+  laythick = topelev - botelev
+  interbed_thick = (1 - pcnode) * laythick
+
 end subroutine calc_interbed_thickness
 !-----------------------------------------------------------------------------!
 
@@ -585,10 +581,10 @@ implicit none
   real, intent(inout)     :: xcoords(ncoords), ycoords(ncoords)
   integer                 :: i, j, k, ncoloc, max
   real, parameter         :: move=0.01
-  
+
   ! Setup
   max = 1
-  
+
   ! Outer Loop over coordinates
   do i=1, ncoords
     ncoloc = 0
@@ -613,11 +609,11 @@ implicit none
       end if
     end do
   end do
-  
+
   if (colocated) then
     write(*,'(4x,a,i3,a,f6.3)') 'Max co-located wells:',max,' | Max dist moved:', sqrt(2*(max*move)**2)
   end if
-  
+
 end subroutine colocate_corrector
 !-----------------------------------------------------------------------------!
 
@@ -627,7 +623,7 @@ end subroutine colocate_corrector
 
 subroutine WellAllocate()
   implicit none
-  
+
     allocate(Xwell(nwell), &
              Ywell(nwell), &
              Zland(nwell), &
@@ -647,9 +643,9 @@ end subroutine
 !-----------------------------------------------------------------------------!
 subroutine NodeAllocate()
   implicit none
-  
-  allocate(PcNode(nlayers, nnodes), &
-           pcnode_aqtard(nlayers, nnodes), &
+
+  allocate(PcNode(nnodes, nlayers), &
+           pcnode_aqtard(nnodes, nlayers), &
            nKCMin(nnodes), &
            dKC(nnodes), &
            nKFMin(nnodes), &
@@ -666,17 +662,17 @@ subroutine NodeAllocate()
            atdKF(nnodes), &
            atnAnisoC(nnodes), &
            atnAnisoF(nnodes), &
-           KhB(nlayers, nnodes), &
-           KvB(nlayers, nnodes), &
-           SsB(nlayers, nnodes), &
-           SyB(nlayers, nnodes), &
-           KvB_aqtard(nlayers, nnodes), &
+           KhB(nnodes, nlayers), &
+           KvB(nnodes, nlayers), &
+           SsB(nnodes, nlayers), &
+           SyB(nnodes, nlayers), &
+           KvB_aqtard(nnodes, nlayers), &
            nodezone(nnodes), &
            geozones(nnodes, nlayers), &
            ngeozones_lay(nlayers), &
            geonames_lay(max_zones,nlayers))
 
-end subroutine 
+end subroutine
 !-----------------------------------------------------------------------------!
 
 END MODULE MakePar
