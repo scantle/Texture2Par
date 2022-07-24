@@ -411,6 +411,37 @@ real function tridet(x1, y1, x2, y2, x3, y3) result(det)
 
   end function tridet
 !-----------------------------------------------------------------------------!
+  subroutine get_unique_ints(n, array, max_unique, unique_array, nunique)
+    implicit none
+!-----------------------------------------------------------------------------!
+! Author: Leland Scantlebury
+!-----------------------------------------------------------------------------!
+  integer,intent(in)  :: n, max_unique, array(n)
+  integer,intent(out) :: nunique, unique_array(max_unique)
+  integer             :: i, j
+  
+  ! Initialize
+  unique_array = -999
+  unique_array(1) = array(1)
+  nunique = 1
+  
+  ! A quick exit case
+  if (minval(array) == maxval(array)) then
+    return
+  end if
+  
+  ! The real search
+  do i=2, n
+    do j=1, nunique
+      if (array(n) /= unique_array(n)) then
+        nunique = nunique + 1
+        unique_array(nunique) = array(n)
+      end if
+    end do
+  end do
+  
+  end subroutine get_unique_ints
+!-----------------------------------------------------------------------------!
 
 module str_utls
 contains

@@ -1,6 +1,6 @@
 MODULE MakePar
   use kd_tree
-    implicit none
+  implicit none
 
 !-----------------------------------------------------------------------------!
 ! MakePar Module for Texture2Par
@@ -18,34 +18,39 @@ MODULE MakePar
 
     real,allocatable          :: wellelevbot(:,:), ssb(:,:), pcwellelem(:,:), &
                                  xwell(:), wellaqtardelevtop(:,:), &
-                                 wellelevtop(:,:), nkcmin(:), nsyc(:), &
-                                 atnkcmin(:), atdkf(:), nkfmin(:), ywell(:), &
-                                 zland(:), aqtardbotelev(:,:), atdkc(:), &
-                                 nodex(:), nodey(:), nsyf(:), dkc(:), &
-                                 zwell(:,:), nanisoC(:), nanisoF(:), khb(:,:), &
-                                 pcwellaqtardelem(:,:), atnkfmin(:), nssf(:), &
-                                 aqtardtopelev(:,:), nssc(:), kvb(:,:), &
+                                 wellelevtop(:,:),  &
+                                 ywell(:), &
+                                 zland(:), aqtardbotelev(:,:), &
+                                 nodex(:), nodey(:), &
+                                 zwell(:,:), khb(:,:), &
+                                 pcwellaqtardelem(:,:), &
+                                 aqtardtopelev(:,:),  kvb(:,:), &
                                  syb(:,:), elevation(:), botelev(:,:), &
                                  wellaqtardelevbot(:,:), topelev(:,:), &
                                  pcnode(:,:), pcnode_aqtard(:,:), &
-                                 kvb_aqtard(:,:), dkf(:), pcwellzone(:,:), &
+                                 kvb_aqtard(:,:), pcwellzone(:,:), &
                                  Thick(:,:), AqTardThick(:,:), &
-                                 nodexy(:,:), atnAnisoC(:), atnAnisoF(:), &
+                                 nodexy(:,:), &
                                  interbed_thick(:,:)
     integer,allocatable       :: wellelem(:), numzone(:), &
                                  elements(:,:), nodeelem(:,:), nnodeelem(:), &
-                                 nodezone(:), ngeozones_lay(:), nodeid(:), &
-                                 nodebyid(:)
+                                 ngeozones_lay(:), nodeid(:), nodebyid(:)
     integer                   :: nlayers, nnodes, nwell, wfilelen, &
                                  nelements, maxWPoints, pckrige_nwells, &
-                                 nzones, zones(max_zones), ngeozones
+                                 ngeozones, natlayers
     real                      :: kfk, stp, khp, kvp, kck
     character(30),allocatable :: geozones(:,:), wellgeozones(:,:), &
                                  geonames_lay(:,:)
     character(30)             :: geonames(max_zones)
     character(60)             :: outfile
-    character(150)            :: wellfile, zonefile, geozonefile
+    character(150)            :: wellfile, geozonefile
     logical                   :: colocated=.false.
+    
+    ! Pilot Point Parameters
+    real,allocatable          :: nKCMin(:,:), dKC(:,:), nKFMin(:,:),&
+                                 dKF(:,:), nSsC(:,:), nSsF(:,:),    &
+                                 nSyC(:,:), nSyF(:,:), nAnisoC(:,:),&
+                                 nAnisoF(:,:)
 
     ! Global Trees
     type(tree_master_record), pointer :: nodetree
@@ -145,49 +150,9 @@ end subroutine layertexture
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-subroutine pp_parkrige(ppx, ppy, ppv, npp, ppz, kriged)
-  use Krige
-  implicit none
-!-----------------------------------------------------------------------------!
-! Loops over zones kriging pilot point parameter values to nodes
-!-----------------------------------------------------------------------------!
-
-  real,intent(in)          :: ppx(npp), ppy(npp), ppv(npp)
-  real,intent(inout)       :: kriged(nnodes)
-  integer,intent(in)       :: ppz(npp), npp
-
-  integer                  :: i, ipp, ppcount, zone
-  real                     :: pzx(npp), pzy(npp), pzv(npp)
-
-  ! Loop over zones
-  do i=1, nzones
-    zone = zones(i)    ! Zones do not necessarily have to be in any order
-    ! Round up pilot points in zone
-    ppcount = 0
-    do ipp=1, npp
-      if (ppz(ipp) == zone) then
-        ppcount = ppcount + 1
-        pzx(ppcount) = ppx(ipp)
-        pzy(ppcount) = ppy(ipp)
-        pzv(ppcount) = ppv(ipp)
-      end if
-    end do
-    if (ppcount > 0) then
-      ! Krige
-      call spkrige_group(ppcount, nnodes, nodex, nodey, pzx, pzy, pzv, &
-                         kriged, nodezone, zone)
-    else
-      write(*,*) 'ERROR - no pilot points for zone ', zones(i)
-      stop
-    end if
-  end do
-
-end subroutine pp_parkrige
-!-----------------------------------------------------------------------------!
-
-!-----------------------------------------------------------------------------!
 SUBROUTINE interpolate()
     use Krige
+    use PilotPoints
     implicit none
 !-----------------------------------------------------------------------------!
 ! Interpolates from wells to nodes using inverse-distance method
@@ -200,7 +165,7 @@ SUBROUTINE interpolate()
 
     real                     :: sum1, sum2, weight, dcol
     real,allocatable         :: khc(:,:), khf(:,:), kvc(:,:), kvf(:,:), pc(:)
-    integer                  :: iwell, ilay, inode, igeo, wcount, count
+    integer                  :: iwell, ilay, inode, iarr, igeo, wcount, count
     real,allocatable         :: wellxy(:,:), wellv(:),temppc(:)
     type(tree_master_record),pointer :: welltree
     character(30),allocatable:: tempzones(:)
@@ -291,15 +256,16 @@ SUBROUTINE interpolate()
 ! Use input values to calculate aquifer parameters for each node
     !write(*,'(4x,a)') 'Calculating element aquifer parameters'
     do ilay = 1, nlayers
+      iarr = pp_lay2arr(ilay)  ! Get array index
       do inode = 1, nnodes
         Dcol = elevation(inode) - ((topelev(inode,ilay) + botelev(inode, ilay)) / 2.0)
         if (PcNode(inode, ilay) >= 0.0d0) then
-            KhC(inode, ilay) = nKCMin(inode) + (dKC(inode) * &
+            KhC(inode, ilay) = nKCMin(inode, iarr) + (dKC(inode,iarr) * &
                                exp(-1.0 * KCk * Dcol))
-            KhF(inode, ilay) = nKFMin(inode) + (dKF(inode) * &
+            KhF(inode, ilay) = nKFMin(inode, iarr) + (dKF(inode,iarr) * &
                                exp(-1.0 * KFk * Dcol))
-            KvC(inode, ilay) = KhC(inode, ilay) / nAnisoC(inode)
-            KvF(inode, ilay) = KhF(inode, ilay) / nAnisoF(inode)
+            KvC(inode, ilay) = KhC(inode, ilay) / nAnisoC(inode,iarr)
+            KvF(inode, ilay) = KhF(inode, ilay) / nAnisoF(inode,iarr)
             KhB(inode, ilay) = ((PcNode(inode, ilay) * &
                                 (KhC(inode, ilay) ** KHp)) + &
                                 ((1 - PcNode(inode, ilay)) * &
@@ -312,11 +278,11 @@ SUBROUTINE interpolate()
 !            SsB(inode, ilay) = (PcNode(inode, ilay) * (nSsC(inode))) + &
 !                               ((1 - PcNode(inode, ilay)) * (nSsF(inode)))
 ! LS 1/6/2022 Storage parameters now share a common power law term, stp
-            SsB(inode, ilay) = ((PcNode(inode, ilay) * (nSsC(inode) ** Stp)) + &
-                                ((1 - PcNode(inode, ilay)) * (nSsF(inode) ** &
+            SsB(inode, ilay) = ((PcNode(inode, ilay) * (nSsC(inode, iarr) ** Stp)) + &
+                                ((1 - PcNode(inode, ilay)) * (nSsF(inode, iarr) ** &
                                   Stp))) ** (1.0 / Stp)
-            SyB(inode, ilay) = ((PcNode(inode, ilay) * (nSyC(inode) ** Stp)) + &
-                                ((1 - PcNode(inode, ilay)) * (nSyF(inode) ** &
+            SyB(inode, ilay) = ((PcNode(inode, ilay) * (nSyC(inode, iarr) ** Stp)) + &
+                                ((1 - PcNode(inode, ilay)) * (nSyF(inode, iarr) ** &
                                   Stp))) ** (1.0 / Stp)
 
 ! Removing these, not used in model - LS 9/7/2017
@@ -346,6 +312,7 @@ end subroutine interpolate
 !-----------------------------------------------------------------------------!
 SUBROUTINE interpolate_aqtard()
   use Krige
+  use PilotPoints
   use kd_tree
     implicit none
 !-----------------------------------------------------------------------------!
@@ -354,7 +321,7 @@ SUBROUTINE interpolate_aqtard()
 
     real                     :: sum1, sum2, weight, dcol
     real,allocatable         :: khc(:,:), khf(:,:), kvc(:,:), kvf(:,:), pc(:)
-    integer                  :: iwell, ilay, inode, wcount, count
+    integer                  :: iwell, ilay, inode, iarr, wcount, count
     real,allocatable         :: wellxy(:,:), wellv(:)
     character(60),allocatable:: fmt(:)
     type(tree_master_record),pointer :: welltree
@@ -441,16 +408,17 @@ SUBROUTINE interpolate_aqtard()
 
 ! Use input values to calculate aquifer parameters for each node
     !write(*,'(4x,a)') 'Calculating element aquitard parameters'
-    do ilay = 1, nlayers
+    do ilay = 1, natlayers
+      iarr = pp_lay2arr(nlayers + ilay) ! Get array index
       do inode = 1, nnodes
         Dcol = elevation(inode) - ((aqtardtopelev(inode,ilay) + aqtardbotelev(inode, ilay)) / 2.0)
         if (pcnode_aqtard(inode, ilay) >= 0.0d0) then
-            KhC(inode, ilay) = atnKCMin(inode) + (atdKC(inode) * &
+            KhC(inode, ilay) = nKCMin(inode, iarr) + (dKC(inode,iarr) * &
                                exp(-1.0 * KCk * Dcol))
-            KhF(inode, ilay) = atnKFMin(inode) + (atdKF(inode) * &
+            KhF(inode, ilay) = nKFMin(inode, iarr) + (dKF(inode,iarr) * &
                                exp(-1.0 * KFk * Dcol))
-            KvC(inode, ilay) = KhC(inode, ilay) / atnAnisoC(inode)
-            KvF(inode, ilay) = KhF(inode, ilay) / atnAnisoF(inode)
+            KvC(inode, ilay) = KhC(inode, ilay) / nAnisoC(inode,iarr)
+            KvF(inode, ilay) = KhF(inode, ilay) / nAnisoF(inode,iarr)
             if ((aqtardtopelev(inode, ilay) - aqtardbotelev(inode, ilay)) > 1e-5) then
               ! Has thickness
               KvB_aqtard(inode, ilay) = ((pcnode_aqtard(inode, ilay) * &
@@ -642,37 +610,120 @@ subroutine WellAllocate()
 end subroutine
 !-----------------------------------------------------------------------------!
 subroutine NodeAllocate()
+  use PilotPoints
   implicit none
 
-  allocate(PcNode(nnodes, nlayers), &
+  allocate(PcNode       (nnodes, nlayers), &
            pcnode_aqtard(nnodes, nlayers), &
-           nKCMin(nnodes), &
-           dKC(nnodes), &
-           nKFMin(nnodes), &
-           dKF(nnodes), &
-           nSsC(nnodes), &
-           nSsF(nnodes), &
-           nSyC(nnodes), &
-           nSyF(nnodes), &
-           nAnisoC(nnodes), &
-           nAnisoF(nnodes), &
-           atnKCMin(nnodes), &
-           atdKC(nnodes), &
-           atnKFMin(nnodes), &
-           atdKF(nnodes), &
-           atnAnisoC(nnodes), &
-           atnAnisoF(nnodes), &
-           KhB(nnodes, nlayers), &
-           KvB(nnodes, nlayers), &
-           SsB(nnodes, nlayers), &
-           SyB(nnodes, nlayers), &
-           KvB_aqtard(nnodes, nlayers), &
-           nodezone(nnodes), &
-           geozones(nnodes, nlayers), &
+           nKCMin       (nnodes, pp_narr), &
+           dKC          (nnodes, pp_narr), &
+           nKFMin       (nnodes, pp_narr), &
+           dKF          (nnodes, pp_narr), &
+           nAnisoC      (nnodes, pp_narr), &
+           nAnisoF      (nnodes, pp_narr), &
+           nSsC         (nnodes, ppaq_narr), &
+           nSsF         (nnodes, ppaq_narr), &
+           nSyC         (nnodes, ppaq_narr), &
+           nSyF         (nnodes, ppaq_narr), &
+           KhB          (nnodes, nlayers), &
+           KvB          (nnodes, nlayers), &
+           SsB          (nnodes, nlayers), &
+           SyB          (nnodes, nlayers), &
+           KvB_aqtard   (nnodes, nlayers), &
+           geozones     (nnodes, nlayers), &
            ngeozones_lay(nlayers), &
-           geonames_lay(max_zones,nlayers))
+           geonames_lay (max_zones,nlayers),&
+           pp_lay2arr   (nlayers+natlayers))  ! Belongs to Pilot Point Module
 
 end subroutine
 !-----------------------------------------------------------------------------!
+
+!!-----------------------------------------------------------------------------!
+!subroutine pp_parkrige(ppx, ppy, ppv, npp, ppz, nzones, zones, nodezone, kriged)
+!  use MakePar
+!  use PilotPoints
+!  implicit none
+!!-----------------------------------------------------------------------------!
+!! Loops over zones kriging pilot point parameter values to nodes
+!!-----------------------------------------------------------------------------!
+!
+!  real,intent(in)          :: ppx(npp), ppy(npp), ppv(npp)
+!  real,intent(inout)       :: kriged(nnodes)
+!  integer,intent(in)       :: ppz(npp), npp, nzones, zones(nzones), &
+!                              nodezone(nnodes)
+!
+!  integer                  :: i, ipp, ppcount, zone
+!  real                     :: pzx(npp), pzy(npp), pzv(npp)
+!
+!  ! Loop over zones
+!  do i=1, nzones
+!    zone = zones(i)    ! Zones do not necessarily have to be in any order
+!    ! Round up pilot points in zone
+!    ppcount = 0
+!    do ipp=1, npp
+!      if (ppz(ipp) == zone) then
+!        ppcount = ppcount + 1
+!        pzx(ppcount) = ppx(ipp)
+!        pzy(ppcount) = ppy(ipp)
+!        pzv(ppcount) = ppv(ipp)
+!      end if
+!    end do
+!    if (ppcount > 0) then
+!      ! Krige
+!      call spkrige_group(ppcount, nnodes, nodex, nodey, pzx, pzy, pzv, &
+!                         kriged, nodezone, zone)
+!    else
+!      write(*,*) 'ERROR - no pilot points for zone ', zones(i)
+!      stop
+!    end if
+!  end do
+!
+!end subroutine pp_parkrige
+!!-----------------------------------------------------------------------------!
+!
+!!-----------------------------------------------------------------------------!
+!subroutine pp_parkrige_arr(ppx, ppy, ppv, npp, ppz, iarr, kriged)
+!  use MakePar
+!  use PilotPoints
+!  implicit none
+!!-----------------------------------------------------------------------------!
+!! Loops over zones kriging pilot point parameter values to nodes
+!!-----------------------------------------------------------------------------!
+!
+!  real,intent(in)          :: ppx(npp), ppy(npp), ppv(npp)
+!  real,intent(inout)       :: kriged(nnodes)
+!  integer,intent(in)       :: ppz(npp), npp, iarr
+!
+!  integer                  :: i, ipp, ppcount, zone
+!  real                     :: pzx(npp), pzy(npp), pzv(npp)
+!
+!  ! Loop over zones
+!  do i=1, pp_arr_nzones(iarr)
+!    zone = pp_arr_zones(i,iarr)    ! Zones do not necessarily have to be in any order
+!    ! Round up pilot points in zone
+!    ppcount = 0
+!    do ipp=1, npp
+!      if (ppz(ipp) == zone) then
+!        ppcount = ppcount + 1
+!        pzx(ppcount) = ppx(ipp)
+!        pzy(ppcount) = ppy(ipp)
+!        pzv(ppcount) = ppv(ipp)
+!      end if
+!    end do
+!    if (ppcount > 0) then
+!      ! Krige
+!      call spkrige_group(ppcount, nnodes, nodex, nodey, pzx, pzy, pzv, &
+!                         kriged, pp_node_zone, zone)
+!    else
+!      write(*,'(2(a,i3))') 'ERROR - no pilot points for pilot point zone ', &
+!                 zone, ' in array ', iarr
+!      stop
+!    end if
+!  end do
+!
+!end subroutine pp_parkrige_arr
+!!-----------------------------------------------------------------------------!
+
+
 
 END MODULE MakePar

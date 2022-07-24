@@ -6,7 +6,6 @@ module MFSupport
   real,allocatable          :: mftop(:,:,:), mfbot(:,:,:), locx(:), locy(:)
   integer                   :: mfmaxunit, layfile, ncbd
   character(3)              :: gwftyp
-  character(10)             :: mfzonename
   character(200)            :: layfiletemp
   logical                   :: lop
 
@@ -42,7 +41,7 @@ module MFSupport
 ! Set MakePar module values
     nnodes = nrow * ncol
     nlayers = nlay
-    nzones = NZONAR
+    natlayers = 0
 
 ! Handle MODFLOW settings
     ! UPW or LPF (or none)
@@ -69,6 +68,7 @@ module MFSupport
       ! Quasi-3d confining beds == Aquitards
       if (laycbd(k) > 0) then
         ncbd = ncbd + 1
+        natlayers = natlayers + 1
         aqtardtopelev(1:nnodes,k) = bot((k-1)*nnodes+1 : k*nnodes)
         aqtardbotelev(1:nnodes,k) = top(k*nnodes+1 : (k+1)*nnodes)
       else
@@ -181,7 +181,7 @@ SUBROUTINE inputwells_modflow(readzones)
       do i=1, wfilelen
         read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td, geobylayer(:)
         ! Well "zone" is discrete depth interval and should not be confused with
-        ! other uses of zone (e.g. pilot points)
+        ! other uses of zone (e.g. pilot points, geologic)
         PcWellZone(iwell, izone) = tpc
         numZone(iwell) = izone
         if (izone == 1) then
@@ -280,43 +280,106 @@ end subroutine readNodeGeoZones_modflow
 
 !-----------------------------------------------------------------------------!
   subroutine inputZones_modflow()
-    use GLOBAL, ONLY : IUNSTR, NLAY, NROW, NCOL, DELR, DELC, TOP, BOT, NODES
-    use PARAMMODULE, ONLY: NZONAR, IZON, ZONNAM
-    use MakePar
-    !
+    use GLOBAL, ONLY : NLAY
+    use PilotPoints
+    use errorhandle
+    use MakePar, ONLY : nlayers,natlayers,nnodes
+!-----------------------------------------------------------------------------!
+! Reads input file with pilot point zones for nodes
+!
+! Modified 7/21/2022 by LS:
+!  - Custom zone file instead of using MODFLOW zones
+!  - PP Zones can be specified by layer
+! Author: Leland Scantlebury of S.S. Papadopulos & Associates
+!-----------------------------------------------------------------------------!
+    integer                :: ierr, i, k, temp, nzones, zmax, n
+    integer                :: arr_temp(nnodes,nlayers)
+    integer,allocatable    :: temp_ints(:)
+    character(200)         :: line
+    character(256)         :: cerr
 
-    integer                :: i, j, k, zone, namindex
-    logical                :: newzone
-
-    ! Use MODFLOW Zone array specified in input file to fill zones and
-    ! nodezones arrays defined in MakePar
+    ! Zones are input in MODFLOW-style arrays
     nzones = 0
-
-    do i=1, nzonar
-      if (trim(ZONNAM(i))==trim(mfzonename)) then
-        namindex = i
+    pp_narr = 0
+    ppaq_narr = 0
+    ppat_narr = 0
+    pp_lay2arr = 1
+    
+    open(10, file =trim(zonefile), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
+    
+    ! Arrays are by Layer
+    do k=1, nlayers
+      ! Skip any comment lines
+      do
+        read(10, *) line
+        if (line(1:1) == '#') cycle
+        backspace(10)
+        exit
+      end do
+      ! Check if first number is negative -> reuse previous layer zones
+      read(10, *) temp
+      if (temp < 0) then
+        if (k==1) then
+          write(*,*) 'ERROR - First layer pilot point zone set to reuse non-existant previous array'
+          STOP
+        else
+          ! Handle reuse array
+          pp_lay2arr(k) = pp_lay2arr(k-1)
+        end if
+      else
+        pp_narr = pp_narr + 1
+        ppaq_narr = ppaq_narr + 1
+        pp_lay2arr(k) = pp_lay2arr(pp_narr)
+        backspace(10)
+        read(10, *) arr_temp(:,pp_narr)
       end if
     end do
 
-    ! IZON is (NCOL,NROW,NZONAR))
-    do i=1, nrow
-      do j=1, ncol
-        zone = IZON(j,i,namindex)
-        ! Is this a new zone?
-        newzone = .true.
-        do k=1, nzones
-          if (zone == zones(k)) newzone = .false.
-        end do
-        ! Add to Array
-        nodezone((i-1)*ncol+j) = zone
-        ! Add if new
-        if (newzone) then
-          nzones = nzones + 1
-          zones(nzones) = zone
-        end if
+    ! Aquitard Arrays are also by Layer (well, lack of layer)
+    do k=1, natlayers
+      ! Skip any comment lines
+      do
+        read(10, *) line
+        if (line(1:1) == '#') cycle
+        backspace(10)
+        exit
       end do
+      ! Check if first number is negative -> reuse previous layer zones
+      read(10, *) temp
+      if (temp < 0) then
+        if (k==1) then
+          write(*,*) 'ERROR - First layer pilot point zone set to reuse non-existant previous array'
+          STOP
+        else
+          ! Handle reuse array
+          pp_lay2arr(k) = pp_lay2arr(k-1)
+        end if
+      else
+        pp_narr = pp_narr + 1
+        ppat_narr = pp_narr + 1
+        pp_lay2arr(k) = pp_lay2arr(pp_narr)
+        backspace(10)
+        read(10, *) arr_temp(:,pp_narr)
+      end if
     end do
-
+    
+    ! Now we can allocate the zone arrays
+    nzones = maxval(arr_temp)  ! not bulletproof, but doesn't have to be
+    call PPZoneAllocate(nzones, nnodes)
+    
+    ! Now we do some counting
+    allocate(temp_ints(zmax))
+    do i=1, ppaq_narr
+      ! Get unique values
+      call get_unique_ints(nnodes, arr_temp(:,i), nzones, pp_arr_zones(:,i), pp_arr_nzones(i))
+    end do
+    ! Aquitards
+    do i=ppaq_narr, pp_narr
+      ! Get unique values
+      call get_unique_ints(nnodes, arr_temp(:,i), nzones, pp_arr_zones(:,i), pp_arr_nzones(i))
+    end do
+    deallocate(temp_ints)
 
   end subroutine inputZones_modflow
 !-----------------------------------------------------------------------------!
@@ -458,6 +521,7 @@ end subroutine writeWellFile_modflow
 
 !-----------------------------------------------------------------------------!
 subroutine writeCellFile(v, filename)
+  use PilotPoints
   use MakePar
   implicit none
 
@@ -468,8 +532,8 @@ subroutine writeCellFile(v, filename)
 
   write(*,'(4x,a,a35)') 'Writing:', filename
 
-  write(fmt(1),'("(3a8,2a18,",i5,"i14)")') nlayers
-  write(fmt(2),'("(3i8,2f18.5,",i5,"e14.5)")') nlayers
+  write(fmt(1),'("(2a8,i5(Zone ",i5,"2a18,",i5,"i14)")') nlayers, nlayers
+  write(fmt(2),'("(",i5",i8,2f18.5,",i5,"e14.5)")') nlayers+3, nlayers
 
   open(20, file=trim(filename), status='replace', action='write', buffered='YES')
   ! Header
@@ -477,8 +541,8 @@ subroutine writeCellFile(v, filename)
   ! Values
   do inode = 1, nnodes
     call node2rowcol(inode, row, col)
-    write(20,fmt(2)) row, col, nodezone(inode), nodex(inode), nodey(inode), &
-                     (v(inode,ilay), ilay=1,nlayers)
+    write(20,fmt(2)) row, col, pp_node_zone(inode,:), nodex(inode), nodey(inode),&
+                     v(inode,:)
   end do
 
   close(20)

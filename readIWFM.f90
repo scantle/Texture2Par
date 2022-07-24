@@ -153,6 +153,8 @@ subroutine readIWFM()
     call multisplit(ifail,1,ls,rs,cline)
     call ifailhandler(ifail, stratfile, cline)
     call intread(ifail,cline(ls(1):rs(1)),nlayers)
+    ! In IWFM, every layer has an aquitard
+    natlayers = nlayers
     call ifailhandler(ifail, stratfile, cline)
     allocate(Elevation    (nnodes),         &
              TopElev      (nnodes,nlayers), &
@@ -323,6 +325,7 @@ end subroutine inputwells_IWFM
 !-----------------------------------------------------------------------------!
 subroutine readNodeGeoZones_IWFM()
   use MakePar
+  use PilotPoints
   use str_utls
   implicit none
 !-----------------------------------------------------------------------------!
@@ -382,19 +385,26 @@ end subroutine readNodeGeoZones_IWFM
 !-----------------------------------------------------------------------------!
 subroutine inputZones_IWFM()
     use MakePar
+    use PilotPoints
     use errorhandle
     implicit none
 !-----------------------------------------------------------------------------!
 ! Reads zone file consisting of node number and corresponding pilot point zone
 !
 ! Updated 10/28/2020 by LS to use nodeids
+! Modified 7/22/2022 by LS for different zone arrays per layer - but NOT fully
+!   implemented! MODFLOW capability implemented first.
 !-----------------------------------------------------------------------------!
-    integer                :: i, nid, node, zone, ierr
+    integer                :: i, nid, node, zone, ierr, iarr
     logical                :: newzone
     character(256)         :: cerr
-
-    ! Set
-    nzones = 0
+    
+    pp_narr = 1
+    ppaq_narr = 1
+    ppat_narr = 0  ! TODO
+    iarr = 1
+    pp_arr_nzones = 0
+    pp_arr_zones = 0
 
     open(10, file=trim(zonefile), status='old', action='read', iostat=ierr, iomsg=cerr)
     call iomsghandler(ierr, cerr)
@@ -406,21 +416,21 @@ subroutine inputZones_IWFM()
         write(*,*) 'ERROR! Invalid node ID in Pilot Point Zone File = ',nid
         stop
       end if
-      nodezone(node) = zone
+      pp_node_zone(node,1) = zone
       ! Is this a new zone?
       newzone = .true.
-      do i=1, nzones
-        if (zone == zones(i)) newzone = .false.
+      do i=1, pp_arr_nzones(iarr)
+        if (zone == pp_arr_zones(i,iarr)) newzone = .false.
       end do
       if (newzone) then
-        nzones = nzones + 1
+        pp_arr_nzones(iarr) = pp_arr_nzones(iarr) + 1
         ! Handle parameter exceedence if necessary
-        if (nzones > max_zones) then
+        if (pp_arr_nzones(iarr) > max_zones) then
           call parexceed(max_zones, 'max_zones', &
                           'Failed during list creation of node zones', &
                           finalint=zone)
         end if
-        zones(nzones) = zone
+        pp_arr_zones(pp_arr_nzones(iarr),iarr) = zone
       end if
     end do
 
@@ -460,6 +470,7 @@ end subroutine writeWellFile_IWFM
 !-----------------------------------------------------------------------------!
 subroutine writeNodeFile(v, filename)
   use MakePar
+  use PilotPoints
   implicit none
 
   real,intent(in)          :: v(nnodes,nlayers)
@@ -477,7 +488,7 @@ subroutine writeNodeFile(v, filename)
   write(20,fmt(1)) 'Node', 'Zone', 'X', 'Y', (ilay, ilay=1, nlayers)
   ! Values
   do inode = 1, nnodes
-    write(20,fmt(2)) nodeid(inode), nodezone(inode), nodex(inode), nodey(inode), &
+    write(20,fmt(2)) nodeid(inode), pp_node_zone(inode,1), nodex(inode), nodey(inode), &
                      (v(inode, ilay), ilay=1,nlayers)
   end do
 

@@ -3,6 +3,7 @@ program Texture2Par
   use fpath
   use IWFM
   use Krige
+  use PilotPoints
   use errorhandle
   use str_utls
   use MFSupport
@@ -25,17 +26,10 @@ program Texture2Par
 !
 !-----------------------------------------------------------------------------!
 
-    integer                    :: mytpe, ioerr, ilay, ifail, ppn, atppn, ipp, &
-                                  i, ierr,  twell, wpoint, zone, ppcount, &
+    integer                    :: ioerr, ilay, ifail, ipp, &
+                                  i, ierr, iarr, twell, wpoint, zone, &
                                   modflowflag, zoneflag, geoflag
     real                       :: a_hmin
-    real, allocatable          :: ppx(:), ppy(:), ppKCMin(:), &
-                                  ppdKC(:), ppAnisoC(:), ppAnisoF(:), &
-                                  ppKFMin(:), ppdKF(:), ppSsC(:), ppSsF(:), &
-                                  ppSyC(:), ppSyF(:), ppatx(:), ppaty(:), &
-                                  ppatKCMin(:), ppatdKC(:), ppatKFMin(:), &
-                                  ppatdKF(:), ppatAnisoC(:), ppatAnisoF(:)
-    integer,allocatable        :: ppZone(:), ppatZone(:)
     character(150)             :: jnk,fpath_line
     character(256)             :: cerr
     character(1000)            :: line
@@ -88,7 +82,7 @@ program Texture2Par
       ! MODFLOW
       read(10,*) simFile
       read(10,*) layfiletemp
-      read(10,*) mfzonename
+      read(10,*) zonefile
       read(10,*) xoff
       read(10,*) yoff
       read(10,*) mfrot
@@ -124,9 +118,7 @@ program Texture2Par
     ! TODO: Add descriptive error when not all pilot point parameters are present
     call ReadToSymbol(10, '*')
     call FindSectionLength(10, ppn, '*')
-    allocate(ppx(ppn), ppy(ppn), ppKCMin(ppn), ppdKC(ppn), ppKFMin(ppn), &
-             ppdKF(ppn), ppSsC(ppn), ppSsF(ppn), ppSyC(ppn), ppSyF(ppn), &
-             ppAnisoC(ppn), ppAnisoF(ppn), ppZone(ppn))
+    call AquiferPPAllocate()
     do ipp = 1, ppn
       read(10,*) ppx(ipp), ppy(ipp), ppKCMin(ipp), ppdKC(ipp), ppKFMin(ipp), &
                  ppdKF(ipp), ppSsC(ipp), ppSsF(ipp), ppSyC(ipp),ppSyF(ipp), &
@@ -137,9 +129,7 @@ program Texture2Par
     !read(10,*)    !call ReadToSymbol(10, '*')
     call ReadToSymbol(10, '*')
     call FindSectionLength(10, atppn, '*')
-    allocate(ppatx(atppn), ppaty(atppn), ppatKCMin(atppn), ppatdKC(atppn), &
-             ppatKFMin(atppn), ppatdKF(atppn), ppatAnisoC(atppn), &
-             ppatAnisoF(atppn), ppatZone(atppn))
+    call AquitardPPAllocate()
     do ipp = 1, atppn
       read(10,*) ppatx(ipp), ppaty(ipp), ppatKCMin(ipp), ppatdKC(ipp), &
                  ppatKFMin(ipp), ppatdKF(ipp), ppatAnisoC(ipp), &
@@ -181,31 +171,27 @@ program Texture2Par
     call NodeAllocate()
 
     ! Read Node Zone file, unless zonefile was set to NONE
-    if (modflowflag == 0) then
-      if (to_upper(trim(zonefile))=='NONE') then
-        zoneflag = 0
-      else
-        ! External file
-        zoneflag = 1
+    if (to_upper(trim(zonefile))=='NONE') then
+      zoneflag = 0
+    else
+      ! External file
+      zoneflag = 1
+      if (modflowflag == 0) then
         call inputZones_IWFM()
-      end if
-    else if (modflowflag == 1) then
-      if (to_upper(trim(mfzonename))=='NONE') then
-        zoneflag = 0
       else
-        ! Translate MODFLOW zones file to node arrays
-        zoneflag = 1
         call inputZones_modflow()
       end if
     end if
 
-    ! Handle No Zones
+    ! Handle No Pilot Point Zones (same as one zone)
     if (zoneflag == 0) then
-      nzones   = 1
-      zones    = 1
-      nodezone = 1
-      ppzone   = 1
-      ppatzone = 1
+      pp_narr = 1
+      pp_lay2arr = 1
+      call PPZoneAllocate(1,nnodes)
+      pp_arr_nzones = 1
+      pp_node_zone =1
+      pp_arr_zones = 1
+      ppZone = 1
     end if
 
     ! Read geologic units file
@@ -241,7 +227,7 @@ program Texture2Par
     end if
     !write(*,'(4x,1a32,i)') 'Well File Length: ', wfilelen
     write(*,'(4x,1a32,i)') 'Number of Wells: ', nwell
-    write(*,'(4x,1a32,i)') 'Number of Pilot Point Zones: ', nzones
+    write(*,'(4x,1a32,i)') 'Number of Pilot Point Zones: ', maxval(pp_arr_nzones)
     write(*,'(4x,1a32,i,/)') 'Number of Geologic Zones: ', ngeozones
 
 ! Set anistropy and rotation matrix
@@ -280,31 +266,35 @@ program Texture2Par
 
     ! Krige from pilot points to nodes
     ! Aquifer Parameters - KCMin, DeltaKC, KFMin, DeltaKF, SsC, SsF, SyC, Aniso
-    write(*,'(2x,a)') 'Kriging Aquifer Pilot Point Parameters     '
-    call pp_parkrige(ppx, ppy, ppKCMin,  ppn, ppzone, nKCMin)
-    call pp_parkrige(ppx, ppy, ppdKC,    ppn, ppzone, dKC)
-    call pp_parkrige(ppx, ppy, ppKFMin,  ppn, ppzone, nKFMin)
-    call pp_parkrige(ppx, ppy, ppdKF,    ppn, ppzone, dKF)
-    call pp_parkrige(ppx, ppy, ppSsC,    ppn, ppzone, nSsC)
-    call pp_parkrige(ppx, ppy, ppSsF,    ppn, ppzone, nSsF)
-    call pp_parkrige(ppx, ppy, ppSyC,    ppn, ppzone, nSyC)
-    call pp_parkrige(ppx, ppy, ppSyF,    ppn, ppzone, nSyF)
-    call pp_parkrige(ppx, ppy, ppAnisoC, ppn, ppzone, nAnisoC)
-    call pp_parkrige(ppx, ppy, ppAnisoF, ppn, ppzone, nAnisoF)
+    write(*,'(2x,a,i3)') 'Kriging Aquifer Pilot Point Parameters, Array ',iarr
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKCMin,  nKCMin )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKC,    dKC    )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKFMin,  nKFMin )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKF,    dKF    )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsC,    nSsC   )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsF,    nSsF   )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyC,    nSyC   )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyF,    nSyF   )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoC, nAnisoC)
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoF, nAnisoF)
 
+    ! Krige Aquitard parameters from pilot points to nodes
     if ((modflowflag == 0).or.(ncbd > 0 )) then
       if (atppn > 0) then
         ! Aquitard Parameters - KCMin, DeltaKC, KFMin, DeltaKF, Aniso
-        write(*,'(2x,a)') 'Kriging Aquitard Pilot Point Parameters     '
-        call pp_parkrige(ppatx, ppaty, ppatKCMin,  atppn, ppatzone, atnKCMin)
-        call pp_parkrige(ppatx, ppaty, ppatdKC,    atppn, ppatzone, atdKC)
-        call pp_parkrige(ppatx, ppaty, ppatKFMin,  atppn, ppatzone, atnKFMin)
-        call pp_parkrige(ppatx, ppaty, ppatdKF,    atppn, ppatzone, atdKF)
-        call pp_parkrige(ppatx, ppaty, ppatAnisoC, atppn, ppatzone, atnAnisoC)
-        call pp_parkrige(ppatx, ppaty, ppatAnisoF, atppn, ppatzone, atnAnisoF)
+        write(*,'(2x,a,i3)') 'Kriging Aquitard Pilot Point Parameters, Array ',iarr
+        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKCMin,  nKCMin )
+        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKC,    dKC    )
+        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKFMin,  nKFMin )
+        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKF,    dKF    )
+        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatAnisoC, nAnisoC)
+        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatAnisoF, nAnisoF)
       else
         write(*,'(2x,a,/)') 'No Aquitard Pilot Points - Skipping       '
-        atnKCMin = -999; atdKC= -999; atnKFMin = -999; atdKF = -999
+        nKCMin(:,ppaq_narr:pp_narr) = -999
+        dKC   (:,ppaq_narr:pp_narr) = -999
+        nKFMin(:,ppaq_narr:pp_narr) = -999
+        dKF   (:,ppaq_narr:pp_narr) = -999
       end if
     end if
 
