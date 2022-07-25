@@ -283,7 +283,7 @@ end subroutine readNodeGeoZones_modflow
     use GLOBAL, ONLY : NLAY
     use PilotPoints
     use errorhandle
-    use MakePar, ONLY : nlayers,natlayers,nnodes
+    use MakePar, ONLY : nlayers,natlayers,nnodes,max_zones
 !-----------------------------------------------------------------------------!
 ! Reads input file with pilot point zones for nodes
 !
@@ -292,7 +292,7 @@ end subroutine readNodeGeoZones_modflow
 !  - PP Zones can be specified by layer
 ! Author: Leland Scantlebury of S.S. Papadopulos & Associates
 !-----------------------------------------------------------------------------!
-    integer                :: ierr, i, k, temp, nzones, zmax, n
+    integer                :: ierr, i, k, temp, nzones, n
     integer                :: arr_temp(nnodes,nlayers)
     integer,allocatable    :: temp_ints(:)
     character(200)         :: line
@@ -365,17 +365,24 @@ end subroutine readNodeGeoZones_modflow
     end do
     
     ! Now we can allocate the zone arrays
-    nzones = maxval(arr_temp)  ! not bulletproof, but doesn't have to be
+    nzones = maxval(arr_temp(:,1:pp_narr))  ! Perhaps too much work for a temporary value
+    if (nzones > max_zones) then
+      write(*,*) 'Too many unique zones specified in ',trim(zonefile)
+      STOP
+    end if    
     call PPZoneAllocate(nzones, nnodes)
-    
+
+    ! Copy over the zones:
+    pp_node_zone = arr_temp
+
     ! Now we do some counting
-    allocate(temp_ints(zmax))
+    allocate(temp_ints(nzones))
     do i=1, ppaq_narr
       ! Get unique values
       call get_unique_ints(nnodes, arr_temp(:,i), nzones, pp_arr_zones(:,i), pp_arr_nzones(i))
     end do
     ! Aquitards
-    do i=ppaq_narr, pp_narr
+    do i=ppaq_narr+1, pp_narr
       ! Get unique values
       call get_unique_ints(nnodes, arr_temp(:,i), nzones, pp_arr_zones(:,i), pp_arr_nzones(i))
     end do
@@ -529,20 +536,22 @@ subroutine writeCellFile(v, filename)
   character(*),intent(in)  :: filename
   integer                  :: inode, ilay, row, col
   character(60)            :: fmt(2)
+  character(60)            :: zonetxt
 
   write(*,'(4x,a,a35)') 'Writing:', filename
 
-  write(fmt(1),'("(2a8,i5(Zone ",i5,"2a18,",i5,"i14)")') nlayers, nlayers
-  write(fmt(2),'("(",i5",i8,2f18.5,",i5,"e14.5)")') nlayers+3, nlayers
+  write(zonetxt,"(i5,a)") nlayers, "(' Zone',i3)"
+  write(fmt(1),'("(2a7,",a,",2a18,",i5,"i14)")') trim(zonetxt), nlayers
+  write(fmt(2),'("(2i7,",i5,"i8,2f18.5,",i5,"e14.5)")') nlayers, nlayers
 
   open(20, file=trim(filename), status='replace', action='write', buffered='YES')
   ! Header
-  write(20,fmt(1)) 'Row', 'Col', 'Zone', 'X', 'Y', (ilay, ilay=1, nlayers)
+  write(20,fmt(1)) 'Row', 'Col', (ilay, ilay=1, nlayers), 'X', 'Y', (ilay, ilay=1, nlayers)
   ! Values
   do inode = 1, nnodes
     call node2rowcol(inode, row, col)
-    write(20,fmt(2)) row, col, pp_node_zone(inode,:), nodex(inode), nodey(inode),&
-                     v(inode,:)
+    write(20,fmt(2)) row, col, (pp_node_zone(inode,pp_lay2arr(ilay)), ilay=1, nlayers), &
+                     nodex(inode), nodey(inode), v(inode,:)
   end do
 
   close(20)

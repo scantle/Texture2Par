@@ -166,11 +166,8 @@ program Texture2Par
     wfilelen = wfilelen - 1
     close(10)
 
-    ! Allocate now that many dimensions are known
-    call WellAllocate()
-    call NodeAllocate()
-
     ! Read Node Zone file, unless zonefile was set to NONE
+    allocate(pp_lay2arr(nlayers+natlayers))
     if (to_upper(trim(zonefile))=='NONE') then
       zoneflag = 0
     else
@@ -187,12 +184,16 @@ program Texture2Par
     if (zoneflag == 0) then
       pp_narr = 1
       pp_lay2arr = 1
-      call PPZoneAllocate(1,nnodes)
+      call PPZoneAllocate(1,nnodes) ! nzones, nnodes
       pp_arr_nzones = 1
       pp_node_zone =1
       pp_arr_zones = 1
       ppZone = 1
     end if
+
+    ! Allocate now that many dimensions are known
+    call WellAllocate()
+    call NodeAllocate()
 
     ! Read geologic units file
     if (to_upper(trim(geozonefile))=='NONE') then
@@ -266,7 +267,7 @@ program Texture2Par
 
     ! Krige from pilot points to nodes
     ! Aquifer Parameters - KCMin, DeltaKC, KFMin, DeltaKF, SsC, SsF, SyC, Aniso
-    write(*,'(2x,a,i3)') 'Kriging Aquifer Pilot Point Parameters, Array ',iarr
+    write(*,'(2x,a,i3)') 'Kriging Aquifer Pilot Point Parameters'
     call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKCMin,  nKCMin )
     call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKC,    dKC    )
     call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKFMin,  nKFMin )
@@ -282,7 +283,7 @@ program Texture2Par
     if ((modflowflag == 0).or.(ncbd > 0 )) then
       if (atppn > 0) then
         ! Aquitard Parameters - KCMin, DeltaKC, KFMin, DeltaKF, Aniso
-        write(*,'(2x,a,i3)') 'Kriging Aquitard Pilot Point Parameters, Array ',iarr
+        write(*,'(2x,a,i3)') 'Kriging Aquitard Pilot Point Parameters'
         call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKCMin,  nKCMin )
         call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKC,    dKC    )
         call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKFMin,  nKFMin )
@@ -291,10 +292,10 @@ program Texture2Par
         call ppat_parkrige_arr(nnodes, nodex, nodey, ppatAnisoF, nAnisoF)
       else
         write(*,'(2x,a,/)') 'No Aquitard Pilot Points - Skipping       '
-        nKCMin(:,ppaq_narr:pp_narr) = -999
-        dKC   (:,ppaq_narr:pp_narr) = -999
-        nKFMin(:,ppaq_narr:pp_narr) = -999
-        dKF   (:,ppaq_narr:pp_narr) = -999
+        nKCMin(:,ppaq_narr+1:pp_narr) = -999
+        dKC   (:,ppaq_narr+1:pp_narr) = -999
+        nKFMin(:,ppaq_narr+1:pp_narr) = -999
+        dKF   (:,ppaq_narr+1:pp_narr) = -999
       end if
     end if
 

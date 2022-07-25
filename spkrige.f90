@@ -44,7 +44,7 @@ subroutine spkrige(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val)
 !   kriged_val (real array) kriging results
 !-----------------------------------------------------------------------------!
 
-    integer                  :: maxpt, ntot, i, g, n, grouploop, ier
+    integer                  :: maxpt, ntot, i, g, n, ier
     integer, allocatable     :: id(:)
     integer, intent(in)      :: nobs, ngrid
     real                     :: value, zkrig
@@ -288,7 +288,7 @@ subroutine spkrige_group(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val, &
 ! Groups are set as INTEGERS
 !-----------------------------------------------------------------------------!
 
-    integer                  :: maxpt, ntot, i, g, n, grouploop, ier
+    integer                  :: maxpt, ntot, i, g, n, ier
     integer, allocatable     :: id(:)
     integer, intent(in)      :: nobs, ngrid
     real                     :: value, zkrig

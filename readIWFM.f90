@@ -434,6 +434,8 @@ subroutine inputZones_IWFM()
       end if
     end do
 
+    call PPZoneAllocate(sum(pp_arr_nzones(1:iarr)),nnodes) ! nzones, nnodes
+
     close(10)
 
 end subroutine inputZones_IWFM

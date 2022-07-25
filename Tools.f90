@@ -411,6 +411,7 @@ real function tridet(x1, y1, x2, y2, x3, y3) result(det)
 
   end function tridet
 !-----------------------------------------------------------------------------!
+
   subroutine get_unique_ints(n, array, max_unique, unique_array, nunique)
     implicit none
 !-----------------------------------------------------------------------------!
@@ -419,6 +420,7 @@ real function tridet(x1, y1, x2, y2, x3, y3) result(det)
   integer,intent(in)  :: n, max_unique, array(n)
   integer,intent(out) :: nunique, unique_array(max_unique)
   integer             :: i, j
+  logical             :: found
   
   ! Initialize
   unique_array = -999
@@ -432,12 +434,19 @@ real function tridet(x1, y1, x2, y2, x3, y3) result(det)
   
   ! The real search
   do i=2, n
+    found = .false.
     do j=1, nunique
-      if (array(n) /= unique_array(n)) then
-        nunique = nunique + 1
-        unique_array(nunique) = array(n)
+      if (array(i) == unique_array(j)) then
+        found = .true.
+        exit  ! Leave inner unique loop early 
       end if
     end do
+    if (found==.false.) then
+      nunique = nunique + 1
+      unique_array(nunique) = array(i)
+      ! If we've found all the unique values, exit early
+      if (nunique==max_unique) exit
+    end if 
   end do
   
   end subroutine get_unique_ints

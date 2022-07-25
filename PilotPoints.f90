@@ -78,7 +78,7 @@ subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, kriged)
       if (ppcount > 0) then
         ! Krige
         call spkrige_group(ppcount, nnodes, nodex, nodey, pzx, pzy, pzv, &
-                           kriged(:, iarr), pp_node_zone, zone)
+                           kriged(:, iarr), pp_node_zone(:,iarr), zone)
       else
         write(*,'(2(a,i3))') 'ERROR - no pilot points for pilot point zone ', &
                    zone, ' in array ', iarr
@@ -106,7 +106,7 @@ subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, kriged)
   real                     :: pzx(ppn), pzy(ppn), pzv(ppn)
 
   ! Loop over aquifer arrays
-  do iarr=ppaq_narr, pp_narr
+  do iarr=ppaq_narr+1, pp_narr
     ! Loop over zones present in array
     do i=1, pp_arr_nzones(iarr)
       zone = pp_arr_zones(i,iarr)    ! Zones do not necessarily have to be in any order
@@ -142,9 +142,9 @@ subroutine PPZoneAllocate(nzones, nnodes)
   integer,intent(in) :: nzones, nnodes
   
   ! Must be set: nlayers, pp_narr
-  allocate(pp_arr_nzones   (pp_narr),    &
-           pp_node_zone(nnodes,pp_narr), &
-           pp_arr_zones(nzones,pp_narr)  )
+  allocate(pp_arr_nzones      (pp_narr),  &
+           pp_node_zone(nnodes,pp_narr),  &
+           pp_arr_zones(nzones,pp_narr)   )
   
 end subroutine PPZoneAllocate
 

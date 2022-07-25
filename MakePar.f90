@@ -632,8 +632,7 @@ subroutine NodeAllocate()
            KvB_aqtard   (nnodes, nlayers), &
            geozones     (nnodes, nlayers), &
            ngeozones_lay(nlayers), &
-           geonames_lay (max_zones,nlayers),&
-           pp_lay2arr   (nlayers+natlayers))  ! Belongs to Pilot Point Module
+           geonames_lay (max_zones,nlayers))
 
 end subroutine
 !-----------------------------------------------------------------------------!
