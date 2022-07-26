@@ -50,7 +50,7 @@ subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, kriged)
   use krige, only: spkrige_group
   implicit none
 !-----------------------------------------------------------------------------!
-! Loops over zones kriging pilot point parameter values to nodes
+! Loops over zones kriging aquiFER pilot point parameter values to nodes
 !-----------------------------------------------------------------------------!
 
   integer,intent(in)       :: nnodes
@@ -95,7 +95,7 @@ subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, kriged)
   use krige, only: spkrige_group
   implicit none
 !-----------------------------------------------------------------------------!
-! Loops over zones kriging pilot point parameter values to nodes
+! Loops over zones kriging aquiTARD pilot point parameter values to nodes
 !-----------------------------------------------------------------------------!
 
   integer,intent(in)       :: nnodes

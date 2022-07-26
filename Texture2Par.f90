@@ -183,6 +183,8 @@ program Texture2Par
     ! Handle No Pilot Point Zones (same as one zone)
     if (zoneflag == 0) then
       pp_narr = 1
+      ppaq_narr = 1
+      ppat_narr = 1
       pp_lay2arr = 1
       call PPZoneAllocate(1,nnodes) ! nzones, nnodes
       pp_arr_nzones = 1
@@ -215,21 +217,21 @@ program Texture2Par
 
     ! Write Read Summary
     write(*,'(2x,a)') 'Setup Summary:                          '
-    write(*,'(4x,1a32,i)') 'Number of aquifer pilot points: ', ppn
-    write(*,'(4x,1a32,i)') 'Number of aquitard pilot points ', atppn
-    write(*, '(4x,1a32,i)') 'Number of Layers: ', nlayers
+    write(*,'(4x,1a36,i8)') 'Number of aquifer pilot points: ', ppn
+    write(*,'(4x,1a36,i8)') 'Number of aquitard pilot points: ', atppn
+    write(*, '(4x,1a36,i8)') 'Number of Layers: ', nlayers
     if (modflowflag == 0) then
-      write(*, '(4x,1a32,i)') 'Number of Nodes: ', nnodes
-      write(*, '(4x,1a32,i)') 'Number of Elements: ', nelements
+      write(*, '(4x,1a36,i8)') 'Number of Nodes: ', nnodes
+      write(*, '(4x,1a36,i8)') 'Number of Elements: ', nelements
     else if (modflowflag == 1) then
       ! Perhaps "cells per layer"
-      write(*, '(4x,1a32,i)') 'Number of Cells: ', nnodes
-      write(*, '(4x,1a32,i)') 'Quasi-3D Confining Beds: ', ncbd
+      write(*, '(4x,1a36,i8)') 'Number of Cells: ', nnodes
+      write(*, '(4x,1a36,i8)') 'Quasi-3D Confining Beds: ', ncbd
     end if
-    !write(*,'(4x,1a32,i)') 'Well File Length: ', wfilelen
-    write(*,'(4x,1a32,i)') 'Number of Wells: ', nwell
-    write(*,'(4x,1a32,i)') 'Number of Pilot Point Zones: ', maxval(pp_arr_nzones)
-    write(*,'(4x,1a32,i,/)') 'Number of Geologic Zones: ', ngeozones
+    !write(*,'(4x,1a36,i)') 'Well File Length: ', wfilelen
+    write(*,'(4x,1a36,i8)') 'Number of Well Logs: ', nwell
+    write(*,'(4x,1a36,i8)') 'Number of Pilot Point Zones: ', maxval(pp_arr_nzones)
+    write(*,'(4x,1a36,i8,/)') 'Number of Geologic Zones: ', ngeozones
 
 ! Set anistropy and rotation matrix
     call setanis(a_hmin, 0.0)
