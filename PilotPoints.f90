@@ -7,7 +7,7 @@ module PilotPoints
 ! Improved/Moved by LS July 2022
 !-----------------------------------------------------------------------------!
 
-! Variables related to pilot points and their interpolated (kriged) nodal values 
+! Variables specified at pilot points
   SAVE
   integer                 :: ppn, atppn             ! Counts for aquifer & aquitard pilot points 
   integer,allocatable     :: ppZone(:),     &       ! Zone of each aquifer pilot point

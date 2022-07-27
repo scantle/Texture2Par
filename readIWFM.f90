@@ -395,16 +395,16 @@ subroutine inputZones_IWFM()
 ! Modified 7/22/2022 by LS for different zone arrays per layer - but NOT fully
 !   implemented! MODFLOW capability implemented first.
 !-----------------------------------------------------------------------------!
-    integer                :: i, nid, node, zone, ierr, iarr
+    integer                :: i, nid, node, zone, ierr, iarr, &
+                              zones_temp(max_zones,2), &
+                              nzones_temp(2), &             ! eventually, allocatable
+                              arr_temp(nnodes,1)            !arr_temp(nnodes,nlayers)
     logical                :: newzone
     character(256)         :: cerr
-    
-    pp_narr = 1
-    ppaq_narr = 1
-    ppat_narr = 0  ! TODO
-    iarr = 1
-    pp_arr_nzones = 0
-    pp_arr_zones = 0
+
+    iarr = 1 ! Placeholder until zone arrays are fully implemented
+    pp_lay2arr(:) = 1  ! All share an array
+    pp_lay2arr(nlayers+1:nlayers+natlayers) = 2  ! But aquitard arrays are separate
 
     open(10, file=trim(zonefile), status='old', action='read', iostat=ierr, iomsg=cerr)
     call iomsghandler(ierr, cerr)
@@ -416,25 +416,44 @@ subroutine inputZones_IWFM()
         write(*,*) 'ERROR! Invalid node ID in Pilot Point Zone File = ',nid
         stop
       end if
-      pp_node_zone(node,1) = zone
+      arr_temp(node,iarr) = zone
       ! Is this a new zone?
       newzone = .true.
-      do i=1, pp_arr_nzones(iarr)
-        if (zone == pp_arr_zones(i,iarr)) newzone = .false.
+      do i=1, nzones_temp(iarr)
+        if (zone == zones_temp(i,iarr)) newzone = .false.
       end do
       if (newzone) then
-        pp_arr_nzones(iarr) = pp_arr_nzones(iarr) + 1
+        nzones_temp(iarr) = nzones_temp(iarr) + 1
         ! Handle parameter exceedence if necessary
-        if (pp_arr_nzones(iarr) > max_zones) then
+        if (nzones_temp(iarr) > max_zones) then
           call parexceed(max_zones, 'max_zones', &
                           'Failed during list creation of node zones', &
                           finalint=zone)
         end if
-        pp_arr_zones(pp_arr_nzones(iarr),iarr) = zone
+        zones_temp(nzones_temp(iarr),iarr) = zone
       end if
     end do
 
-    call PPZoneAllocate(sum(pp_arr_nzones(1:iarr)),nnodes) ! nzones, nnodes
+    ! Placeholder initialization until zones-by-layer is fully implemented
+    ppaq_narr = 1
+    ppat_narr = 1
+    pp_narr = ppaq_narr + ppat_narr
+
+    call PPZoneAllocate(nzones_temp(1),nnodes) ! nzones, nnodes
+
+    ! Copy values over to permanent arrays
+    pp_node_zone = arr_temp
+    ! Note: for now aquifer zones == aquitard zones
+    do i=1, ppaq_narr
+      pp_arr_nzones(i) = nzones_temp(i)
+      pp_arr_zones(:,i) = zones_temp(1:nzones_temp(i),i)
+    end do
+    nzones_temp(2) = nzones_temp(1)  ! Aquitard
+    zones_temp(1:nzones_temp(2),2) = zones_temp(1:nzones_temp(1),1)
+    do i=ppaq_narr+1, pp_narr
+      pp_arr_nzones(i) = nzones_temp(i)
+      pp_arr_zones(:,i) = zones_temp(1:nzones_temp(i),i)
+    end do
 
     close(10)
 

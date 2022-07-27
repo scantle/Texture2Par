@@ -330,7 +330,7 @@ end subroutine readNodeGeoZones_modflow
       else
         pp_narr = pp_narr + 1
         ppaq_narr = ppaq_narr + 1
-        pp_lay2arr(k) = pp_lay2arr(pp_narr)
+        pp_lay2arr(k) = pp_narr
         backspace(10)
         read(10, *) arr_temp(:,pp_narr)
       end if
@@ -376,7 +376,6 @@ end subroutine readNodeGeoZones_modflow
     pp_node_zone = arr_temp
 
     ! Now we do some counting
-    allocate(temp_ints(nzones))
     do i=1, ppaq_narr
       ! Get unique values
       call get_unique_ints(nnodes, arr_temp(:,i), nzones, pp_arr_zones(:,i), pp_arr_nzones(i))
@@ -386,7 +385,6 @@ end subroutine readNodeGeoZones_modflow
       ! Get unique values
       call get_unique_ints(nnodes, arr_temp(:,i), nzones, pp_arr_zones(:,i), pp_arr_nzones(i))
     end do
-    deallocate(temp_ints)
 
   end subroutine inputZones_modflow
 !-----------------------------------------------------------------------------!
