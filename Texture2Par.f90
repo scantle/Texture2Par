@@ -182,15 +182,7 @@ program Texture2Par
 
     ! Handle No Pilot Point Zones (same as one zone)
     if (zoneflag == 0) then
-      pp_narr = 1
-      ppaq_narr = 1
-      ppat_narr = 1
-      pp_lay2arr = 1
-      call PPZoneAllocate(1,nnodes) ! nzones, nnodes
-      pp_arr_nzones = 1
-      pp_node_zone =1
-      pp_arr_zones = 1
-      ppZone = 1
+      call no_ppzone_setup(nnodes, nlayers, natlayers)
     end if
 
     ! Allocate now that many dimensions are known

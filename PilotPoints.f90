@@ -136,6 +136,36 @@ end subroutine ppat_parkrige_arr
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
+subroutine no_ppzone_setup(nnodes, nlayers, natlayers)
+  implicit none
+  ! Called when zonefile (Node/Cell Pilot Points File) == NONE
+  ! Essentially, no zones == one zone
+  ! Except point points are forced to zone 1
+
+  integer,intent(in) :: nnodes, nlayers, natlayers
+  integer            :: i
+
+  ! One array for aquifer zones, another for aquitard
+  ppaq_narr = 1
+  ppat_narr = 1
+  pp_narr = ppaq_narr + ppat_narr
+
+  call PPZoneAllocate(1,nnodes) ! nzones, nnodes
+  ! Populate nzones,zones arrays
+  pp_arr_nzones = 1
+  pp_arr_zones = 1
+  ! Fill zone array
+  pp_node_zone = 1
+  ! Enforce all pilot points in a single zone
+  ppZone = 1
+  ! Populate layer to array mapping
+  pp_lay2arr(:) = 1  ! All share an array
+  pp_lay2arr(nlayers+1:nlayers+natlayers) = 2  ! But aquitard arrays are separate
+
+end subroutine no_ppzone_setup
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
 subroutine PPZoneAllocate(nzones, nnodes)
   implicit none
   ! Called DURING zone reading subroutines
