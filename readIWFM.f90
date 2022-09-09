@@ -21,7 +21,7 @@ MODULE IWFM
   SAVE
   integer, parameter                  :: NUM_WORD_DIM=100
   integer, dimension(NUM_WORD_DIM)    :: left_word, right_word
-  character(300)                      :: cline
+  character(3000)                     :: cline
   character(200)                      :: nodefile, elementfile, prefolder, &
                                          preSimFile, simFile, stratfile, &
                                          gwfile, gwtemp
