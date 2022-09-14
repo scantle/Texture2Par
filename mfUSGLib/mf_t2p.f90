@@ -1,5 +1,6 @@
 !     ******************************************************************
       subroutine init_modflow_usgs(namfname,ierr,cmaxunit)
+      use mf_fpath, only: relpath, fpath_strip
 
       ! Initializes the dis/bas packages of MODFLOW
 
@@ -17,7 +18,7 @@
 
       ! variables used in routine
       integer                   :: n
-      character*200             :: namfname
+      character*200             :: namfname, namfname_nopath
       integer,parameter         :: mf_iin=141,  &
                                    niunit=100,  &
                                    maxunit=1000
@@ -54,6 +55,10 @@
         write(*,*) 'MODFLOW name file does not exist. Terminating.'
         return
       end if
+      
+      ! Get the relative path of the namefile (relpath) for fpath module
+      ! Used to append relative path onto all files MODFLOW opens
+      call fpath_strip(namfname, relpath, namfname_nopath)
 
       ! read modflow nam and basic and dis data
       call glo2bas8ar(mf_iin,CUNIT,VERSION,24,31,32,maxunit,12,headng,26,MFVNAM,29,27,30,36)
@@ -154,4 +159,6 @@
         END IF
       end do
 
-end subroutine clear_modflow_memory
+  end subroutine clear_modflow_memory
+  
+ !-----------------------------------------------------------------------------!

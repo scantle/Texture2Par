@@ -300,6 +300,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
+      use mf_fpath, only: fname2relative
       CHARACTER*(*) LABEL
       DIMENSION GNCn(2*MXADJn+3,MXGNCn)
       INTEGER LGNCn(MXGNCn),IRGNCn(2,MXADJn,MXGNCn)
@@ -325,6 +326,8 @@ C1------Check for and decode EXTERNAL and SFAC records.
          READ(IN,'(A)') LINE
       ELSE IF(LINE(ISTART:ISTOP).EQ.'OPEN/CLOSE') THEN
          CALL URWORD(LINE,LLOC,ISTART,ISTOP,0,N,R,IOUT,IN)
+C LS Relative path fix for T2P
+         call fname2relative(fname)
          FNAME = LINE(ISTART:ISTOP)
          IN = NUNOPN
          IF (IPRFLG.EQ.1) WRITE(IOUT,115) IN,FNAME

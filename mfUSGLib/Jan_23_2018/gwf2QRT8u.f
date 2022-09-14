@@ -568,6 +568,7 @@ C     Read and print a list of drain and optional associated
 C     return-flow recipient cells.  NAUX of the values in the list are
 C     optional -- auxiliary data.
 C     ******************************************************************
+      use mf_fpath, only: fname2relative
       CHARACTER*57 LABEL1, LABEL2, LABEL3,LABEL4,LABEL5
       CHARACTER*16 QRTAUX(NCAUX)
       DIMENSION QRTF(NQRTVL,MXQRT),NodQRT(MXRTCELLS)
@@ -604,6 +605,8 @@ C  Check for and decode EXTERNAL and SFAC records.
       ELSEIF (LINE(ISTART:ISTOP).EQ.'OPEN/CLOSE') THEN
         CALL URWORD(LINE,LLOC,ISTART,ISTOP,0,N,R,IOUT,IN)
         FNAME=LINE(ISTART:ISTOP)
+C LS Relative path fix for T2P
+        call fname2relative(fname)
         IN=NUNOPN
         WRITE(IOUT,520) IN,FNAME
   520   FORMAT(1X,/1X,'OPENING FILE ON UNIT ',I4,':',/1X,A)

@@ -328,6 +328,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
+      use mf_fpath, only: fname2relative
       CHARACTER*(*) LABEL
       DIMENSION HFB(7,MXHFB)
       CHARACTER*200 LINE,FNAME
@@ -353,6 +354,8 @@ C1------Check for and decode EXTERNAL and SFAC records.
       ELSE IF(LINE(ISTART:ISTOP).EQ.'OPEN/CLOSE') THEN
          CALL URWORD(LINE,LLOC,ISTART,ISTOP,0,N,R,IOUT,IN)
          FNAME = LINE(ISTART:ISTOP)
+C LS Relative path fix for T2P
+         call fname2relative(fname)
          IN = NUNOPN
          IF (IPRFLG.EQ.1) WRITE(IOUT,115) IN,FNAME
   115    FORMAT(1X,/1X,'OPENING FILE ON UNIT ',I4,':',/1X,A)
@@ -438,6 +441,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
+      use mf_fpath, only: fname2relative
       CHARACTER*(*) LABEL
       DIMENSION HFB(7,MXHFB),NODLAY(0:NLAY)
       CHARACTER*200 LINE,FNAME
@@ -463,6 +467,8 @@ C1------Check for and decode EXTERNAL and SFAC records.
       ELSE IF(LINE(ISTART:ISTOP).EQ.'OPEN/CLOSE') THEN
          CALL URWORD(LINE,LLOC,ISTART,ISTOP,0,N,R,IOUT,IN)
          FNAME = LINE(ISTART:ISTOP)
+C LS Relative path fix for T2P
+         call fname2relative(fname)
          IN = NUNOPN
          IF (IPRFLG.EQ.1) WRITE(IOUT,115) IN,FNAME
   115    FORMAT(1X,/1X,'OPENING FILE ON UNIT ',I4,':',/1X,A)

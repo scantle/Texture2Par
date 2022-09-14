@@ -169,6 +169,7 @@ C3------return.
       RETURN
       END
       SUBROUTINE URDCOM(IN,IOUT,LINE)
+      use mf_fpath, only: fname2relative
 C     ******************************************************************
 C     READ COMMENTS FROM A FILE AND PRINT THEM.  RETURN THE FIRST LINE
 C     THAT IS NOT A COMMENT
@@ -203,6 +204,7 @@ C     ******************************************************************
 C     Read and print a list.  NAUX of the values in the list are
 C     optional -- auxiliary data.
 C     ******************************************************************
+      use mf_fpath, only: fname2relative
       CHARACTER*(*) LABEL
       CHARACTER*16 CAUX(NCAUX)
       DIMENSION RLIST(LDIM,MXLIST)
@@ -230,6 +232,8 @@ C2------Check for and decode EXTERNAL and OPEN/CLOSE records.
       ELSE IF(LINE(ISTART:ISTOP).EQ.'OPEN/CLOSE') THEN
          CALL URWORD(LINE,LLOC,ISTART,ISTOP,0,N,R,IOUT,IN)
          FNAME=LINE(ISTART:ISTOP)
+C LS Relative path fix for T2P
+         call fname2relative(fname)
          IN=NUNOPN
          IF(IPRFLG.EQ.1)WRITE(IOUT,115) IN,FNAME
   115    FORMAT(1X,/1X,'OPENING FILE ON UNIT ',I4,':',/1X,A)
@@ -338,6 +342,7 @@ C     ******************************************************************
 C     Read and print a list for unstructured grid variables.
 C      NAUX of the values in the list are Optional -- auxiliary data.
 C     ******************************************************************
+      use mf_fpath, only: fname2relative
       CHARACTER*(*) LABEL
       CHARACTER*16 CAUX(NCAUX)
       DIMENSION RLIST(LDIM,MXLIST)
@@ -365,6 +370,8 @@ C2------Check for and decode EXTERNAL and OPEN/CLOSE records.
       ELSE IF(LINE(ISTART:ISTOP).EQ.'OPEN/CLOSE') THEN
          CALL URWORD(LINE,LLOC,ISTART,ISTOP,0,N,R,IOUT,IN)
          FNAME=LINE(ISTART:ISTOP)
+C LS Relative path fix for T2P
+         call fname2relative(fname)
          IN=NUNOPN
          IF(IPRFLG.EQ.1)WRITE(IOUT,115) IN,FNAME
   115    FORMAT(1X,/1X,'OPENING FILE ON UNIT ',I4,':',/1X,A)
@@ -506,6 +513,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
+      use mf_fpath, only: fname2relative
       CHARACTER*16 TEXT
       CHARACTER*24 ANAME
       DIMENSION A(JJ)
@@ -534,6 +542,8 @@ C2------FORMAT.  SET A FLAG SPECIFYING IF FREE FORMAT OR FIXED FORMAT.
       ELSE IF(CNTRL(ISTART:ISTOP).EQ.'OPEN/CLOSE') THEN
          CALL URWORD(CNTRL,ICOL,ISTART,ISTOP,0,N,R,IOUT,IN)
          FNAME=CNTRL(ISTART:ISTOP)
+C LS Relative path fix for T2P
+         call fname2relative(fname)
          LOCAT=NUNOPN
          WRITE(IOUT,15) LOCAT,FNAME
    15    FORMAT(1X,/1X,'OPENING FILE ON UNIT ',I4,':',/1X,A)
@@ -643,6 +653,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
+      use mf_fpath, only: fname2relative
       CHARACTER*16 TEXT
       CHARACTER*24 ANAME
       DOUBLE PRECISION A(JJ)
@@ -671,6 +682,8 @@ C2------FORMAT.  SET A FLAG SPECIFYING IF FREE FORMAT OR FIXED FORMAT.
       ELSE IF(CNTRL(ISTART:ISTOP).EQ.'OPEN/CLOSE') THEN
          CALL URWORD(CNTRL,ICOL,ISTART,ISTOP,0,N,R,IOUT,IN)
          FNAME=CNTRL(ISTART:ISTOP)
+C LS Relative path fix for T2P
+         call fname2relative(fname)
          LOCAT=NUNOPN
          WRITE(IOUT,15) LOCAT,FNAME
    15    FORMAT(1X,/1X,'OPENING FILE ON UNIT ',I4,':',/1X,A)
@@ -779,6 +792,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
+      use mf_fpath, only: fname2relative
       CHARACTER*24 ANAME
       DIMENSION IA(JJ)
       CHARACTER*20 FMTIN
@@ -806,6 +820,8 @@ C2------FORMAT.  SET A FLAG SPECIFYING IF FREE FORMAT OR FIXED FORMAT.
       ELSE IF(CNTRL(ISTART:ISTOP).EQ.'OPEN/CLOSE') THEN
          CALL URWORD(CNTRL,ICOL,ISTART,ISTOP,0,N,R,IOUT,IN)
          FNAME=CNTRL(ISTART:ISTOP)
+C LS Relative path fix for T2P
+         call fname2relative(fname)
          LOCAT=NUNOPN
          WRITE(IOUT,15) LOCAT,FNAME
    15    FORMAT(1X,/1X,'OPENING FILE ON UNIT ',I4,':',/1X,A)
@@ -901,6 +917,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
+      use mf_fpath, only: fname2relative
       CHARACTER*24 ANAME
       DIMENSION IA(JJ,II)
       CHARACTER*20 FMTIN
@@ -928,6 +945,8 @@ C2------FORMAT.  SET A FLAG SPECIFYING IF FREE FORMAT OR FIXED FORMAT.
       ELSE IF(CNTRL(ISTART:ISTOP).EQ.'OPEN/CLOSE') THEN
          CALL URWORD(CNTRL,ICOL,ISTART,ISTOP,0,N,R,IOUT,IN)
          FNAME=CNTRL(ISTART:ISTOP)
+C LS Relative path fix for T2P
+         call fname2relative(fname)
          LOCAT=NUNOPN
          WRITE(IOUT,15) LOCAT,FNAME
    15    FORMAT(1X,/1X,'OPENING FILE ON UNIT ',I4,':',/1X,A)
@@ -1129,6 +1148,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
+      use mf_fpath, only: fname2relative
       CHARACTER*24 ANAME
       DIMENSION A(JJ,II)
       CHARACTER*20 FMTIN
@@ -1158,6 +1178,8 @@ C2------FORMAT.  SET A FLAG SPECIFYING IF FREE FORMAT OR FIXED FORMAT.
       ELSE IF(CNTRL(ISTART:ISTOP).EQ.'OPEN/CLOSE') THEN
          CALL URWORD(CNTRL,ICOL,ISTART,ISTOP,0,N,R,IOUT,IN)
          FNAME=CNTRL(ISTART:ISTOP)
+C LS Relative path fix for T2P
+         call fname2relative(fname)
          LOCAT=NUNOPN
          WRITE(IOUT,15) LOCAT,FNAME
    15    FORMAT(1X,/1X,'OPENING FILE ON UNIT ',I4,':',/1X,A)
@@ -1289,6 +1311,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
+      use mf_fpath, only: fname2relative
       CHARACTER*24 ANAME
       DOUBLE PRECISION A(JJ,II)
       DOUBLE PRECISION PERTIM,TOTIM
@@ -1318,6 +1341,8 @@ C2------FORMAT.  SET A FLAG SPECIFYING IF FREE FORMAT OR FIXED FORMAT.
       ELSE IF(CNTRL(ISTART:ISTOP).EQ.'OPEN/CLOSE') THEN
          CALL URWORD(CNTRL,ICOL,ISTART,ISTOP,0,N,R,IOUT,IN)
          FNAME=CNTRL(ISTART:ISTOP)
+C LS Relative path fix for T2P
+         call fname2relative(fname)
          LOCAT=NUNOPN
          WRITE(IOUT,15) LOCAT,FNAME
    15    FORMAT(1X,/1X,'OPENING FILE ON UNIT ',I4,':',/1X,A)

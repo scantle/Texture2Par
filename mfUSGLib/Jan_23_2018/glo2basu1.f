@@ -237,6 +237,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
+      use mf_fpath, only: fname2relative
       INCLUDE 'openspec.inc'
       DIMENSION IUNIT(NIUNIT)
       CHARACTER*4 CUNIT(NIUNIT)
@@ -276,6 +277,8 @@ C3------DECODE THE FILE TYPE, UNIT NUMBER, AND NAME.
       CALL URWORD(LINE,LLOC,INAM1,INAM2,0,N,R,IOUT,INUNIT)
       IFLEN=INAM2-INAM1+1
       FNAME(1:IFLEN)=LINE(INAM1:INAM2)
+C LS Relative path fix for T2P
+      call fname2relative(fname,iflen)
       INQUIRE(UNIT=IU,OPENED=LOP)
       IF(LOP) THEN
          IF(IOUT.EQ.0) THEN
