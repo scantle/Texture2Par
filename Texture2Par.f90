@@ -27,8 +27,9 @@ program Texture2Par
 !-----------------------------------------------------------------------------!
 
     integer                    :: ioerr, ilay, ifail, ipp, &
-                                  i, ierr, iarr, twell, wpoint, zone, &
-                                  modflowflag, zoneflag, geoflag
+                                  i, j, ierr, iarr, twell, wpoint, zone, &
+                                  modflowflag, zoneflag, geoflag, &
+                                  vi, vj, ind
     real                       :: a_hmin
     character(150)             :: jnk,fpath_line
     character(256)             :: cerr
@@ -55,6 +56,11 @@ program Texture2Par
     read(10,*) line
     read(10,*) wellfile
     read(10,*) geozonefile
+    read(10,*) ndata
+    allocate(cokrigefiles(ndata))
+    do i=1, (ndata-1)
+      read(10,*) cokrigefiles(i)
+    end do
     call ReadToSymbol(10, '*')
 
     ! Check if MODFLOW or IWFM
@@ -93,15 +99,36 @@ program Texture2Par
     read(10,*) line
     if (index(to_upper(trim(line)), 'TRUE')>0) writeNodeFiles = .true.
 
-    ! Variogram Settings
+    ! Variograms
     call ReadToSymbol(10, '*')
-    read(10,*) itype
-    read(10,*) sill
-    read(10,*) range
-    read(10,*) a_hmin
-    read(10,*) ang1
-    read(10,*) nugget
     read(10,*) pckrige_nwells
+    do i=1, ndata
+      read(10,*) cokrige_nnear
+    end do
+    read(10,*) maxstruct
+    
+    ! Variogram-related calcs and allocation
+    nvario = (ndata*(ndata+1)/2) + 1 ! Calculate number of variograms (+1 for pps)
+    call allocate_krige()  ! requires nvario & maxstruct
+    
+    ! Read variograms
+    do i=1, nvario
+      read(10,*) vi, vj
+      if (vi==0) then
+        ind=nvario
+      else if (vi==vj) then
+        ind=vi
+      else
+        ind=ndata + (vi-1) + (vj-1)
+      end if
+      read(10,*) nstruct(ind), vario(1,ind)%nugget
+      do j=1, nstruct(ind)
+        read(10, *) vario(j,ind)%itype, vario(j,ind)%sill, vario(j,ind)%ang1
+        read(10, *) vario(j,ind)%a_hmax, vario(j,ind)%a_hmin
+      end do
+    end do
+    ! Process/setup
+    call init_krige()
 
     ! Sediment Settings
     call ReadToSymbol(10, '*')
@@ -225,9 +252,6 @@ program Texture2Par
     write(*,'(4x,1a36,i8)') 'Number of Pilot Point Zones: ', maxval(pp_arr_nzones)
     write(*,'(4x,1a36,i8,/)') 'Number of Geologic Zones: ', ngeozones
 
-! Set anistropy and rotation matrix
-    call setanis(a_hmin, a_hmin)
-    call setrot()
 ! MODEL SPECIFIC
 ! Call input wells subroutine
     if (modflowflag==0) then

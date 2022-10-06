@@ -10,47 +10,48 @@ MODULE MakePar
 
     SAVE
     ! Parameters
-    integer, parameter        :: max_node_elem_members = 15, &                 ! Maximum number of elements a node is a part of (will stop w/ error if too low)
-                                 max_zones = 100, &                            ! Maximum number of zones (used for both pilot point and geologic)
-                                 USE_IDW = 0, &
-                                 max_nodeid=5E6                                ! Maximum nodeid value (to prevent enormous array allocation)
-    real, parameter           :: NODATA=-999.0
-
-    real,allocatable          :: wellelevbot(:,:), ssb(:,:), pcwellelem(:,:), &
-                                 xwell(:), wellaqtardelevtop(:,:), &
-                                 wellelevtop(:,:),  &
-                                 ywell(:), &
-                                 zland(:), aqtardbotelev(:,:), &
-                                 nodex(:), nodey(:), &
-                                 zwell(:,:), khb(:,:), &
-                                 pcwellaqtardelem(:,:), &
-                                 aqtardtopelev(:,:),  kvb(:,:), &
-                                 syb(:,:), elevation(:), botelev(:,:), &
-                                 wellaqtardelevbot(:,:), topelev(:,:), &
-                                 pcnode(:,:), pcnode_aqtard(:,:), &
-                                 kvb_aqtard(:,:), pcwellzone(:,:), &
-                                 Thick(:,:), AqTardThick(:,:), &
-                                 nodexy(:,:), &
-                                 interbed_thick(:,:)
-    integer,allocatable       :: wellelem(:), numzone(:), &
-                                 elements(:,:), nodeelem(:,:), nnodeelem(:), &
-                                 ngeozones_lay(:), nodeid(:), nodebyid(:)
-    integer                   :: nlayers, nnodes, nwell, wfilelen, &
-                                 nelements, maxWPoints, pckrige_nwells, &
-                                 ngeozones, natlayers
-    real                      :: kfk, stp, khp, kvp, kck
-    character(30),allocatable :: geozones(:,:), wellgeozones(:,:), &
-                                 geonames_lay(:,:)
-    character(30)             :: geonames(max_zones)
-    character(60)             :: outfile
-    character(150)            :: wellfile, geozonefile
-    logical                   :: colocated=.false.
-    
-    ! Pilot Point Parameters
-    real,allocatable          :: nKCMin(:,:), dKC(:,:), nKFMin(:,:),&
-                                 dKF(:,:), nSsC(:,:), nSsF(:,:),    &
-                                 nSyC(:,:), nSyF(:,:), nAnisoC(:,:),&
-                                 nAnisoF(:,:)
+    integer, parameter         :: max_node_elem_members = 15, &                 ! Maximum number of elements a node is a part of (will stop w/ error if too low)
+                                  max_zones = 100, &                            ! Maximum number of zones (used for both pilot point and geologic)
+                                  USE_IDW = 0, &
+                                  max_nodeid=5E6                                ! Maximum nodeid value (to prevent enormous array allocation)
+    real, parameter            :: NODATA=-999.0
+                               
+    real,allocatable           :: wellelevbot(:,:), ssb(:,:), pcwellelem(:,:), &
+                                  xwell(:), wellaqtardelevtop(:,:), &
+                                  wellelevtop(:,:),  &
+                                  ywell(:), &
+                                  zland(:), aqtardbotelev(:,:), &
+                                  nodex(:), nodey(:), &
+                                  zwell(:,:), khb(:,:), &
+                                  pcwellaqtardelem(:,:), &
+                                  aqtardtopelev(:,:),  kvb(:,:), &
+                                  syb(:,:), elevation(:), botelev(:,:), &
+                                  wellaqtardelevbot(:,:), topelev(:,:), &
+                                  pcnode(:,:), pcnode_aqtard(:,:), &
+                                  kvb_aqtard(:,:), pcwellzone(:,:), &
+                                  Thick(:,:), AqTardThick(:,:), &
+                                  nodexy(:,:), &
+                                  interbed_thick(:,:)
+    integer,allocatable        :: wellelem(:), numzone(:), &
+                                  elements(:,:), nodeelem(:,:), nnodeelem(:), &
+                                  ngeozones_lay(:), nodeid(:), nodebyid(:)
+    integer                    :: nlayers, nnodes, nwell, wfilelen, &
+                                  nelements, maxWPoints, pckrige_nwells, &
+                                  cokrige_nnear, ngeozones, natlayers
+    real                       :: kfk, stp, khp, kvp, kck
+    character(30),allocatable  :: geozones(:,:), wellgeozones(:,:), &
+                                  geonames_lay(:,:)
+    character(30)              :: geonames(max_zones)
+    character(60)              :: outfile
+    character(150)             :: wellfile, geozonefile
+    character(150),allocatable :: cokrigefiles(:)
+    logical                    :: colocated=.false.
+                               
+    ! Pilot Point Parameters   
+    real,allocatable           :: nKCMin(:,:), dKC(:,:), nKFMin(:,:),&
+                                  dKF(:,:), nSsC(:,:), nSsF(:,:),    &
+                                  nSyC(:,:), nSyF(:,:), nAnisoC(:,:),&
+                                  nAnisoF(:,:)
 
     ! Global Trees
     type(tree_master_record), pointer :: nodetree
