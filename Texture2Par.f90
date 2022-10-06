@@ -103,7 +103,7 @@ program Texture2Par
     read(10,*) nugget
     read(10,*) pckrige_nwells
 
-    ! Soil Settings
+    ! Sediment Settings
     call ReadToSymbol(10, '*')
     read(10,*) KCk
     read(10,*) KFk
@@ -226,7 +226,7 @@ program Texture2Par
     write(*,'(4x,1a36,i8,/)') 'Number of Geologic Zones: ', ngeozones
 
 ! Set anistropy and rotation matrix
-    call setanis(a_hmin, 0.0)
+    call setanis(a_hmin, a_hmin)
     call setrot()
 ! MODEL SPECIFIC
 ! Call input wells subroutine
