@@ -92,6 +92,36 @@ end subroutine layerelevation
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
+SUBROUTINE pd_laydivide(nsets, top_elev, bot_elev)
+    implicit none
+!-----------------------------------------------------------------------------!
+! Find layer elevations at each well using node elevation data.
+! Inverse Distance Weighting is used to determine the elevations.
+!
+! Arguments:
+!    - topelev    - Top elevation at nodes
+!    - botelev    - Bottom elevation at nodes
+!-----------------------------------------------------------------------------!
+    real,intent(in)               :: top_elev(nnodes, nlayers), &
+                                     bot_elev(nnodes, nlayers)
+    integer, intent(in)           :: nsets
+    integer                       :: i
+    
+    do i=1, nsets
+      codata(i)%laytop = 0.0
+      codata(i)%laybot = 0.0
+      call IDW(codata(i)%npdat, codata(i)%x, codata(i)%y, codata(i)%node, &
+               codata(i)%laytop, nnodes, nlayers, nodex, nodey, top_elev, &
+               nelements, elements)
+      call IDW(codata(i)%npdat, codata(i)%x, codata(i)%y, codata(i)%node, &
+               codata(i)%laybot, nnodes, nlayers, nodex, nodey, top_elev, &
+               nelements, elements)
+    end do
+
+end subroutine pd_laydivide
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
 SUBROUTINE layertexture(well_topelev, well_botelev, pcwellout)
     implicit none
 !-----------------------------------------------------------------------------!

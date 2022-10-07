@@ -12,15 +12,17 @@ module pddata
 !-----------------------------------------------------------------------------!
   type :: pddataset
 
-    integer                  :: npdat            ! Number of datapoints
-    integer, allocatable     :: ndint(:), &      ! Number of depth intervals for each point
-                                zone(:,:),&      ! GeoZone, ie HSU of (points, layers)
-                                node(:)          ! Containing model node/element
-    real, allocatable        :: x(:),     &      ! X-coordinates of points
-                                y(:),     &      ! Y-coordinates of points
-                                zland(:), &      ! Land surface elevation 
-                                z(:,:),   &      ! Interval Bottom Elevation (interval, point)
-                                v(:,:)           ! Values (interval, point)
+    integer                  :: npdat              ! Number of datapoints
+    integer, allocatable     :: ndint(:),    &      ! Number of depth intervals for each point
+                                zone(:,:),   &      ! GeoZone, ie HSU of (points, layers)
+                                node(:)             ! Containing model node/element
+    real, allocatable        :: x(:),        &      ! X-coordinates of points
+                                y(:),        &      ! Y-coordinates of points
+                                zland(:),    &      ! Land surface elevation 
+                                z(:,:),      &      ! Interval Bottom Elevation (interval, point)
+                                v(:,:),      &      ! Values (interval, point)
+                                laytop(:,:), &      ! GeoZone, ie HSU of (points, layers)
+                                laybot(:,:)         ! GeoZone, ie HSU of (points, layers)
   end type pddataset
 !-----------------------------------------------------------------------------!
   
@@ -46,7 +48,9 @@ subroutine allocate_pddataset(pdset, maxint, nlay, modflowflag)
            pdset%node    (pdset%npdat),    &
            pdset%z(maxint,pdset%npdat),    &
            pdset%v(maxint,pdset%npdat),    &
-           pdset%zone    (pdset%npdat,nlay))
+           pdset%zone  (pdset%npdat,nlay), &
+           pdset%laytop(pdset%npdat,nlay), &
+           pdset%laybot(pdset%npdat,nlay)  )
 
 end subroutine allocate_pddataset
   

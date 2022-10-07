@@ -58,7 +58,7 @@ program Texture2Par
     read(10,*) wellfile
     read(10,*) geozonefile
     read(10,*) ndata
-    allocate(cokrigefiles(ndata), codata(ndata))
+    allocate(cokrigefiles(ndata-1), codata(ndata-1))
     do i=1, (ndata-1)
       read(10,*) cokrigefiles(i)
     end do
@@ -103,7 +103,7 @@ program Texture2Par
     ! Variograms
     call ReadToSymbol(10, '*')
     read(10,*) pckrige_nwells
-    do i=1, ndata
+    do i=1, (ndata-1)
       read(10,*) cokrige_nnear
     end do
     read(10,*) maxstruct
