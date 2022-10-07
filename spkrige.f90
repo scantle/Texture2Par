@@ -33,7 +33,7 @@ MODULE Krige
                                 anis2        ! Anisotropy 2 (vertical)
   end type vgm_struct
 !-----------------------------------------------------------------------------!
-    type :: kdata
+  type :: kdata
     ! Structure for storing primary/secondary data
     integer                  :: n             ! Number of points
     real                     :: v_mean        ! Dataset arithmetic mean

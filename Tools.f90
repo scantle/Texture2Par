@@ -80,6 +80,8 @@ MODULE errorhandle
   ! Error codes may be specific to the Intel Fortran Compiler.
   ! STOPS IF IT FINDS AN ERROR
   !
+  ! Deprecated, use iomsghandler  
+  !
   ! Error Code Source: https://software.intel.com/en-us/node/678472
   !
   ! Author: Leland Scantlebury, SSP&A

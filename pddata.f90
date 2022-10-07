@@ -2,7 +2,7 @@ module pddata
   implicit none
 !-----------------------------------------------------------------------------!
 ! Point depth data
-! Data, at a point, containing data with depth
+! Data, at a point location, containing data with depth
 ! e.g., a well log
 !-----------------------------------------------------------------------------!
   SAVE
@@ -14,15 +14,15 @@ module pddata
 
     integer                  :: npdat            ! Number of datapoints
     integer, allocatable     :: ndint(:), &      ! Number of depth intervals for each point
-                                zone(:,:)        ! GeoZone, ie HSU of (points, layers)
+                                zone(:,:),&      ! GeoZone, ie HSU of (points, layers)
+                                node(:)          ! Containing model node/element
     real, allocatable        :: x(:),     &      ! X-coordinates of points
                                 y(:),     &      ! Y-coordinates of points
-                                z(:),     &      ! Elevation above datum (zland - depth)
                                 zland(:), &      ! Land surface elevation 
+                                z(:,:),   &      ! Interval Bottom Elevation (interval, point)
                                 v(:,:)           ! Values (interval, point)
   end type pddataset
 !-----------------------------------------------------------------------------!
-
   
 !-----------------------------------------------------------------------------!
 ! Module Variables
@@ -33,19 +33,40 @@ module pddata
 !-----------------------------------------------------------------------------!
   CONTAINS
 
+subroutine allocate_pddataset(pdset, maxint, nlay, modflowflag)
+  implicit none
+  
+  type(pddataset),intent(inout)  :: pdset
+  integer,intent(in)          :: maxint, nlay, modflowflag
+  
+  allocate(pdset%ndint   (pdset%npdat),    &
+           pdset%x       (pdset%npdat),    &
+           pdset%y       (pdset%npdat),    &
+           pdset%zland   (pdset%npdat),    &
+           pdset%node    (pdset%npdat),    &
+           pdset%z(maxint,pdset%npdat),    &
+           pdset%v(maxint,pdset%npdat),    &
+           pdset%zone    (pdset%npdat,nlay))
+
+end subroutine allocate_pddataset
+  
+!-----------------------------------------------------------------------------!
+
 subroutine pre_read_pddata(unit, file, filelen, npoints, maxint)
+  use errorhandle
   implicit none
 !-----------------------------------------------------------------------------!
 !
 !-----------------------------------------------------------------------------!
   integer,intent(in)             :: unit
-  character(150),intent(in)      :: file, jnk
+  character(150),intent(in)      :: file
+  character(256)                 :: cerr
+  character(30)                  :: jnk
   integer,intent(out)            :: filelen, npoints, maxint
-  integer                        :: ioerr, pid, interal
+  integer                        :: ioerr, pid, interval
   
-  
-  open(unit, file = trim(wellfile), status='old', iostat = ierr,  iomsg=cerr)
-  call iomsghandler(ierr, cerr)
+  open(unit, file = trim(file), status='old', iostat = ioerr, iomsg=cerr)
+  call iomsghandler(ioerr, cerr)
   read(unit,*)                                    ! Header
   ioerr = 0
   filelen = 0
@@ -54,13 +75,12 @@ subroutine pre_read_pddata(unit, file, filelen, npoints, maxint)
   do while (ioerr == 0)
     read(unit,*, iostat = ioerr) jnk, pid, interval  ! name, point id, point depth interval
     filelen = filelen + 1
-    if (id > npoints) npoints = pid
+    if (pid > npoints) npoints = pid
     if (interval > maxint) maxint = interval
   end do
   filelen = filelen - 1
   close(unit)
 end subroutine pre_read_pddata
-
 !-----------------------------------------------------------------------------!
     
 end module pddata

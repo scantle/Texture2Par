@@ -5,6 +5,7 @@ program Texture2Par
   use Krige
   use PilotPoints
   use errorhandle
+  use pddata
   use str_utls
   use MFSupport
   implicit none
@@ -29,7 +30,7 @@ program Texture2Par
     integer                    :: ioerr, ilay, ifail, ipp, &
                                   i, j, ierr, iarr, twell, wpoint, zone, &
                                   modflowflag, zoneflag, geoflag, &
-                                  vi, vj, ind
+                                  vi, vj, ind, maxint, flen
     real                       :: a_hmin
     character(150)             :: jnk,fpath_line
     character(256)             :: cerr
@@ -57,7 +58,7 @@ program Texture2Par
     read(10,*) wellfile
     read(10,*) geozonefile
     read(10,*) ndata
-    allocate(cokrigefiles(ndata))
+    allocate(cokrigefiles(ndata), codata(ndata))
     do i=1, (ndata-1)
       read(10,*) cokrigefiles(i)
     end do
@@ -259,6 +260,13 @@ program Texture2Par
     else if (modflowflag==1) then
       call inputwells_modflow(geoflag)
     end if
+    
+! Handle additional datasets
+    do i=1, (ndata-1)
+      call pre_read_pddata(11, cokrigefiles(i), flen, codata(i)%npdat, maxint)
+      call allocate_pddataset(codata(i), maxint, nlayers, modflowflag)
+      call read_pddata_IWFM(codata(i), 11, cokrigefiles(i), flen, geoflag)
+    end do
 
 ! Call Layer Elevation subroutine
     write(*,'(2x,a)') 'Calculating Layer Elevations at Wells'

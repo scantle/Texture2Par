@@ -323,6 +323,110 @@ end subroutine inputwells_IWFM
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
+SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
+    use pddata
+    use kd_tree
+    use str_utls
+    use errorhandle
+    implicit none
+!-----------------------------------------------------------------------------!
+! Reads in point depth data files in pddataset
+! Uses NodeTree to locate closest nodes and pass this information to
+! subroutine that locates cell/element of well.
+!
+!   Argument "readzones" is a flag for whether GeoZones exist (1 = yes, 0 = no)
+!-----------------------------------------------------------------------------!
+    type(pddataset),intent(inout) :: pdset
+    integer,intent(in)         :: unit, filelen, readzones
+    character(150),intent(in)  :: file
+    integer, parameter         :: nnear=5
+    integer                    :: i, ipoint, interval, ilay, &
+                                  node, ngzones, ierr
+    integer                    :: closenodes(nnear)
+    real                       :: tx, ty, tz, td, tpc
+    real                       :: nodedists(nnear), queryxy(2)
+    character(30)              :: jnk, geobylayer(nlayers), &
+                                  zonenames(max_zones)
+    character(256)             :: cerr
+    logical                    :: newzone
+
+    ! Initialize
+    ngzones = 0
+
+    ! Read well file
+    write(*,'(2x,2a)') 'Reading Dataset File ', trim(file)
+    open(unit, file =trim(file), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
+    read(unit,*)                        ! Header
+
+    if (readzones == 0) then
+      ! No GeoZones
+      ngzones = 1
+      !wellgeozones(1:nwell,1:nlayers) = '[NONE]'  ! TODO - Implement
+      do i=1, filelen
+        read(unit,*) jnk, ipoint, interval, tpc, tx, ty, tz, td
+        pdset%v(interval,ipoint) = tpc
+        pdset%ndint(ipoint) = interval
+        if (interval == 1) then
+          pdset%x(ipoint) = tx
+          pdset%y(ipoint) = ty
+          pdset%zland(ipoint) = tz
+          ! Use node tree to find closest node
+          queryxy(1) = tx
+          queryxy(2) = ty
+          call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
+          pdset%node(ipoint) = get_well_element(tx, ty, ipoint, closenodes, nnear)
+        end if
+        pdset%z(interval,ipoint) = tz - td
+      end do
+    else
+      ! GeoZones
+      do i=1, filelen
+        write(*,*) 'UNIMPLEMENTED'
+        stop
+        read(unit,*) jnk, ipoint, interval, tpc, tx, ty, tz, td, geobylayer
+        pdset%v(interval, ipoint) = tpc
+        pdset%ndint(ipoint) = interval
+        if (interval == 1) then
+          pdset%x(ipoint) = tx
+          pdset%y(ipoint) = ty
+          pdset%zland(ipoint) = tz
+
+          ! Well geologic zones
+          !wellgeozones(ipoint,:) = geobylayer(:)
+          ! Counts geozones for reporting and comparing
+          do ilay=1, nlayers
+            call strtracker(ngzones, geobylayer(ilay), zonenames, newzone)
+          end do
+
+          ! Use node tree to find closest node
+          queryxy(1) = tx
+          queryxy(2) = ty
+          call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
+          pdset%node(ipoint) = get_well_element(tx, ty, ipoint, closenodes, nnear)
+
+        end if
+        pdset%z(interval,ipoint) = tz - td
+      end do
+    end if
+    close(unit)
+
+    ! Report if mismatch in model vs dataset geo zone count
+    if (ngzones > ngeozones) then
+      ! Just a warning - the extra data will not be used
+      write(*,'(4x,a)') 'Warning - more dataset geologic zones than node geologic zones'
+      write(*,'(4x,i3,a,i3)') ngzones, ' vs ', ngeozones
+    else if (ngzones < ngeozones) then
+      ! It's secondary data - okay if it doesn't exit in all zones
+      write(*,'(4x,a)') 'Warning - more node geologic zones than dataset geologic zones'
+      write(*,'(4x,i3,a,i3)') ngeozones, ' vs ', ngzones
+      stop
+    end if
+
+end subroutine read_pddata_IWFM
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
 subroutine readNodeGeoZones_IWFM()
   use MakePar
   use PilotPoints

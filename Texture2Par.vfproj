@@ -56,6 +56,7 @@
 		<File RelativePath=".\mfsupport.f90"/>
 		<File RelativePath=".\PilotPoints.f90"/>
 		<File RelativePath=".\readIWFM.f90"/>
+		<File RelativePath=".\pddata.f90"/>
 		<File RelativePath=".\spkrige.f90"/>
 		<File RelativePath=".\Texture2Par.f90"/>
 		<File RelativePath=".\Tools.f90"/>

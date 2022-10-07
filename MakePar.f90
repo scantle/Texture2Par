@@ -1,5 +1,6 @@
 MODULE MakePar
   use kd_tree
+  use pddata
   implicit none
 
 !-----------------------------------------------------------------------------!
@@ -53,6 +54,9 @@ MODULE MakePar
                                   nSyC(:,:), nSyF(:,:), nAnisoC(:,:),&
                                   nAnisoF(:,:)
 
+    ! Cokriging data
+    type(pddataset),allocatable :: codata(:)
+    
     ! Global Trees
     type(tree_master_record), pointer :: nodetree
 
