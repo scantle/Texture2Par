@@ -92,18 +92,22 @@ end subroutine layerelevation
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-SUBROUTINE pd_laydivide(nsets, top_elev, bot_elev)
+SUBROUTINE pd_laydivide(nsets, top_elev, bot_elev, top_tard, bot_tard)
     implicit none
 !-----------------------------------------------------------------------------!
 ! Find layer elevations at each well using node elevation data.
 ! Inverse Distance Weighting is used to determine the elevations.
 !
 ! Arguments:
-!    - topelev    - Top elevation at nodes
-!    - botelev    - Bottom elevation at nodes
+!    - top_elev    - Top elevation at nodes
+!    - bot_elev    - Bottom elevation at nodes
+!    - top_tard    - Top elevation at aquitard layers
+!    - bot_tard    - Bottom elevation at aquitard layers
 !-----------------------------------------------------------------------------!
     real,intent(in)               :: top_elev(nnodes, nlayers), &
-                                     bot_elev(nnodes, nlayers)
+                                     bot_elev(nnodes, nlayers), &
+                                     top_tard(nnodes, nlayers), &
+                                     bot_tard(nnodes, nlayers)
     integer, intent(in)           :: nsets
     integer                       :: i
     
@@ -115,6 +119,12 @@ SUBROUTINE pd_laydivide(nsets, top_elev, bot_elev)
                nelements, elements)
       call IDW(codata(i)%npdat, codata(i)%x, codata(i)%y, codata(i)%node, &
                codata(i)%laybot, nnodes, nlayers, nodex, nodey, top_elev, &
+               nelements, elements)
+      call IDW(codata(i)%npdat, codata(i)%x, codata(i)%y, codata(i)%node, &
+               codata(i)%aqttop, nnodes, nlayers, nodex, nodey, top_tard, &
+               nelements, elements)
+      call IDW(codata(i)%npdat, codata(i)%x, codata(i)%y, codata(i)%node, &
+               codata(i)%aqtbot, nnodes, nlayers, nodex, nodey, bot_tard, &
                nelements, elements)
     end do
 

@@ -269,12 +269,13 @@ program Texture2Par
     end do
 
 ! Call Layer Elevation subroutine
-    write(*,'(2x,a)') 'Calculating Layer Elevations at Wells'
     if (modflowflag == 0) then
+      write(*,'(2x,a)') 'Calculating Layer Elevations at Data Points'
       call layerelevation(TopElev, BotElev, wellelevtop, wellelevbot)
       ! For aquitard
       call layerelevation(AqTardTopElev, AqTardBotElev, &
                           wellaqtardelevtop, wellaqtardelevbot)
+      call pd_laydivide(ndata-1, TopElev, BotElev, AqTardTopElev, AqTardBotElev)
     end if
     ! Modflow Well elevations are assigned during well read
 

@@ -21,8 +21,10 @@ module pddata
                                 zland(:),    &      ! Land surface elevation 
                                 z(:,:),      &      ! Interval Bottom Elevation (interval, point)
                                 v(:,:),      &      ! Values (interval, point)
-                                laytop(:,:), &      ! GeoZone, ie HSU of (points, layers)
-                                laybot(:,:)         ! GeoZone, ie HSU of (points, layers)
+                                laytop(:,:), &      ! Model layer top
+                                laybot(:,:), &      ! Model layer bottom
+                                aqttop(:,:), &      ! Model aquitard top
+                                aqtbot(:,:)         ! Model aquitard bottom
   end type pddataset
 !-----------------------------------------------------------------------------!
   
@@ -50,7 +52,9 @@ subroutine allocate_pddataset(pdset, maxint, nlay, modflowflag)
            pdset%v(maxint,pdset%npdat),    &
            pdset%zone  (pdset%npdat,nlay), &
            pdset%laytop(pdset%npdat,nlay), &
-           pdset%laybot(pdset%npdat,nlay)  )
+           pdset%laybot(pdset%npdat,nlay), &
+           pdset%aqttop(pdset%npdat,nlay), &
+           pdset%aqtbot(pdset%npdat,nlay)  )
 
 end subroutine allocate_pddataset
   
