@@ -92,7 +92,7 @@ end subroutine layerelevation
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-SUBROUTINE pd_laydivide(nsets, top_elev, bot_elev, top_tard, bot_tard)
+SUBROUTINE pd_elev_at_points(nsets, top_elev, bot_elev, top_tard, bot_tard)
     implicit none
 !-----------------------------------------------------------------------------!
 ! Find layer elevations at each well using node elevation data.
@@ -118,7 +118,7 @@ SUBROUTINE pd_laydivide(nsets, top_elev, bot_elev, top_tard, bot_tard)
                codata(i)%laytop, nnodes, nlayers, nodex, nodey, top_elev, &
                nelements, elements)
       call IDW(codata(i)%npdat, codata(i)%x, codata(i)%y, codata(i)%node, &
-               codata(i)%laybot, nnodes, nlayers, nodex, nodey, top_elev, &
+               codata(i)%laybot, nnodes, nlayers, nodex, nodey, bot_elev, &
                nelements, elements)
       call IDW(codata(i)%npdat, codata(i)%x, codata(i)%y, codata(i)%node, &
                codata(i)%aqttop, nnodes, nlayers, nodex, nodey, top_tard, &
@@ -128,7 +128,7 @@ SUBROUTINE pd_laydivide(nsets, top_elev, bot_elev, top_tard, bot_tard)
                nelements, elements)
     end do
 
-end subroutine pd_laydivide
+end subroutine pd_elev_at_points
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
@@ -155,12 +155,10 @@ SUBROUTINE layertexture(well_topelev, well_botelev, pcwellout)
     character(60)            :: fmt(2)
 
     !write(*,'(4x, a)') 'Calculating coarse-grained % for each well in each layer'
-    do iwell = 1, nwell
-      do ilay = 1, nlayers
-
+    do ilay = 1, nlayers
+      do iwell = 1, nwell
         elemTop = well_topelev(iwell, ilay)
         elemBot = well_botelev(iwell, ilay)
-
 !     Interval within layer
         SumPcWellZone = 0
         SumLengthIn = 0
@@ -175,7 +173,6 @@ SUBROUTINE layertexture(well_topelev, well_botelev, pcwellout)
 !       Calculate vertical weight for screen interval within element
           if ((zoneTop >= elemBot).and.(zoneBot <= elemTop).and.&
               (PcWellZone(iwell, izone) >= 0)) then
-
             ! Find min top/bot values
             Ztop = min(elemTop, zoneTop)
             Zbot = max(elemBot, zoneBot)
@@ -195,12 +192,67 @@ end subroutine layertexture
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
+SUBROUTINE pd_avg2lay(pdset, n, topelevs, botelevs, layvarray)
+    
+  implicit none
+!-----------------------------------------------------------------------------!
+! This subprogram calculates the proportion of coarse-grained material at each
+! well within an element layer, where the well at least partially penetrates
+! the element layer.
+!
+! Arguments:
+!-----------------------------------------------------------------------------!
+
+  type(pddataset),intent(in) :: pdset
+  integer,intent(in)         :: n
+  real,intent(in)            :: topelevs(n, nlayers), &
+                                botelevs(n, nlayers)
+  real,intent(inout)         :: layvarray(n, nlayers)
+  real                       :: intv_top, intv_bot, lengthin, sumlengthin, intv_sum
+  integer                    :: i, p, ilay, intv
+    
+  ! TODO revise with WHERE/FORALL statement(s)
+  do ilay = 1, nlayers
+  ! Loop over data points
+    do i = 1, n
+      ! Loop over depth intervals, get top&bot
+      intv_sum = 0.0
+      SumLengthIn = 0.0
+      do intv = 1, pdset%ndint(i)
+        if (intv == 1) then 
+          intv_bot = pdset%z(intv, i)
+          intv_top = pdset%zland(intv)
+        else
+          intv_bot = pdset%z(intv, i)
+          intv_top = pdset%z(intv - 1,i)
+        end if
+  !       Calculate vertical weight for screen interval within element
+        if ((intv_top >= botelevs(i,ilay)).and.&
+            (intv_bot <= topelevs(i,ilay)).and.&
+            (pdset%v(intv,i) >= 0.0)) then
+          ! Find min top/bot values
+          LengthIn = min(topelevs(i,ilay), intv_top)-max(botelevs(i,ilay), intv_bot)
+          intv_sum = intv_sum + LengthIn * pdset%v(intv,i)
+          SumLengthIn = SumLengthIn + LengthIn
+        end if
+      end do
+      layvarray(i, ilay) = NODATA
+      if (SumLengthIn > 0.0) then
+        layvarray(i, ilay) = intv_sum / SumLengthIn
+      end if
+    end do
+  end do
+
+end subroutine pd_avg2lay
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
 SUBROUTINE interpolate()
     use Krige
     use PilotPoints
     implicit none
 !-----------------------------------------------------------------------------!
-! Interpolates from wells to nodes using inverse-distance method
+! Interpolates from wells to nodes 
 !
 ! Well GeoZones Loop added 7/1/2019
 ! Utilizes arrays geonames_lay and ngeozones_lay which list geologic zones

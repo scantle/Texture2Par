@@ -275,7 +275,7 @@ program Texture2Par
       ! For aquitard
       call layerelevation(AqTardTopElev, AqTardBotElev, &
                           wellaqtardelevtop, wellaqtardelevbot)
-      call pd_laydivide(ndata-1, TopElev, BotElev, AqTardTopElev, AqTardBotElev)
+      call pd_elev_at_points(ndata-1, TopElev, BotElev, AqTardTopElev, AqTardBotElev)
     end if
     ! Modflow Well elevations are assigned during well read
 
@@ -284,13 +284,19 @@ program Texture2Par
 
 ! Call Layer Texture subroutine
     write(*,'(2x,a)') 'Calculating Percent Coarse at Wells      '
-    outfile = 'PcWellElem.out'
     call layertexture(wellelevtop, wellelevbot, PcWellElem)
     ! If IWFM or if there are MODFLOW confining beds
     if ((modflowflag == 0).or.(ncbd > 0 )) then
-      outfile = 'PcWellAqTardElem.out'
       call layertexture(wellaqtardelevtop, wellaqtardelevbot, PcWellAqtardElem)
     end if
+    
+    ! Average pddatasets by layer
+    do i=1, (ndata-1)
+      call pd_avg2lay(codata(i), codata(i)%npdat, codata(i)%laytop, codata(i)%laybot, codata(i)%layv)
+      if ((modflowflag == 0).or.(ncbd > 0 )) then
+        call pd_avg2lay(codata(i), codata(i)%npdat, codata(i)%aqttop, codata(i)%aqtbot, codata(i)%aqtv)
+      end if
+    end do
 
     ! Krige from pilot points to nodes
     ! Aquifer Parameters - KCMin, DeltaKC, KFMin, DeltaKF, SsC, SsF, SyC, Aniso

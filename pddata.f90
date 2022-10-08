@@ -24,7 +24,9 @@ module pddata
                                 laytop(:,:), &      ! Model layer top
                                 laybot(:,:), &      ! Model layer bottom
                                 aqttop(:,:), &      ! Model aquitard top
-                                aqtbot(:,:)         ! Model aquitard bottom
+                                aqtbot(:,:), &      ! Model aquitard bottom
+                                layv(:,:),   &      ! Values averaged by layer
+                                aqtv(:,:)           ! Values averaged by aquitard layer
   end type pddataset
 !-----------------------------------------------------------------------------!
   
@@ -54,7 +56,9 @@ subroutine allocate_pddataset(pdset, maxint, nlay, modflowflag)
            pdset%laytop(pdset%npdat,nlay), &
            pdset%laybot(pdset%npdat,nlay), &
            pdset%aqttop(pdset%npdat,nlay), &
-           pdset%aqtbot(pdset%npdat,nlay)  )
+           pdset%aqtbot(pdset%npdat,nlay), &
+           pdset%layv  (pdset%npdat,nlay), &
+           pdset%aqtv  (pdset%npdat,nlay)  )
 
 end subroutine allocate_pddataset
   
