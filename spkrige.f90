@@ -37,8 +37,7 @@ MODULE Krige
     ! Structure for storing primary/secondary data
     integer                  :: n             ! Number of points
     real                     :: v_mean        ! Dataset arithmetic mean
-    real, allocatable        :: x(:), &       ! X-coordinates
-                                y(:), &       ! Y-coordinates
+    real, allocatable        :: xy(:,:), &    ! X-coordinates
                                 v(:)          ! Values
   end type kdata
 !-----------------------------------------------------------------------------!
@@ -91,7 +90,7 @@ end subroutine allocate_krige
   subroutine kdata_allocator(obj)
     implicit none
     type(kdata), intent(inout)  :: obj
-    allocate(obj%x(obj%n), obj%y(obj%n), obj%v(obj%n))
+    allocate(obj%xy(2,obj%n), obj%v(obj%n))
   end subroutine kdata_allocator
 
 !-----------------------------------------------------------------------------!
@@ -227,7 +226,7 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
     real, intent(in)         :: gx(ngrid), gy(ngrid), obsval(nobs)
     real, intent(inout)      :: kriged_val(ngrid)
 
-    type(tree_master_record), pointer, intent(in) :: obstree
+    type(tree_master_record), intent(in), pointer :: obstree
     
     ind = 1   ! Primary variogram assumed
 
@@ -319,7 +318,7 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, &
     real, intent(inout)      :: kriged_val(ngrid)
     character(30),intent(in) :: ggroup(ngrid), targetgroup
 
-    type(tree_master_record), pointer, intent(in) :: obstree
+    type(tree_master_record), intent(in), pointer :: obstree
     
     ind = 1   ! Primary variogram assumed
 
@@ -530,7 +529,7 @@ subroutine spcokrige(dsets, ndsets, grid, kriged_val)  ! obstree, nnear, ggroup,
         ! loop over data points
         do n=1, dsets(d)%n
           do j=1, nstruct(ind)
-            call variogram(ind,j,grid%x(i),grid%y(i),0.0d0,dsets(d)%x(n),dsets(d)%y(n),0.0d0,value)
+            call variogram(ind,j,grid%x(i),grid%y(i),0.0d0,dsets(d)%xy(1,n),dsets(d)%xy(2,n),0.0d0,value)
             r(rcount) = r(rcount) + value
           end do
           rcount = rcount + 1
@@ -747,14 +746,14 @@ end subroutine spcokrige
         ! Outer loop over column points
         do jj=1, dsets(j)%n
           JS=ID(colcount(j)+jj)-(colcount(j)+jj)
-          x2=dsets(j)%x(jj)
-          y2=dsets(j)%y(jj)
+          x2=dsets(j)%xy(1,jj)
+          y2=dsets(j)%xy(2,jj)
           ! Inner loop over row points
           ii = jj
           if (i/=j) ii=1
           do while (ii <= dsets(i)%n)
-            x1=dsets(i)%x(ii)
-            y1=dsets(i)%y(ii)
+            x1=dsets(i)%xy(1,ii)
+            y1=dsets(i)%xy(2,ii)
             value_sum=0.0d0
             do n=1, nstruct(ind)
               call variogram(ind,n,x1,y1,0.0d0,x2,y2,0.0d0,value)

@@ -283,7 +283,7 @@ program Texture2Par
     call colocate_corrector(xwell, ywell, nwell)
 
 ! Call Layer Texture subroutine
-    write(*,'(2x,a)') 'Calculating Percent Coarse at Wells      '
+    write(*,'(2x,a)') 'Calculating Percent Coarse at Wells'
     call layertexture(wellelevtop, wellelevbot, PcWellElem)
     ! If IWFM or if there are MODFLOW confining beds
     if ((modflowflag == 0).or.(ncbd > 0 )) then

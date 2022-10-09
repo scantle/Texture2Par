@@ -9,7 +9,7 @@ Module kd_tree
   ! kennel@lyapunov.ucsd.edu
   ! .. Parameters ..
   ! you choose this.
-  Integer, Parameter :: bucket_size = 50
+  Integer, Parameter :: bucket_size = 128
   ! ..
   ! .. Derived Type Declarations ..
   ! Global information about the tree
@@ -55,6 +55,11 @@ Module kd_tree
       Integer, Dimension (:), Pointer :: indexes
       Type (tree_node), Pointer :: root
   End Type tree_master_record
+  
+  ! To make it easier to pass around - LS 2022
+  type :: tree_array
+    type(tree_master_record), pointer :: tp
+  end type
 
   Type :: tree_search_record
       Private

@@ -259,14 +259,13 @@ SUBROUTINE interpolate()
 ! ("Units") present in each model layer, based upon geologic node zones
 ! -LS
 !-----------------------------------------------------------------------------!
-
-    real                     :: sum1, sum2, weight, dcol
-    real,allocatable         :: khc(:,:), khf(:,:), kvc(:,:), kvf(:,:), pc(:)
-    integer                  :: iwell, ilay, inode, iarr, igeo, wcount, count
-    real,allocatable         :: wellxy(:,:), wellv(:),temppc(:)
-    type(tree_master_record),pointer :: welltree
-    character(30),allocatable:: tempzones(:)
-    character(60),allocatable:: fmt(:)
+    real                      :: sum1, sum2, weight, dcol
+    real,allocatable          :: khc(:,:), khf(:,:), kvc(:,:), kvf(:,:), pc(:)
+    integer                   :: iwell, ilay, inode, iarr, igeo, i, wcount, count
+    real,allocatable          :: wellxy(:,:), wellv(:),temppc(:)
+    character(30),allocatable :: tempzones(:)
+    character(60),allocatable :: fmt(:)
+    type(tree_array),allocatable :: dtrees(:)
 
 !  Avoiding stack overflow by allocating after declaration
     allocate(KhC(nnodes, nlayers), &
@@ -276,6 +275,7 @@ SUBROUTINE interpolate()
              pc(nnodes))
     allocate(wellxy(nwell,2), wellv(nwell),temppc(nnodes))
     allocate(tempzones(nnodes),fmt(2))
+    allocate(dtrees(ndata))
 
     if (USE_IDW == 0) then
       ! Calculate percent coarse at each node by kriging well data by layer
@@ -285,7 +285,7 @@ SUBROUTINE interpolate()
         ! Use to build kd-tree for kriging subroutine
         do igeo=1, ngeozones_lay(ilay)
           wcount = 0
-          do iwell=1, nwell
+          do iwell=1, nwell 
             if ((pcwellelem(iwell, ilay) >= 0.0d0).and.&
                 (wellgeozones(iwell,ilay) == geonames_lay(igeo,ilay))) then
               wcount = wcount + 1
@@ -294,22 +294,29 @@ SUBROUTINE interpolate()
               wellxy(wcount,2) = ywell(iwell)
             end if
           end do
-          if (wcount >= pckrige_nwells) then
-            welltree => create_tree(wellxy(1:wcount,:))
+          if (wcount > 0) then
+            if (wcount < pckrige_nwells) then
+              ! Warn if less wells than expected
+              write(*,'(4x,a,i8,3a,i3,a)') 'Warning - Layer', ilay, ' - ', &
+                       trim(geonames_lay(igeo,ilay)), ', only ', wcount, ' wells'
+            end if
+            dtrees(1)%tp = create_tree(wellxy(1:wcount,:))
             ! Pass well tree to kriging routine
             ! Will ignore nodes not in the target group
-            call spkrige_tree_group(nnodes, nodex, nodey, welltree, nwell, &
-                              wellv, temppc, pckrige_nwells, &
-                              tempzones, geonames_lay(igeo,ilay))
-          else if (wcount > 0) then
-            ! If here, wcount was less than pckrige_nwells but greater than 0
-            write(*,'(4x,a,i8,3a,i3,a)') 'Warning - Layer', ilay, ' - ', &
-                     trim(geonames_lay(igeo,ilay)), ', only ', wcount, ' wells'
-            ! (warns even through it calls the same subroutine)
-            welltree => create_tree(wellxy(1:wcount,:))
-            call spkrige_tree_group(nnodes, nodex, nodey, welltree, nwell, &
-                              wellv, temppc, pckrige_nwells, &
-                              tempzones, geonames_lay(igeo,ilay))
+            if (ndata>1) then
+              ! Create cokriging trees
+              ! ZONES UNIMPLEMENTED
+              do i=1, ndata
+                ! Need a data structure that simultaneously can be used for
+                ! tree and cokriging - maybe a tree with coordinates as (n,
+              end do
+              !cokrige
+            else
+              ! One data -> ordinary kriging
+              call spkrige_tree_group(nnodes, nodex, nodey, dtrees(1)%tp, nwell, &
+                                wellv, temppc, pckrige_nwells, &
+                                tempzones, geonames_lay(igeo,ilay))
+            end if
           else
             write(*,'(4x,a,i8,2a)') 'Warning - No well data in layer ', ilay, &
                                    'for geologic zone', geonames_lay(igeo,ilay)
@@ -319,6 +326,10 @@ SUBROUTINE interpolate()
         end do
         ! Copy over
         PcNode(1:nnodes,ilay) = temppc
+        ! Destroy trees
+        do i=1, ndata
+          call destroy_tree(dtrees(i)%tp)
+        end do
       end do
     else  ! i.e. USE_IDW == 1
       ! Calculate percent coarse for each node based on normalized inverse-distance
