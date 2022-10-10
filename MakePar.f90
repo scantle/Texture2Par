@@ -35,10 +35,11 @@ MODULE MakePar
                                   interbed_thick(:,:)
     integer,allocatable        :: wellelem(:), numzone(:), &
                                   elements(:,:), nodeelem(:,:), nnodeelem(:), &
-                                  ngeozones_lay(:), nodeid(:), nodebyid(:)
+                                  ngeozones_lay(:), nodeid(:), nodebyid(:), &
+                                  knnear(:)
     integer                    :: nlayers, nnodes, nwell, wfilelen, &
-                                  nelements, maxWPoints, pckrige_nwells, &
-                                  cokrige_nnear, ngeozones, natlayers
+                                  nelements, maxWPoints, &
+                                  ngeozones, natlayers
     real                       :: kfk, stp, khp, kvp, kck
     character(30),allocatable  :: geozones(:,:), wellgeozones(:,:), &
                                   geonames_lay(:,:)
@@ -114,18 +115,18 @@ SUBROUTINE pd_elev_at_points(nsets, top_elev, bot_elev, top_tard, bot_tard)
     do i=1, nsets
       codata(i)%laytop = 0.0
       codata(i)%laybot = 0.0
-      call IDW(codata(i)%npdat, codata(i)%x, codata(i)%y, codata(i)%node, &
-               codata(i)%laytop, nnodes, nlayers, nodex, nodey, top_elev, &
-               nelements, elements)
-      call IDW(codata(i)%npdat, codata(i)%x, codata(i)%y, codata(i)%node, &
-               codata(i)%laybot, nnodes, nlayers, nodex, nodey, bot_elev, &
-               nelements, elements)
-      call IDW(codata(i)%npdat, codata(i)%x, codata(i)%y, codata(i)%node, &
-               codata(i)%aqttop, nnodes, nlayers, nodex, nodey, top_tard, &
-               nelements, elements)
-      call IDW(codata(i)%npdat, codata(i)%x, codata(i)%y, codata(i)%node, &
-               codata(i)%aqtbot, nnodes, nlayers, nodex, nodey, bot_tard, &
-               nelements, elements)
+      call IDW(codata(i)%npdat, codata(i)%xy(1,:), codata(i)%xy(2,:), &
+               codata(i)%node, codata(i)%laytop, nnodes, nlayers, nodex, nodey, &
+               top_elev, nelements, elements)
+      call IDW(codata(i)%npdat, codata(i)%xy(1,:), codata(i)%xy(2,:), &
+               codata(i)%node, codata(i)%laybot, nnodes, nlayers, nodex, nodey, &
+               bot_elev, nelements, elements)
+      call IDW(codata(i)%npdat, codata(i)%xy(1,:), codata(i)%xy(2,:), & 
+               codata(i)%node, codata(i)%aqttop, nnodes, nlayers, nodex, nodey, &
+               top_tard, nelements, elements)
+      call IDW(codata(i)%npdat, codata(i)%xy(1,:), codata(i)%xy(2,:), &
+               codata(i)%node, codata(i)%aqtbot, nnodes, nlayers, nodex, nodey, &
+               bot_tard, nelements, elements)
     end do
 
 end subroutine pd_elev_at_points
@@ -295,26 +296,29 @@ SUBROUTINE interpolate()
             end if
           end do
           if (wcount > 0) then
-            if (wcount < pckrige_nwells) then
+            if (wcount < knnear(1)) then
               ! Warn if less wells than expected
               write(*,'(4x,a,i8,3a,i3,a)') 'Warning - Layer', ilay, ' - ', &
                        trim(geonames_lay(igeo,ilay)), ', only ', wcount, ' wells'
             end if
-            dtrees(1)%tp = create_tree(wellxy(1:wcount,:))
+            dtrees(1)%tp => create_tree(wellxy(1:wcount,:))
             ! Pass well tree to kriging routine
             ! Will ignore nodes not in the target group
             if (ndata>1) then
               ! Create cokriging trees
               ! ZONES UNIMPLEMENTED
-              do i=1, ndata
-                ! Need a data structure that simultaneously can be used for
-                ! tree and cokriging - maybe a tree with coordinates as (n,
+              do i=2, ndata
+                ! zone subset necessary (masking array?)
+                dtrees(i)%tp => create_tree(codata(i)%xy(:,:))
               end do
               !cokrige
+              call spcokrige_tree_group(codata, ndata, nnodes, nodex, nodey, temppc, ilay, &
+                                        dtrees, knnear, tempzones, geonames_lay(igeo,ilay), 0, &
+                                        nwell, wellv)
             else
               ! One data -> ordinary kriging
               call spkrige_tree_group(nnodes, nodex, nodey, dtrees(1)%tp, nwell, &
-                                wellv, temppc, pckrige_nwells, &
+                                wellv, temppc, knnear(1), &
                                 tempzones, geonames_lay(igeo,ilay))
             end if
           else
@@ -460,7 +464,7 @@ SUBROUTINE interpolate_aqtard()
           welltree => create_tree(wellxy(1:wcount,:))
 
           call spkrige_tree(nnodes, nodex, nodey, welltree, nwell,  wellv, &
-                            pc, pckrige_nwells)
+                            pc, knnear(1))
           PcNode_aqtard(1:nnodes,ilay) = pc(1:nnodes)
         else
           ! Check for layer thickness

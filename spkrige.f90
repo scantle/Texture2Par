@@ -210,10 +210,7 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
 !-----------------------------------------------------------------------------!
 !                       Simple Point Kriging Subroutine
 !                     ***********************************
-!
 ! Requires: PSET, decomp, variogram, doolittle
-!
-!
 !-----------------------------------------------------------------------------!
 
     integer                  :: maxpt, ntot, i, j, g, n, closeobs(nnear), &
@@ -473,7 +470,7 @@ end subroutine
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-subroutine spcokrige(dsets, ndsets, grid, kriged_val)  ! obstree, nnear, ggroup, targetgroup
+subroutine spcokrige(dsets, ndsets, grid, kriged_val)
     use kd_tree
     implicit none
 !-----------------------------------------------------------------------------!
@@ -542,6 +539,126 @@ subroutine spcokrige(dsets, ndsets, grid, kriged_val)  ! obstree, nnear, ggroup,
     deallocate(p, r, w, id, obsv)
 
 end subroutine spcokrige
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
+subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
+                                dtrees, knnear, ggroup, targetgroup, aquitard, &
+                                nobs, obsval)
+    use pddata
+    use kd_tree
+    implicit none
+!-----------------------------------------------------------------------------!
+!                       Standardized Ordinary Cokriging
+!                     ***********************************
+!
+! Requires: PSET, decomp, variogram, doolittle
+!
+!
+!-----------------------------------------------------------------------------!
+    integer, intent(in)      :: ndsets, ngrid, nobs, aquitard, lay
+    type(pddataset),intent(in) :: dsets(ndsets)
+    type(kdata)              :: nearsets(ndsets)
+    real,intent(in)          :: gx(ngrid), gy(ngrid), obsval(nobs) 
+    real, intent(inout)      :: kriged_val(ngrid)
+    integer                  :: maxpt, npoints, ntot, i, j, k, g, n,nn, ier, ind, rcount, d
+    integer                  :: usenear(ndsets)
+    integer, allocatable     :: id(:), closeobs(:)
+    real                     :: value, zkrig, queryxy(2)
+    real, allocatable        :: p(:), r(:), w(:), obsv(:), obsdists(:)
+    
+    ! Tree/Group arguments
+    integer,intent(in)           :: knnear(ndsets)
+    type(tree_array), intent(in) :: dtrees(ndsets)
+    character(30),intent(in) :: ggroup(ngrid), targetgroup
+    
+    ! Warn if less data than expected
+    usenear = knnear
+    do i=1, ndsets
+      if (dtrees(i)%tp%n < knnear(i)) then
+        write(*,'(4x,a,i3,a)') 'Dataset' ,i,' - Well Data < Kriging Tree Search. Adjusting...'
+        usenear(i) = dtrees(i)%tp%n
+      end if
+      allocate(nearsets(i)%xy(usenear(i),2), & ! reverse order than normal (needed by kdtree??)
+               nearsets(i)%v(usenear(i))        )
+    end do
+    npoints = sum(usenear)
+    
+    ntot = npoints + 1                         ! +1 for unbias
+    maxpt = ntot * (ntot + 1) / 2
+    allocate(p(maxpt),r(ntot),w(ntot),id(ntot),obsv(ntot))
+
+    do i=1, ngrid
+    
+      ! Skip if grid point not in group
+      if (ggroup(i) /= targetgroup) then
+        !kriged_val(i) = nodataval
+        cycle
+      end if
+      
+      ! Get nnear closest observation points
+      obsv = 0.0d0
+      queryxy = (/ gx(i), gy(i) /)
+      do j=1, ndsets
+        ! Gather data
+        allocate(closeobs(usenear(j)), obsdists(usenear(j)))
+        call n_nearest_to(dtrees(j)%tp, queryxy, usenear(j), closeobs, obsdists)
+        nearsets(j)%xy(1:usenear(j),:) = dtrees(j)%tp%THE_DATA(closeobs(1:usenear(j)),:)
+        nearsets(j)%n = usenear(j)
+        do k=1, usenear(j)
+          if (k==1) then
+            nearsets(j)%v(k) = obsval(closeobs(k))
+            obsv(k) = obsval(closeobs(k))
+          else if (aquitard==1) then
+            nearsets(j)%v(k) = dsets(j)%aqtv(closeobs(k),lay)
+          else
+            nearsets(j)%v(k) = dsets(j)%layv(closeobs(k),lay)
+          end if
+        end do
+        ! Move secondary data to observation array
+        if (j>1) then
+          rcount = sum(usenear(1:(j-1)))
+          ! Standardize if secondary data
+          obsv(rcount+1:rcount+usenear(j)) = nearsets(j)%v - dsets(j)%v_mean + dsets(1)%v_mean
+        end if
+         deallocate(closeobs, obsdists)
+      end do
+      
+      ! Build correlation matrix
+      id = 0
+      call pset_extreme(nearsets, ndsets, ntot, p, id, maxpt)
+      call decomp(p,id,ntot, ier)
+      
+      if (ier == 1) then
+        write(*,'(2x,a)') 'Error - Kriging Matrix Decomposition Failure.'
+        write(*,'(2x,a)') 'This error is usually caused by co-located wells.'
+        stop
+      end if
+
+      r = 0.d0
+      w = 0.d0
+      r(ntot) = 1.0d0
+      rcount = 1
+      ind = 1
+      ! Loop over datasets
+      do d = 1, ndsets
+        if (d>1) ind = ind + ndsets
+        ! loop over data points
+        do n=1, nearsets(d)%n
+          do j=1, nstruct(ind)
+            call variogram(ind,j,gx(i),gy(i),0.0d0,nearsets(d)%xy(n,1),nearsets(d)%xy(n,2),0.0d0,value)
+            r(rcount) = r(rcount) + value
+          end do
+          rcount = rcount + 1
+        end do
+      end do
+      call doolittle(r,p,id,w,ntot)
+      kriged_val(i) = DOT_PRODUCT(w,obsv)
+    end do
+
+    deallocate(p, r, w, id, obsv)
+
+end subroutine spcokrige_tree_group
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
@@ -746,14 +863,14 @@ end subroutine spcokrige
         ! Outer loop over column points
         do jj=1, dsets(j)%n
           JS=ID(colcount(j)+jj)-(colcount(j)+jj)
-          x2=dsets(j)%xy(1,jj)
-          y2=dsets(j)%xy(2,jj)
+          y2=dsets(j)%xy(jj,1)
+          x2=dsets(j)%xy(jj,2)
           ! Inner loop over row points
           ii = jj
           if (i/=j) ii=1
           do while (ii <= dsets(i)%n)
-            x1=dsets(i)%xy(1,ii)
-            y1=dsets(i)%xy(2,ii)
+            x1=dsets(i)%xy(ii,1)
+            y1=dsets(i)%xy(ii,2)
             value_sum=0.0d0
             do n=1, nstruct(ind)
               call variogram(ind,n,x1,y1,0.0d0,x2,y2,0.0d0,value)

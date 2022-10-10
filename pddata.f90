@@ -16,8 +16,8 @@ module pddata
     integer, allocatable     :: ndint(:),    &      ! Number of depth intervals for each point
                                 zone(:,:),   &      ! GeoZone, ie HSU of (points, layers)
                                 node(:)             ! Containing model node/element
-    real, allocatable        :: x(:),        &      ! X-coordinates of points
-                                y(:),        &      ! Y-coordinates of points
+    real                     :: v_mean
+    real, allocatable        :: xy(:,:),        &   ! Coordinates (x,y) of points
                                 zland(:),    &      ! Land surface elevation 
                                 z(:,:),      &      ! Interval Bottom Elevation (interval, point)
                                 v(:,:),      &      ! Values (interval, point)
@@ -46,8 +46,7 @@ subroutine allocate_pddataset(pdset, maxint, nlay, modflowflag)
   integer,intent(in)          :: maxint, nlay, modflowflag
   
   allocate(pdset%ndint   (pdset%npdat),    &
-           pdset%x       (pdset%npdat),    &
-           pdset%y       (pdset%npdat),    &
+           pdset%xy    (2,pdset%npdat),    &
            pdset%zland   (pdset%npdat),    &
            pdset%node    (pdset%npdat),    &
            pdset%z(maxint,pdset%npdat),    &

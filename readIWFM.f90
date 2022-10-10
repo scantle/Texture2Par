@@ -342,7 +342,7 @@ SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
     integer, parameter         :: nnear=5
     integer                    :: i, ipoint, interval, ilay, &
                                   node, ngzones, ierr
-    integer                    :: closenodes(nnear)
+    integer                    :: closenodes(nnear), vcount
     real                       :: tx, ty, tz, td, tpc
     real                       :: nodedists(nnear), queryxy(2)
     character(30)              :: jnk, geobylayer(nlayers), &
@@ -352,6 +352,7 @@ SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
 
     ! Initialize
     ngzones = 0
+    vcount = 0
 
     ! Read well file
     write(*,'(2x,2a)') 'Reading Dataset File ', trim(file)
@@ -368,8 +369,8 @@ SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
         pdset%v(interval,ipoint) = tpc
         pdset%ndint(ipoint) = interval
         if (interval == 1) then
-          pdset%x(ipoint) = tx
-          pdset%y(ipoint) = ty
+          pdset%xy(1,ipoint) = tx
+          pdset%xy(2,ipoint) = ty
           pdset%zland(ipoint) = tz
           ! Use node tree to find closest node
           queryxy(1) = tx
@@ -388,8 +389,8 @@ SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
         pdset%v(interval, ipoint) = tpc
         pdset%ndint(ipoint) = interval
         if (interval == 1) then
-          pdset%x(ipoint) = tx
-          pdset%y(ipoint) = ty
+          pdset%xy(1,ipoint) = tx
+          pdset%xy(2,ipoint) = ty
           pdset%zland(ipoint) = tz
 
           ! Well geologic zones
@@ -410,6 +411,9 @@ SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
       end do
     end if
     close(unit)
+    
+    ! Dataset mean
+    pdset%v_mean = sum(pdset%v(:,:))/count(pdset%v(:,:)>NODATA)
 
     ! Report if mismatch in model vs dataset geo zone count
     if (ngzones > ngeozones) then
