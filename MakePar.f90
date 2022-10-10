@@ -309,7 +309,7 @@ SUBROUTINE interpolate()
               ! ZONES UNIMPLEMENTED
               do i=2, ndata
                 ! zone subset necessary (masking array?)
-                dtrees(i)%tp => create_tree(codata(i)%xy(:,:))
+                dtrees(i)%tp => create_tree(codata(i-1)%xy(:,:))
               end do
               !cokrige
               call spcokrige_tree_group(codata, ndata, nnodes, nodex, nodey, temppc, ilay, &

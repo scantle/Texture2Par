@@ -369,8 +369,10 @@ SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
         pdset%v(interval,ipoint) = tpc
         pdset%ndint(ipoint) = interval
         if (interval == 1) then
-          pdset%xy(1,ipoint) = tx
-          pdset%xy(2,ipoint) = ty
+          !kdtree poor setup pdset%xy(1,ipoint) = tx
+          !kdtree poor setup pdset%xy(2,ipoint) = ty
+          pdset%xy(ipoint,1) = tx
+          pdset%xy(ipoint,2) = ty
           pdset%zland(ipoint) = tz
           ! Use node tree to find closest node
           queryxy(1) = tx

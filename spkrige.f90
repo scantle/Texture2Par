@@ -556,7 +556,7 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
     integer                  :: maxpt, npoints, ntot, i, j, k, g, n,nn, ier, ind, rcount, d
     integer                  :: usenear(ndsets)
     integer, allocatable     :: id(:), closeobs(:)
-    real                     :: value, zkrig, queryxy(2)
+    real                     :: value, zkrig, queryxy(2), obsmean
     real, allocatable        :: p(:), r(:), w(:), obsv(:), obsdists(:)
     
     ! Tree/Group arguments
@@ -575,6 +575,9 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
                nearsets(i)%v(usenear(i))        )
     end do
     npoints = sum(usenear)
+    
+    ! TEMP
+    obsmean = sum(obsval)/nobs
     
     ntot = npoints + 1                         ! +1 for unbias
     maxpt = ntot * (ntot + 1) / 2
@@ -612,7 +615,8 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
         if (j>1) then
           rcount = sum(usenear(1:(j-1)))
           ! Standardize if secondary data
-          obsv(rcount+1:rcount+usenear(j)) = nearsets(j)%v - dsets(j)%v_mean + dsets(1)%v_mean
+          !obsv(rcount+1:rcount+usenear(j)) = nearsets(j)%v - dsets(j)%v_mean + dsets(1)%v_mean
+          obsv(rcount+1:rcount+usenear(j)) = nearsets(j)%v - dsets(j)%v_mean + obsmean
         end if
          deallocate(closeobs, obsdists)
       end do

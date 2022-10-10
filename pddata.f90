@@ -45,7 +45,7 @@ subroutine allocate_pddataset(pdset, maxint, nlay, modflowflag)
   integer,intent(in)          :: maxint, nlay, modflowflag
   
   allocate(pdset%ndint   (pdset%npdat),    &
-           pdset%xy    (2,pdset%npdat),    &
+           pdset%xy      (pdset%npdat,2),  &
            pdset%zland   (pdset%npdat),    &
            pdset%node    (pdset%npdat),    &
            pdset%z(maxint,pdset%npdat),    &
@@ -57,6 +57,7 @@ subroutine allocate_pddataset(pdset, maxint, nlay, modflowflag)
            pdset%aqtbot(pdset%npdat,nlay), &
            pdset%layv  (pdset%npdat,nlay), &
            pdset%aqtv  (pdset%npdat,nlay)  )
+           !kd tree poor data setup   pdset%xy    (2,pdset%npdat),    &
 
 end subroutine allocate_pddataset
   
@@ -91,6 +92,19 @@ subroutine pre_read_pddata(unit, file, filelen, npoints, maxint)
   filelen = filelen - 1
   close(unit)
 end subroutine pre_read_pddata
+
 !-----------------------------------------------------------------------------!
-    
+
+subroutine write_pd_file(pdset, filename)
+  type(pddataset) :: pdset
+  character(150), intent(in) :: filename
+  
+  open(20, file=trim(filename), status='replace', action='write', buffered='YES')
+  write(*,*) pdset%layv
+  close(20)
+  
+end subroutine write_pd_file
+
+!-----------------------------------------------------------------------------!
+
 end module pddata

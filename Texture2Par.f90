@@ -383,6 +383,12 @@ program Texture2Par
       call readwriteFlowPackage()
       call clear_modflow_memory()
     end if
+    
+    !TODO Poorly Implemented
+    do i=1, (ndata-1)
+      write(jnk,'(a,i1,a)') 't2p_cokrige_',i,'.out'
+      call write_pd_file(codata(i), jnk)
+    end do
 
     write(*,'(/,2x,a)') 'Program finished!'
 
