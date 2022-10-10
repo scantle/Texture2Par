@@ -316,9 +316,9 @@ SUBROUTINE interpolate()
                                         dtrees, knnear, 0, &
                                         nwell, wellv, tempzones, geonames_lay(igeo,ilay))
             else
-              ! One data -> ordinary kriging
+              ! One data -> ordinary kriging (ind=1, first variogram)
               call spkrige_tree_group(nnodes, nodex, nodey, dtrees(1)%tp, nwell, &
-                                wellv, temppc, knnear(1), &
+                                wellv, 1, temppc, knnear(1), &
                                 ggroup=tempzones, targetgroup=geonames_lay(igeo,ilay))
             end if
           else
@@ -474,8 +474,8 @@ SUBROUTINE interpolate_aqtard()
             call spcokrige_tree_group(codata, ndata, nnodes, nodex, nodey, pc, ilay, &
                                       dtrees, knnear, 0, nwell, wellv)
           else
-            call spkrige_tree(nnodes, nodex, nodey, dtrees(i)%tp, nwell,  wellv, &
-                              pc, knnear(1))
+            call spkrige_tree(nnodes, nodex, nodey, dtrees(i)%tp, nwell, wellv, &
+                              1, pc, knnear(1))
           end if
           PcNode_aqtard(1:nnodes,ilay) = pc(1:nnodes)
         else

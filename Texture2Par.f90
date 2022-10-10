@@ -301,28 +301,28 @@ program Texture2Par
     ! Krige from pilot points to nodes
     ! Aquifer Parameters - KCMin, DeltaKC, KFMin, DeltaKF, SsC, SsF, SyC, Aniso
     write(*,'(2x,a,i3)') 'Kriging Aquifer Pilot Point Parameters'
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKCMin,  nKCMin )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKC,    dKC    )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKFMin,  nKFMin )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKF,    dKF    )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsC,    nSsC   )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsF,    nSsF   )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyC,    nSyC   )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyF,    nSyF   )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoC, nAnisoC)
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoF, nAnisoF)
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKCMin,  nvario, nKCMin )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKC,    nvario, dKC    )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKFMin,  nvario, nKFMin )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKF,    nvario, dKF    )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsC,    nvario, nSsC   )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsF,    nvario, nSsF   )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyC,    nvario, nSyC   )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyF,    nvario, nSyF   )
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoC, nvario, nAnisoC)
+    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoF, nvario, nAnisoF)
 
     ! Krige Aquitard parameters from pilot points to nodes
     if ((modflowflag == 0).or.(ncbd > 0 )) then
       if (atppn > 0) then
         ! Aquitard Parameters - KCMin, DeltaKC, KFMin, DeltaKF, Aniso
         write(*,'(2x,a,i3)') 'Kriging Aquitard Pilot Point Parameters'
-        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKCMin,  nKCMin )
-        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKC,    dKC    )
-        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKFMin,  nKFMin )
-        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKF,    dKF    )
-        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatAnisoC, nAnisoC)
-        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatAnisoF, nAnisoF)
+        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKCMin,  nvario, nKCMin )
+        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKC,    nvario, dKC    )
+        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKFMin,  nvario, nKFMin )
+        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKF,    nvario, dKF    )
+        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatAnisoC, nvario, nAnisoC)
+        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatAnisoF, nvario, nAnisoF)
       else
         write(*,'(2x,a,/)') 'No Aquitard Pilot Points - Skipping       '
         nKCMin(:,ppaq_narr+1:pp_narr) = -999

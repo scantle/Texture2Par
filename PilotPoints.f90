@@ -46,14 +46,14 @@ module PilotPoints
 CONTAINS  !-- Module Subroutines
 
 !-----------------------------------------------------------------------------!
-subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, kriged)
+subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged)
   use krige, only: spkrige_group
   implicit none
 !-----------------------------------------------------------------------------!
 ! Loops over zones kriging aquiFER pilot point parameter values to nodes
 !-----------------------------------------------------------------------------!
 
-  integer,intent(in)       :: nnodes
+  integer,intent(in)       :: nnodes, ind
   real,intent(in)          :: nodex(nnodes), nodey(nnodes), pp_par_vals(nnodes)
   real,intent(out)         :: kriged(nnodes, pp_narr)
 
@@ -77,7 +77,7 @@ subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, kriged)
       end do ! pilot points
       if (ppcount > 0) then
         ! Krige
-        call spkrige_group(ppcount, nnodes, nodex, nodey, pzx, pzy, pzv, &
+        call spkrige_group(ppcount, nnodes, nodex, nodey, pzx, pzy, pzv, ind, &
                            kriged(:, iarr), pp_node_zone(:,iarr), zone)
       else
         write(*,'(2(a,i3))') 'ERROR - no pilot points for pilot point zone ', &
@@ -91,14 +91,14 @@ end subroutine ppaq_parkrige_arr
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, kriged)
+subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged)
   use krige, only: spkrige_group
   implicit none
 !-----------------------------------------------------------------------------!
 ! Loops over zones kriging aquiTARD pilot point parameter values to nodes
 !-----------------------------------------------------------------------------!
 
-  integer,intent(in)       :: nnodes
+  integer,intent(in)       :: nnodes, ind
   real,intent(in)          :: nodex(nnodes), nodey(nnodes), pp_par_vals(nnodes)
   real,intent(out)         :: kriged(nnodes, pp_narr)
 
@@ -121,8 +121,8 @@ subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, kriged)
         end if
       end do ! pilot points
       if (ppcount > 0) then
-        ! Krige
-        call spkrige_group(ppcount, nnodes, nodex, nodey, pzx, pzy, pzv, &
+        ! Krige (ind=ndata i.e. last variogram)
+        call spkrige_group(ppcount, nnodes, nodex, nodey, pzx, pzy, pzv, ind, &
                            kriged(:, iarr), pp_node_zone, zone)
       else
         write(*,'(2(a,i3))') 'ERROR - no pilot points for pilot point zone ', &

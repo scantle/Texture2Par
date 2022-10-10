@@ -125,7 +125,7 @@ end subroutine init_krige
 !-----------------------------------------------------------------------------!
 ! Kriging routines
 !-----------------------------------------------------------------------------!
-subroutine spkrige(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val)
+subroutine spkrige(nobs, ngrid, gx, gy, obsx, obsy, obsv, ind, kriged_val)
     implicit none
 !-----------------------------------------------------------------------------!
 !                       Simple Point Kriging Subroutine
@@ -159,8 +159,6 @@ subroutine spkrige(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val)
                                 obsv(nobs)
     real, intent(inout)      :: kriged_val(ngrid)
     real, parameter          :: nodataval = -999.0
-    
-    ind = 1   ! Primary variogram assumed
 
     ntot = nobs + 1              ! +1 for ordinary
     maxpt = ntot * (ntot + 1) / 2
@@ -204,7 +202,7 @@ end subroutine spkrige
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
+subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, ind, kriged_val, nnear)
     use kd_tree
     implicit none
 !-----------------------------------------------------------------------------!
@@ -214,9 +212,9 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
 !-----------------------------------------------------------------------------!
 
     integer                  :: maxpt, ntot, i, j, g, n, closeobs(nnear), &
-                                usenear, ier, ind
+                                usenear, ier
     integer, allocatable     :: id(:)
-    integer, intent(in)      :: ngrid, nnear, nobs
+    integer, intent(in)      :: ngrid, nnear, nobs, ind
     real                     :: value, zkrig, queryxy(2), obsdists(nnear), &
                                 obsx(nnear), obsy(nnear)
     real, allocatable        :: p(:), r(:), w(:)
@@ -224,8 +222,6 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, kriged_val, nnear)
     real, intent(inout)      :: kriged_val(ngrid)
 
     type(tree_master_record), intent(in), pointer :: obstree
-    
-    ind = 1   ! Primary variogram assumed
 
     ! If there's not many datapoints
     if (obstree%N < nnear) then
@@ -293,7 +289,7 @@ end subroutine spkrige_tree
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, &
+subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, ind, &
                               kriged_val, nnear, ggroup, targetgroup)
     use kd_tree
     implicit none
@@ -305,9 +301,9 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, &
 !-----------------------------------------------------------------------------!
 
     integer                  :: maxpt, ntot, i, j, g, n, closeobs(nnear), &
-                                usenear, ier, ind
+                                usenear, ier
     integer, allocatable     :: id(:)
-    integer, intent(in)      :: ngrid, nnear, nobs
+    integer, intent(in)      :: ngrid, nnear, nobs, ind
     real                     :: value, zkrig, queryxy(2), obsdists(nnear), &
                                 obsx(nnear), obsy(nnear)
     real, allocatable        :: p(:), r(:), w(:)
@@ -316,8 +312,6 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, &
     character(30),intent(in) :: ggroup(ngrid), targetgroup
 
     type(tree_master_record), intent(in), pointer :: obstree
-    
-    ind = 1   ! Primary variogram assumed
 
     ! If there's not many datapoints
     if (obstree%N < nnear) then
@@ -393,7 +387,7 @@ end subroutine spkrige_tree_group
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-subroutine spkrige_group(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val, &
+subroutine spkrige_group(nobs, ngrid, gx, gy, obsx, obsy, obsv, ind, kriged_val, &
                    ggroup, targetgroup)
     implicit none
 !-----------------------------------------------------------------------------!
@@ -403,9 +397,9 @@ subroutine spkrige_group(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val, &
 ! Groups are set as INTEGERS
 !-----------------------------------------------------------------------------!
 
-    integer                  :: maxpt, ntot, i, j, g, n, ier, ind
+    integer                  :: maxpt, ntot, i, j, g, n, ier
     integer, allocatable     :: id(:)
-    integer, intent(in)      :: nobs, ngrid
+    integer, intent(in)      :: nobs, ngrid, ind
     real                     :: value, zkrig
     real, allocatable        :: p(:), r(:), w(:)
     real, intent(in)         :: gx(ngrid), gy(ngrid), obsx(nobs), obsy(nobs), &
@@ -414,8 +408,6 @@ subroutine spkrige_group(nobs, ngrid, gx, gy, obsx, obsy, obsv, kriged_val, &
     real, parameter          :: nodataval = -999.0
     ! Arguments for grouped kriging
     integer,intent(in)       :: ggroup(ngrid), targetgroup
-    
-    ind = 1   ! Primary variogram assumed
 
     ntot = nobs + 1              ! +1 for ordinary
     maxpt = ntot * (ntot + 1) / 2
