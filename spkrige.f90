@@ -549,7 +549,7 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
 !
 !-----------------------------------------------------------------------------!
     integer, intent(in)      :: ndsets, ngrid, nobs, aquitard, lay
-    type(pddataset),intent(in) :: dsets(ndsets)
+    type(pddataset),intent(in) :: dsets(ndsets-1)
     type(kdata)              :: nearsets(ndsets)
     real,intent(in)          :: gx(ngrid), gy(ngrid), obsval(nobs) 
     real, intent(inout)      :: kriged_val(ngrid)
@@ -602,13 +602,13 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
         nearsets(j)%xy(1:usenear(j),:) = dtrees(j)%tp%THE_DATA(closeobs(1:usenear(j)),:)
         nearsets(j)%n = usenear(j)
         do k=1, usenear(j)
-          if (k==1) then
+          if (j==1) then
             nearsets(j)%v(k) = obsval(closeobs(k))
             obsv(k) = obsval(closeobs(k))
           else if (aquitard==1) then
-            nearsets(j)%v(k) = dsets(j)%aqtv(closeobs(k),lay)
+            nearsets(j)%v(k) = dsets(j-1)%aqtv(closeobs(k),lay)
           else
-            nearsets(j)%v(k) = dsets(j)%layv(closeobs(k),lay)
+            nearsets(j)%v(k) = dsets(j-1)%layv(closeobs(k),lay)
           end if
         end do
         ! Move secondary data to observation array
@@ -616,7 +616,7 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
           rcount = sum(usenear(1:(j-1)))
           ! Standardize if secondary data
           !obsv(rcount+1:rcount+usenear(j)) = nearsets(j)%v - dsets(j)%v_mean + dsets(1)%v_mean
-          obsv(rcount+1:rcount+usenear(j)) = nearsets(j)%v - dsets(j)%v_mean + obsmean
+          obsv(rcount+1:rcount+usenear(j)) = nearsets(j)%v - dsets(j-1)%v_mean + obsmean
         end if
          deallocate(closeobs, obsdists)
       end do
@@ -860,8 +860,8 @@ end subroutine spcokrige_tree_group
         ! Outer loop over column points
         do jj=1, dsets(j)%n
           JS=ID(colcount(j)+jj)-(colcount(j)+jj)
-          y2=dsets(j)%xy(jj,1)
-          x2=dsets(j)%xy(jj,2)
+          x2=dsets(j)%xy(jj,1)
+          y2=dsets(j)%xy(jj,2)
           ! Inner loop over row points
           ii = jj
           if (i/=j) ii=1

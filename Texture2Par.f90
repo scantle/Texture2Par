@@ -387,7 +387,7 @@ program Texture2Par
     !TODO Poorly Implemented
     do i=1, (ndata-1)
       write(jnk,'(a,i1,a)') 't2p_cokrige_',i,'.out'
-      call write_pd_file(codata(i), jnk)
+      call write_pd_file(codata(i), jnk, nlayers)
     end do
 
     write(*,'(/,2x,a)') 'Program finished!'

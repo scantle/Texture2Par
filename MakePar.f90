@@ -115,16 +115,16 @@ SUBROUTINE pd_elev_at_points(nsets, top_elev, bot_elev, top_tard, bot_tard)
     do i=1, nsets
       codata(i)%laytop = 0.0
       codata(i)%laybot = 0.0
-      call IDW(codata(i)%npdat, codata(i)%xy(1,:), codata(i)%xy(2,:), &
+      call IDW(codata(i)%npdat, codata(i)%xy(:,1), codata(i)%xy(:,2), &
                codata(i)%node, codata(i)%laytop, nnodes, nlayers, nodex, nodey, &
                top_elev, nelements, elements)
-      call IDW(codata(i)%npdat, codata(i)%xy(1,:), codata(i)%xy(2,:), &
+      call IDW(codata(i)%npdat, codata(i)%xy(:,1), codata(i)%xy(:,2), &
                codata(i)%node, codata(i)%laybot, nnodes, nlayers, nodex, nodey, &
                bot_elev, nelements, elements)
-      call IDW(codata(i)%npdat, codata(i)%xy(1,:), codata(i)%xy(2,:), & 
+      call IDW(codata(i)%npdat, codata(i)%xy(:,1), codata(i)%xy(:,2), & 
                codata(i)%node, codata(i)%aqttop, nnodes, nlayers, nodex, nodey, &
                top_tard, nelements, elements)
-      call IDW(codata(i)%npdat, codata(i)%xy(1,:), codata(i)%xy(2,:), &
+      call IDW(codata(i)%npdat, codata(i)%xy(:,1), codata(i)%xy(:,2), &
                codata(i)%node, codata(i)%aqtbot, nnodes, nlayers, nodex, nodey, &
                bot_tard, nelements, elements)
     end do
@@ -314,10 +314,10 @@ SUBROUTINE interpolate()
               !cokrige
               call spcokrige_tree_group(codata, ndata, nnodes, nodex, nodey, temppc, ilay, &
                                         dtrees, knnear, 0, &
-                                        nwell, wellv, tempzones, geonames_lay(igeo,ilay))
+                                        wcount, wellv, tempzones, geonames_lay(igeo,ilay))
             else
               ! One data -> ordinary kriging (ind=1, first variogram)
-              call spkrige_tree_group(nnodes, nodex, nodey, dtrees(1)%tp, nwell, &
+              call spkrige_tree_group(nnodes, nodex, nodey, dtrees(1)%tp, wcount, &
                                 wellv, 1, temppc, knnear(1), &
                                 ggroup=tempzones, targetgroup=geonames_lay(igeo,ilay))
             end if
@@ -472,9 +472,9 @@ SUBROUTINE interpolate_aqtard()
             end do
             !cokrige
             call spcokrige_tree_group(codata, ndata, nnodes, nodex, nodey, pc, ilay, &
-                                      dtrees, knnear, 0, nwell, wellv)
+                                      dtrees, knnear, 0, wcount, wellv)
           else
-            call spkrige_tree(nnodes, nodex, nodey, dtrees(i)%tp, nwell, wellv, &
+            call spkrige_tree(nnodes, nodex, nodey, dtrees(i)%tp, wcount, wellv, &
                               1, pc, knnear(1))
           end if
           PcNode_aqtard(1:nnodes,ilay) = pc(1:nnodes)

@@ -95,12 +95,25 @@ end subroutine pre_read_pddata
 
 !-----------------------------------------------------------------------------!
 
-subroutine write_pd_file(pdset, filename)
+subroutine write_pd_file(pdset, filename, nlayers)
   type(pddataset) :: pdset
   character(150), intent(in) :: filename
+  integer, intent(in)        :: nlayers
+  integer :: i, ilay
+  character(60)            :: fmt(2)
+
+  write(*,'(4x,a,a35)') 'Writing:', filename
+
+  write(fmt(1),'("(2a8,2a18,",i5,"i14)")') nlayers
+  write(fmt(2),'("(2i8,2f18.5,",i5,"e14.5)")') nlayers
   
   open(20, file=trim(filename), status='replace', action='write', buffered='YES')
-  write(*,*) pdset%layv
+  write(20,fmt(1)) 'Well', 'Element', (ilay, ilay=1, nlayers)
+  ! Values
+  do i = 1, pdset%npdat
+    write(20,fmt(2)) i, pdset%node(i), (pdset%layv(i,ilay), ilay=1, nlayers)
+  end do
+  
   close(20)
   
 end subroutine write_pd_file
