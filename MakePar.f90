@@ -313,13 +313,13 @@ SUBROUTINE interpolate()
               end do
               !cokrige
               call spcokrige_tree_group(codata, ndata, nnodes, nodex, nodey, temppc, ilay, &
-                                        dtrees, knnear, tempzones, geonames_lay(igeo,ilay), 0, &
-                                        nwell, wellv)
+                                        dtrees, knnear, 0, &
+                                        nwell, wellv, tempzones, geonames_lay(igeo,ilay))
             else
               ! One data -> ordinary kriging
               call spkrige_tree_group(nnodes, nodex, nodey, dtrees(1)%tp, nwell, &
                                 wellv, temppc, knnear(1), &
-                                tempzones, geonames_lay(igeo,ilay))
+                                ggroup=tempzones, targetgroup=geonames_lay(igeo,ilay))
             end if
           else
             write(*,'(4x,a,i8,2a)') 'Warning - No well data in layer ', ilay, &
@@ -433,10 +433,11 @@ SUBROUTINE interpolate_aqtard()
 
     real                     :: sum1, sum2, weight, dcol
     real,allocatable         :: khc(:,:), khf(:,:), kvc(:,:), kvf(:,:), pc(:)
-    integer                  :: iwell, ilay, inode, iarr, wcount, count
+    integer                  :: i,iwell, ilay, inode, iarr, wcount, count
     real,allocatable         :: wellxy(:,:), wellv(:)
     character(60),allocatable:: fmt(:)
-    type(tree_master_record),pointer :: welltree
+    type(tree_array),allocatable :: dtrees(:)
+    allocate(dtrees(ndata))
 
     allocate(KhC(nnodes, nlayers), &
              KhF(nnodes, nlayers), &
@@ -461,10 +462,21 @@ SUBROUTINE interpolate_aqtard()
 
         ! Only build tree & krige if there's data for the layer
         if (wcount > 0) then
-          welltree => create_tree(wellxy(1:wcount,:))
-
-          call spkrige_tree(nnodes, nodex, nodey, welltree, nwell,  wellv, &
-                            pc, knnear(1))
+          dtrees(1)%tp => create_tree(wellxy(1:wcount,:))
+          if (ndata>1) then
+            ! Create cokriging trees
+            ! ZONES UNIMPLEMENTED
+            do i=2, ndata
+              ! zone subset necessary (masking array?)
+              dtrees(i)%tp => create_tree(codata(i)%xy(:,:))
+            end do
+            !cokrige
+            call spcokrige_tree_group(codata, ndata, nnodes, nodex, nodey, pc, ilay, &
+                                      dtrees, knnear, 0, nwell, wellv)
+          else
+            call spkrige_tree(nnodes, nodex, nodey, dtrees(i)%tp, nwell,  wellv, &
+                              pc, knnear(1))
+          end if
           PcNode_aqtard(1:nnodes,ilay) = pc(1:nnodes)
         else
           ! Check for layer thickness

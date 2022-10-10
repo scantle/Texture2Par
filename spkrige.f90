@@ -543,8 +543,8 @@ end subroutine spcokrige
 
 !-----------------------------------------------------------------------------!
 subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
-                                dtrees, knnear, ggroup, targetgroup, aquitard, &
-                                nobs, obsval)
+                                dtrees, knnear, aquitard, &
+                                nobs, obsval, ggroup, targetgroup)
     use pddata
     use kd_tree
     implicit none
@@ -570,7 +570,7 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
     ! Tree/Group arguments
     integer,intent(in)           :: knnear(ndsets)
     type(tree_array), intent(in) :: dtrees(ndsets)
-    character(30),intent(in) :: ggroup(ngrid), targetgroup
+    character(30),intent(in),optional :: ggroup(ngrid), targetgroup
     
     ! Warn if less data than expected
     usenear = knnear
@@ -589,11 +589,12 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
     allocate(p(maxpt),r(ntot),w(ntot),id(ntot),obsv(ntot))
 
     do i=1, ngrid
-    
-      ! Skip if grid point not in group
-      if (ggroup(i) /= targetgroup) then
-        !kriged_val(i) = nodataval
-        cycle
+      if (present(targetgroup)) then
+        ! Skip if grid point not in group
+        if (ggroup(i) /= targetgroup) then
+          !kriged_val(i) = nodataval
+          cycle
+        end if
       end if
       
       ! Get nnear closest observation points
