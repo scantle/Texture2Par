@@ -536,7 +536,7 @@ end subroutine spcokrige
 !-----------------------------------------------------------------------------!
 subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
                                 dtrees, knnear, aquitard, &
-                                nobs, obsval, ggroup, targetgroup)
+                                nobs, obsval, obsmean, ggroup, targetgroup)
     use pddata
     use kd_tree
     implicit none
@@ -551,12 +551,12 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
     integer, intent(in)      :: ndsets, ngrid, nobs, aquitard, lay
     type(pddataset),intent(in) :: dsets(ndsets-1)
     type(kdata)              :: nearsets(ndsets)
-    real,intent(in)          :: gx(ngrid), gy(ngrid), obsval(nobs) 
+    real,intent(in)          :: gx(ngrid), gy(ngrid), obsval(nobs),obsmean
     real, intent(inout)      :: kriged_val(ngrid)
     integer                  :: maxpt, npoints, ntot, i, j, k, g, n,nn, ier, ind, rcount, d
     integer                  :: usenear(ndsets)
     integer, allocatable     :: id(:), closeobs(:)
-    real                     :: value, zkrig, queryxy(2), obsmean
+    real                     :: value, zkrig, queryxy(2)
     real, allocatable        :: p(:), r(:), w(:), obsv(:), obsdists(:)
     
     ! Tree/Group arguments
@@ -577,7 +577,7 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
     npoints = sum(usenear)
     
     ! TEMP
-    obsmean = sum(obsval)/nobs
+    !obsmean = sum(obsval)/nobs
     
     ntot = npoints + 1                         ! +1 for unbias
     maxpt = ntot * (ntot + 1) / 2
@@ -609,6 +609,10 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
             nearsets(j)%v(k) = dsets(j-1)%aqtv(closeobs(k),lay)
           else
             nearsets(j)%v(k) = dsets(j-1)%layv(closeobs(k),lay)
+            if (nearsets(j)%v(k) < 0.0) then
+            ! TEMP
+              stop
+            end if
           end if
         end do
         ! Move secondary data to observation array

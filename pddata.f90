@@ -38,11 +38,11 @@ module pddata
 !-----------------------------------------------------------------------------!
   CONTAINS
 
-subroutine allocate_pddataset(pdset, maxint, nlay, modflowflag)
+subroutine allocate_pddataset(pdset, maxint, nlay)
   implicit none
   
   type(pddataset),intent(inout)  :: pdset
-  integer,intent(in)          :: maxint, nlay, modflowflag
+  integer,intent(in)          :: maxint, nlay
   
   allocate(pdset%ndint   (pdset%npdat),    &
            pdset%xy      (pdset%npdat,2),  &
@@ -60,7 +60,31 @@ subroutine allocate_pddataset(pdset, maxint, nlay, modflowflag)
            !kd tree poor data setup   pdset%xy    (2,pdset%npdat),    &
 
 end subroutine allocate_pddataset
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
+subroutine deallocate_pddataset(pdset)
+  implicit none
   
+  type(pddataset),intent(inout)  :: pdset
+  
+  deallocate(pdset%ndint,   &
+             pdset%xy,      &
+             pdset%zland,   &
+             pdset%node,    &
+             pdset%z,   &
+             pdset%v,   &
+             pdset%zone  ,  &
+             pdset%laytop,  &
+             pdset%laybot,  &
+             pdset%aqttop,  &
+             pdset%aqtbot,  &
+             pdset%layv  ,  &
+             pdset%aqtv     )
+
+end subroutine deallocate_pddataset
+!-----------------------------------------------------------------------------!
+
 !-----------------------------------------------------------------------------!
 
 subroutine pre_read_pddata(unit, file, filelen, npoints, maxint)
@@ -95,6 +119,50 @@ end subroutine pre_read_pddata
 
 !-----------------------------------------------------------------------------!
 
+subroutine pd4tree(pdset, pdsetout, lay, aquitard)
+  implicit none
+  
+  type(pddataset),intent(inout) :: pdset, pdsetout
+  integer,intent(in)            :: lay, aquitard
+  integer                       :: i, p
+  real,parameter                :: cutoff=-1.0
+  
+  if (aquitard==1) then
+    pdsetout%npdat = count(pdset%aqtv(:,lay) > cutoff)
+  else
+    pdsetout%npdat = count(pdset%layv(:,lay) > cutoff)
+  end if
+  
+  call allocate_pddataset(pdsetout, 1, 1)
+  
+  p = 1
+  if (aquitard==1) then
+    do i=1, pdset%npdat
+      if (pdset%aqtv(i,lay) > cutoff) then
+        pdsetout%aqtv(p,1) = pdset%aqtv(i,lay)
+        pdsetout%xy(p,:) = pdset%xy(i,:)
+        pdsetout%zone(p,1) = pdset%zone(i,lay)
+        p = p+1
+      end if
+    end do
+  else
+    do i=1, pdset%npdat
+      if (pdset%layv(i,1) > cutoff) then
+        pdsetout%layv(p,1) = pdset%layv(i,lay)
+        pdsetout%xy(p,:) = pdset%xy(i,:)
+        pdsetout%zone(p,1) = pdset%zone(i,lay)
+        p = p+1
+      end if
+    end do
+  end if
+  
+  ! maintain mean
+  pdsetout%v_mean = pdset%v_mean
+
+end subroutine pd4tree
+
+!-----------------------------------------------------------------------------!
+
 subroutine write_pd_file(pdset, filename, nlayers)
   type(pddataset) :: pdset
   character(150), intent(in) :: filename
@@ -108,10 +176,10 @@ subroutine write_pd_file(pdset, filename, nlayers)
   write(fmt(2),'("(2i8,2f18.5,",i5,"e14.5)")') nlayers
   
   open(20, file=trim(filename), status='replace', action='write', buffered='YES')
-  write(20,fmt(1)) 'Well', 'Element', (ilay, ilay=1, nlayers)
+  write(20,fmt(1)) 'Point', 'Element', 'X', 'Y', (ilay, ilay=1, nlayers)
   ! Values
   do i = 1, pdset%npdat
-    write(20,fmt(2)) i, pdset%node(i), (pdset%layv(i,ilay), ilay=1, nlayers)
+    write(20,fmt(2)) i, pdset%node(i), pdset%xy(i,1:2), (pdset%layv(i,ilay), ilay=1, nlayers)
   end do
   
   close(20)

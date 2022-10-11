@@ -40,7 +40,7 @@ MODULE MakePar
     integer                    :: nlayers, nnodes, nwell, wfilelen, &
                                   nelements, maxWPoints, &
                                   ngeozones, natlayers
-    real                       :: kfk, stp, khp, kvp, kck
+    real                       :: kfk, stp, khp, kvp, kck, wellmean
     character(30),allocatable  :: geozones(:,:), wellgeozones(:,:), &
                                   geonames_lay(:,:)
     character(30)              :: geonames(max_zones)
@@ -266,6 +266,7 @@ SUBROUTINE interpolate()
     real,allocatable          :: wellxy(:,:), wellv(:),temppc(:)
     character(30),allocatable :: tempzones(:)
     character(60),allocatable :: fmt(:)
+    type(pddataset)           :: codata_nona_lay(ndata-1)
     type(tree_array),allocatable :: dtrees(:)
 
 !  Avoiding stack overflow by allocating after declaration
@@ -308,19 +309,22 @@ SUBROUTINE interpolate()
               ! Create cokriging trees
               ! ZONES UNIMPLEMENTED
               do i=2, ndata
-                ! zone subset necessary (masking array?)
-                dtrees(i)%tp => create_tree(codata(i-1)%xy(:,:))
+                !TODO zone subset
+                call pd4tree(codata(i-1), codata_nona_lay(i-1), ilay, 0)
+                dtrees(i)%tp => create_tree(codata_nona_lay(i-1)%xy(:,:))
               end do
               !cokrige
-              call spcokrige_tree_group(codata, ndata, nnodes, nodex, nodey, temppc, ilay, &
+              call spcokrige_tree_group(codata_nona_lay, ndata, nnodes, nodex, nodey, temppc, 1, &
                                         dtrees, knnear, 0, &
-                                        wcount, wellv, tempzones, geonames_lay(igeo,ilay))
+                                        wcount, wellv, wellmean, tempzones, geonames_lay(igeo,ilay))
             else
               ! One data -> ordinary kriging (ind=1, first variogram)
               call spkrige_tree_group(nnodes, nodex, nodey, dtrees(1)%tp, wcount, &
                                 wellv, 1, temppc, knnear(1), &
                                 ggroup=tempzones, targetgroup=geonames_lay(igeo,ilay))
             end if
+            ! Correct values too high or low
+            !TODO
           else
             write(*,'(4x,a,i8,2a)') 'Warning - No well data in layer ', ilay, &
                                    'for geologic zone', geonames_lay(igeo,ilay)
@@ -330,9 +334,12 @@ SUBROUTINE interpolate()
         end do
         ! Copy over
         PcNode(1:nnodes,ilay) = temppc
-        ! Destroy trees
+        ! Destroy trees & temp pddatasets
         do i=1, ndata
           call destroy_tree(dtrees(i)%tp)
+          if (i>1) then
+            call deallocate_pddataset(codata_nona_lay(i-1))
+          end if
         end do
       end do
     else  ! i.e. USE_IDW == 1
@@ -436,6 +443,7 @@ SUBROUTINE interpolate_aqtard()
     integer                  :: i,iwell, ilay, inode, iarr, wcount, count
     real,allocatable         :: wellxy(:,:), wellv(:)
     character(60),allocatable:: fmt(:)
+    type(pddataset)           :: codata_nona_lay(ndata-1)
     type(tree_array),allocatable :: dtrees(:)
     allocate(dtrees(ndata))
 
@@ -465,14 +473,13 @@ SUBROUTINE interpolate_aqtard()
           dtrees(1)%tp => create_tree(wellxy(1:wcount,:))
           if (ndata>1) then
             ! Create cokriging trees
-            ! ZONES UNIMPLEMENTED
             do i=2, ndata
-              ! zone subset necessary (masking array?)
+              call pd4tree(codata(i-1), codata_nona_lay(i-1), ilay, 1)
               dtrees(i)%tp => create_tree(codata(i)%xy(:,:))
             end do
             !cokrige
-            call spcokrige_tree_group(codata, ndata, nnodes, nodex, nodey, pc, ilay, &
-                                      dtrees, knnear, 0, wcount, wellv)
+            call spcokrige_tree_group(codata_nona_lay, ndata, nnodes, nodex, nodey, pc, 1, &
+                                      dtrees, knnear, 0, wcount, wellv, wellmean)
           else
             call spkrige_tree(nnodes, nodex, nodey, dtrees(i)%tp, wcount, wellv, &
                               1, pc, knnear(1))
@@ -493,6 +500,13 @@ SUBROUTINE interpolate_aqtard()
             ! Need to warn if NODATA values were written
             write(*,'(4x,a,i8)') 'No well data for aquitard layer ', ilay
           end if
+        end if
+      end do
+      ! Destroy trees & temp pddatasets
+      do i=1, ndata
+        call destroy_tree(dtrees(i)%tp)
+        if (i>1) then
+          call deallocate_pddataset(codata_nona_lay(i-1))
         end if
       end do
     else

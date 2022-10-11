@@ -264,7 +264,7 @@ program Texture2Par
 ! Handle additional datasets
     do i=1, (ndata-1)
       call pre_read_pddata(11, cokrigefiles(i), flen, codata(i)%npdat, maxint)
-      call allocate_pddataset(codata(i), maxint, nlayers, modflowflag)
+      call allocate_pddataset(codata(i), maxint, nlayers)
       call read_pddata_IWFM(codata(i), 11, cokrigefiles(i), flen, geoflag)
     end do
 
@@ -285,6 +285,8 @@ program Texture2Par
 ! Call Layer Texture subroutine
     write(*,'(2x,a)') 'Calculating Percent Coarse at Wells'
     call layertexture(wellelevtop, wellelevbot, PcWellElem)
+    ! TODO find a more reasonable place for this
+    wellmean = sum(PcWellElem,PcWellElem>0.0)/count(PcWellElem>0.0)
     ! If IWFM or if there are MODFLOW confining beds
     if ((modflowflag == 0).or.(ncbd > 0 )) then
       call layertexture(wellaqtardelevtop, wellaqtardelevbot, PcWellAqtardElem)
@@ -293,6 +295,8 @@ program Texture2Par
     ! Average pddatasets by layer
     do i=1, (ndata-1)
       call pd_avg2lay(codata(i), codata(i)%npdat, codata(i)%laytop, codata(i)%laybot, codata(i)%layv)
+      ! TODO find a more reasonable place for this (all-layer average)
+      codata(i)%v_mean = sum(codata(i)%layv,codata(i)%layv>NODATA)/count(codata(i)%layv>NODATA)
       if ((modflowflag == 0).or.(ncbd > 0 )) then
         call pd_avg2lay(codata(i), codata(i)%npdat, codata(i)%aqttop, codata(i)%aqtbot, codata(i)%aqtv)
       end if

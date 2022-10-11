@@ -298,7 +298,6 @@ SUBROUTINE inputwells_IWFM(readzones)
           queryxy(2) = ty
           call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
           wellelem(iwell) = get_well_element(tx, ty, iwell, closenodes, nnear)
-
         end if
         Zwell(iwell, izone) = tz - td
       end do
@@ -341,7 +340,7 @@ SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
     character(150),intent(in)  :: file
     integer, parameter         :: nnear=5
     integer                    :: i, ipoint, interval, ilay, &
-                                  node, ngzones, ierr
+                                  node, ngzones, ierr, nona
     integer                    :: closenodes(nnear), vcount
     real                       :: tx, ty, tz, td, tpc
     real                       :: nodedists(nnear), queryxy(2)
@@ -360,6 +359,8 @@ SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
     call iomsghandler(ierr, cerr)
     read(unit,*)                        ! Header
 
+    pdset%v_mean = 0.0
+    nona = 0
     if (readzones == 0) then
       ! No GeoZones
       ngzones = 1
@@ -414,8 +415,8 @@ SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
     end if
     close(unit)
     
-    ! Dataset mean
-    pdset%v_mean = sum(pdset%v(:,:))/count(pdset%v(:,:)>NODATA)
+    ! Dataset mean (now using layer-averaged average)
+    !pdset%v_mean = sum(pdset%v(:,:),pdset%v(:,:)>NODATA)/count(pdset%v(:,:)>NODATA)
 
     ! Report if mismatch in model vs dataset geo zone count
     if (ngzones > ngeozones) then
