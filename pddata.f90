@@ -145,19 +145,21 @@ subroutine pd4tree(pdset, pdsetout, lay, aquitard)
         p = p+1
       end if
     end do
+    pdsetout%v_mean = sum(pdsetout%aqtv(:,1)) / pdsetout%npdat
   else
     do i=1, pdset%npdat
-      if (pdset%layv(i,1) > cutoff) then
+      if (pdset%layv(i,lay) > cutoff) then
         pdsetout%layv(p,1) = pdset%layv(i,lay)
         pdsetout%xy(p,:) = pdset%xy(i,:)
         pdsetout%zone(p,1) = pdset%zone(i,lay)
         p = p+1
       end if
     end do
+    pdsetout%v_mean = sum(pdsetout%layv(:,1)) / pdsetout%npdat
   end if
   
   ! maintain mean
-  pdsetout%v_mean = pdset%v_mean
+  !pdsetout%v_mean = pdset%v_mean    
 
 end subroutine pd4tree
 
