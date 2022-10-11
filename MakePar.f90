@@ -332,6 +332,12 @@ SUBROUTINE interpolate()
             where (tempzones == geonames_lay(igeo,ilay)) temppc = NODATA
           end if
         end do
+        ! Enforce 0-1 boundaries of percent coarse
+        where(temppc < 0.0)
+          temppc = 0
+        elsewhere(temppc > 1.0)
+          temppc = 1
+        end where
         ! Copy over
         PcNode(1:nnodes,ilay) = temppc
         ! Destroy trees & temp pddatasets
@@ -484,7 +490,20 @@ SUBROUTINE interpolate_aqtard()
             call spkrige_tree(nnodes, nodex, nodey, dtrees(i)%tp, wcount, wellv, &
                               1, pc, knnear(1))
           end if
+          ! Enforce 0-1 boundaries of percent coarse
+          where(pc < 0.0)
+            pc = 0
+          elsewhere(pc > 1.0)
+            pc = 1
+          end where
           PcNode_aqtard(1:nnodes,ilay) = pc(1:nnodes)
+          ! Destroy trees & temp pddatasets
+          do i=1, ndata
+            call destroy_tree(dtrees(i)%tp)
+            if (i>1) then
+              call deallocate_pddataset(codata_nona_lay(i-1))
+            end if
+          end do
         else
           ! Check for layer thickness
           do inode = 1, nnodes
@@ -500,13 +519,6 @@ SUBROUTINE interpolate_aqtard()
             ! Need to warn if NODATA values were written
             write(*,'(4x,a,i8)') 'No well data for aquitard layer ', ilay
           end if
-        end if
-      end do
-      ! Destroy trees & temp pddatasets
-      do i=1, ndata
-        call destroy_tree(dtrees(i)%tp)
-        if (i>1) then
-          call deallocate_pddataset(codata_nona_lay(i-1))
         end if
       end do
     else
