@@ -71,7 +71,7 @@ subroutine readIWFM()
 
     allocate(nodex(nnodes),nodey(nnodes), &
               nodeelem(nnodes, max_node_elem_members), &
-              nnodeelem(nnodes),nodexy(nnodes,2), nodeid(nnodes))
+              nnodeelem(nnodes),nodexy(2,nnodes), nodeid(nnodes))
     read(12,*) fact
     call readOneLine(elementfile,12,cline)
     BACKSPACE(12)

@@ -242,8 +242,8 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, ind, kriged_val, n
       queryxy = (/ gx(i), gy(i) /)
       call kdtree2_n_nearest(obstree, queryxy, usenear, closeobs)
       do j=1, usenear
-        obsx(j) = obstree%THE_DATA(closeobs(j)%idx,1)
-        obsy(j) = obstree%THE_DATA(closeobs(j)%idx,2)
+        obsx(j) = obstree%THE_DATA(1,closeobs(j)%idx)
+        obsy(j) = obstree%THE_DATA(2,closeobs(j)%idx)
       end do
 
       ! Reset values, matrices for new grid point
@@ -341,8 +341,8 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, ind, &
       queryxy = (/ gx(i), gy(i) /)
       call kdtree2_n_nearest(obstree, queryxy, usenear, closeobs)
       do j=1, usenear
-        obsx(j) = obstree%THE_DATA(closeobs(j)%idx,1)
-        obsy(j) = obstree%THE_DATA(closeobs(j)%idx,2)
+        obsx(j) = obstree%THE_DATA(1,closeobs(j)%idx)
+        obsy(j) = obstree%THE_DATA(2,closeobs(j)%idx)
       end do
 
       ! Reset values, matricies for new grid point
@@ -574,7 +574,7 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
         write(*,'(4x,a,i3,a)') 'Dataset' ,i,' - Well Data < Kriging Tree Search. Adjusting...'
         usenear(i) = dtrees(i)%tp%n
       end if
-      allocate(nearsets(i)%xy(usenear(i),2), & ! reverse order than normal (needed by kdtree??)
+      allocate(nearsets(i)%xy(2,usenear(i)), & 
                nearsets(i)%v(usenear(i))        )
     end do
     npoints = sum(usenear)
@@ -602,7 +602,7 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
         ! Gather data
         allocate(closeobs(usenear(j)), obsdists(usenear(j)))
         call kdtree2_n_nearest(dtrees(j)%tp, queryxy, usenear(j), closeobs)
-        nearsets(j)%xy(1:usenear(j),:) = dtrees(j)%tp%THE_DATA(closeobs(1:usenear(j))%idx,:)
+        nearsets(j)%xy(:,1:usenear(j)) = dtrees(j)%tp%THE_DATA(:,closeobs(1:usenear(j))%idx)
         nearsets(j)%n = usenear(j)
         do k=1, usenear(j)
           if (j==1) then
@@ -650,7 +650,7 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
         ! loop over data points
         do n=1, nearsets(d)%n
           do j=1, nstruct(ind)
-            call variogram(ind,j,gx(i),gy(i),0.0d0,nearsets(d)%xy(n,1),nearsets(d)%xy(n,2),0.0d0,value)
+            call variogram(ind,j,gx(i),gy(i),0.0d0,nearsets(d)%xy(1,n),nearsets(d)%xy(2,n),0.0d0,value)
             r(rcount) = r(rcount) + value
           end do
           rcount = rcount + 1
@@ -867,14 +867,14 @@ end subroutine spcokrige_tree_group
         ! Outer loop over column points
         do jj=1, dsets(j)%n
           JS=ID(colcount(j)+jj)-(colcount(j)+jj)
-          x2=dsets(j)%xy(jj,1)
-          y2=dsets(j)%xy(jj,2)
+          x2=dsets(j)%xy(1,jj)
+          y2=dsets(j)%xy(2,jj)
           ! Inner loop over row points
           ii = jj
           if (i/=j) ii=1
           do while (ii <= dsets(i)%n)
-            x1=dsets(i)%xy(ii,1)
-            y1=dsets(i)%xy(ii,2)
+            x1=dsets(i)%xy(1,ii)
+            y1=dsets(i)%xy(2,ii)
             value_sum=0.0d0
             do n=1, nstruct(ind)
               call variogram(ind,n,x1,y1,0.0d0,x2,y2,0.0d0,value)
