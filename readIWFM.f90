@@ -216,7 +216,7 @@ end subroutine readIWFM
 !-----------------------------------------------------------------------------!
 SUBROUTINE inputwells_IWFM(readzones)
     use MakePar
-    use kd_tree
+    use kdtree2_module
     use str_utls
     use errorhandle
     implicit none
@@ -233,13 +233,13 @@ SUBROUTINE inputwells_IWFM(readzones)
     integer, parameter       :: nnear=5
     integer                  :: i, iwell, izone, igeo, ilay, readzones, &
                                 currwellelem, node, nwellgeozones, ierr
-    integer                  :: closenodes(nnear)
     real                     :: depth, tx, ty, tz, td, tpc
-    real                     :: nodedists(nnear), queryxy(2)
+    real                     :: queryxy(2)
     character(30)            :: wellname, geobylayer(nlayers), &
                                 wellgeonames(max_zones)
     character(256)           :: cerr
     logical                  :: newzone
+    type(kdtree2_result)     :: closenodes(nnear)
 
     ! Initialize (to prevent issues where compiler does not initilize to 0)
     nwellgeozones = 0
@@ -267,8 +267,8 @@ SUBROUTINE inputwells_IWFM(readzones)
           ! Use node tree to find closest node
           queryxy(1) = tx
           queryxy(2) = ty
-          call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
-          wellelem(iwell) = get_well_element(tx, ty, iwell, closenodes, nnear)
+          call kdtree2_n_nearest(nodetree, queryxy, nnear, closenodes)
+          wellelem(iwell) = get_well_element(tx, ty, iwell, closenodes(:)%idx, nnear)
         end if
         Zwell(iwell, izone) = tz - td
       end do
@@ -296,8 +296,8 @@ SUBROUTINE inputwells_IWFM(readzones)
           ! Use node tree to find closest node
           queryxy(1) = tx
           queryxy(2) = ty
-          call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
-          wellelem(iwell) = get_well_element(tx, ty, iwell, closenodes, nnear)
+          call kdtree2_n_nearest(nodetree, queryxy, nnear, closenodes)
+          wellelem(iwell) = get_well_element(tx, ty, iwell, closenodes(:)%idx, nnear)
         end if
         Zwell(iwell, izone) = tz - td
       end do
@@ -324,7 +324,7 @@ end subroutine inputwells_IWFM
 !-----------------------------------------------------------------------------!
 SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
     use pddata
-    use kd_tree
+    use kdtree2_module
     use str_utls
     use errorhandle
     implicit none
@@ -340,14 +340,14 @@ SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
     character(150),intent(in)  :: file
     integer, parameter         :: nnear=5
     integer                    :: i, ipoint, interval, ilay, &
-                                  node, ngzones, ierr, nona
-    integer                    :: closenodes(nnear), vcount
+                                  node, ngzones, ierr, nona, vcount
     real                       :: tx, ty, tz, td, tpc
-    real                       :: nodedists(nnear), queryxy(2)
+    real                       :: queryxy(2)
     character(30)              :: jnk, geobylayer(nlayers), &
                                   zonenames(max_zones)
     character(256)             :: cerr
     logical                    :: newzone
+    type(kdtree2_result)     :: closenodes(nnear)
 
     ! Initialize
     ngzones = 0
@@ -370,16 +370,14 @@ SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
         pdset%v(interval,ipoint) = tpc
         pdset%ndint(ipoint) = interval
         if (interval == 1) then
-          !kdtree poor setup pdset%xy(1,ipoint) = tx
-          !kdtree poor setup pdset%xy(2,ipoint) = ty
-          pdset%xy(ipoint,1) = tx
-          pdset%xy(ipoint,2) = ty
+          pdset%xy(1,ipoint) = tx
+          pdset%xy(2,ipoint) = ty
           pdset%zland(ipoint) = tz
           ! Use node tree to find closest node
           queryxy(1) = tx
           queryxy(2) = ty
-          call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
-          pdset%node(ipoint) = get_well_element(tx, ty, ipoint, closenodes, nnear)
+          call kdtree2_n_nearest(nodetree, queryxy, nnear, closenodes)
+          pdset%node(ipoint) = get_well_element(tx, ty, ipoint, closenodes(:)%idx, nnear)
         end if
         pdset%z(interval,ipoint) = tz - td
       end do
@@ -406,8 +404,8 @@ SUBROUTINE read_pddata_IWFM(pdset, unit, file, filelen, readzones)
           ! Use node tree to find closest node
           queryxy(1) = tx
           queryxy(2) = ty
-          call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
-          pdset%node(ipoint) = get_well_element(tx, ty, ipoint, closenodes, nnear)
+          call kdtree2_n_nearest(nodetree, queryxy, nnear, closenodes)
+          pdset%node(ipoint) = get_well_element(tx, ty, ipoint, closenodes(:)%idx, nnear)
 
         end if
         pdset%z(interval,ipoint) = tz - td

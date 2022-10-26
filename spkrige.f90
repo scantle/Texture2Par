@@ -203,7 +203,7 @@ end subroutine spkrige
 
 !-----------------------------------------------------------------------------!
 subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, ind, kriged_val, nnear)
-    use kd_tree
+    use kdtree2_module
     implicit none
 !-----------------------------------------------------------------------------!
 !                       Simple Point Kriging Subroutine
@@ -211,17 +211,18 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, ind, kriged_val, n
 ! Requires: PSET, decomp, variogram, doolittle
 !-----------------------------------------------------------------------------!
 
-    integer                  :: maxpt, ntot, i, j, g, n, closeobs(nnear), &
+    integer                  :: maxpt, ntot, i, j, g, n, &
                                 usenear, ier
     integer, allocatable     :: id(:)
     integer, intent(in)      :: ngrid, nnear, nobs, ind
-    real                     :: value, zkrig, queryxy(2), obsdists(nnear), &
+    real                     :: value, zkrig, queryxy(2), &
                                 obsx(nnear), obsy(nnear)
     real, allocatable        :: p(:), r(:), w(:)
     real, intent(in)         :: gx(ngrid), gy(ngrid), obsval(nobs)
     real, intent(inout)      :: kriged_val(ngrid)
 
-    type(tree_master_record), intent(in), pointer :: obstree
+    type(kdtree2_result)     :: closeobs(nnear)
+    type(kdtree2), intent(in), pointer :: obstree
 
     ! If there's not many datapoints
     if (obstree%N < nnear) then
@@ -239,10 +240,10 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, ind, kriged_val, n
     do i = 1, ngrid
       ! Get nnear closest observation points
       queryxy = (/ gx(i), gy(i) /)
-      call n_nearest_to(obstree, queryxy, usenear, closeobs, obsdists)
+      call kdtree2_n_nearest(obstree, queryxy, usenear, closeobs)
       do j=1, usenear
-        obsx(j) = obstree%THE_DATA(closeobs(j),1)
-        obsy(j) = obstree%THE_DATA(closeobs(j),2)
+        obsx(j) = obstree%THE_DATA(closeobs(j)%idx,1)
+        obsy(j) = obstree%THE_DATA(closeobs(j)%idx,2)
       end do
 
       ! Reset values, matrices for new grid point
@@ -277,7 +278,7 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, ind, kriged_val, n
       value = 0.0d0
       zkrig = 0.0d0
       do n=1, usenear
-        zkrig = zkrig + w(n) * obsval(closeobs(n))
+        zkrig = zkrig + w(n) * obsval(closeobs(n)%idx)
       end do
       zkrig = zkrig + value
       kriged_val(i) = zkrig
@@ -291,7 +292,7 @@ end subroutine spkrige_tree
 !-----------------------------------------------------------------------------!
 subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, ind, &
                               kriged_val, nnear, ggroup, targetgroup)
-    use kd_tree
+    use kdtree2_module
     implicit none
 !-----------------------------------------------------------------------------!
 !                       Simple Point Kriging Subroutine
@@ -300,18 +301,19 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, ind, &
 ! Groups are set as CHARACTERS(30)
 !-----------------------------------------------------------------------------!
 
-    integer                  :: maxpt, ntot, i, j, g, n, closeobs(nnear), &
+    integer                  :: maxpt, ntot, i, j, g, n, &
                                 usenear, ier
     integer, allocatable     :: id(:)
     integer, intent(in)      :: ngrid, nnear, nobs, ind
-    real                     :: value, zkrig, queryxy(2), obsdists(nnear), &
+    real                     :: value, zkrig, queryxy(2), &
                                 obsx(nnear), obsy(nnear)
     real, allocatable        :: p(:), r(:), w(:)
     real, intent(in)         :: gx(ngrid), gy(ngrid), obsval(nobs)
     real, intent(inout)      :: kriged_val(ngrid)
     character(30),intent(in) :: ggroup(ngrid), targetgroup
 
-    type(tree_master_record), intent(in), pointer :: obstree
+    type(kdtree2_result)     :: closeobs(nnear)
+    type(kdtree2), intent(in), pointer :: obstree
 
     ! If there's not many datapoints
     if (obstree%N < nnear) then
@@ -337,10 +339,10 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, ind, &
 
       ! Get nnear closest observation points
       queryxy = (/ gx(i), gy(i) /)
-      call n_nearest_to(obstree, queryxy, usenear, closeobs, obsdists)
+      call kdtree2_n_nearest(obstree, queryxy, usenear, closeobs)
       do j=1, usenear
-        obsx(j) = obstree%THE_DATA(closeobs(j),1)
-        obsy(j) = obstree%THE_DATA(closeobs(j),2)
+        obsx(j) = obstree%THE_DATA(closeobs(j)%idx,1)
+        obsy(j) = obstree%THE_DATA(closeobs(j)%idx,2)
       end do
 
       ! Reset values, matricies for new grid point
@@ -375,7 +377,7 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, ind, &
       value = 0.0d0
       zkrig = 0.0d0
       do n=1, usenear
-        zkrig = zkrig + w(n) * obsval(closeobs(n))
+        zkrig = zkrig + w(n) * obsval(closeobs(n)%idx)
       end do
       zkrig = zkrig + value
       kriged_val(i) = zkrig
@@ -463,7 +465,7 @@ end subroutine
 
 !-----------------------------------------------------------------------------!
 subroutine spcokrige(dsets, ndsets, grid, kriged_val)
-    use kd_tree
+    use kdtree2_module
     implicit none
 !-----------------------------------------------------------------------------!
 !                       Standardized Ordinary Cokriging
@@ -537,8 +539,8 @@ end subroutine spcokrige
 subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
                                 dtrees, knnear, aquitard, &
                                 nobs, obsval, obsmean, ggroup, targetgroup)
+    use kdtree2_module
     use pddata
-    use kd_tree
     implicit none
 !-----------------------------------------------------------------------------!
 !                       Standardized Ordinary Cokriging
@@ -555,13 +557,14 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
     real, intent(inout)      :: kriged_val(ngrid)
     integer                  :: maxpt, npoints, ntot, i, j, k, g, n,nn, ier, ind, rcount, d
     integer                  :: usenear(ndsets)
-    integer, allocatable     :: id(:), closeobs(:)
+    integer, allocatable     :: id(:)
     real                     :: value, zkrig, queryxy(2)
     real, allocatable        :: p(:), r(:), w(:), obsv(:), obsdists(:)
     
     ! Tree/Group arguments
-    integer,intent(in)           :: knnear(ndsets)
-    type(tree_array), intent(in) :: dtrees(ndsets)
+    integer,intent(in)                :: knnear(ndsets)
+    type(kdtree2_result),allocatable  :: closeobs(:)
+    type(tree_array), intent(in)      :: dtrees(ndsets)
     character(30),intent(in),optional :: ggroup(ngrid), targetgroup
     
     ! Warn if less data than expected
@@ -598,17 +601,17 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
       do j=1, ndsets
         ! Gather data
         allocate(closeobs(usenear(j)), obsdists(usenear(j)))
-        call n_nearest_to(dtrees(j)%tp, queryxy, usenear(j), closeobs, obsdists)
-        nearsets(j)%xy(1:usenear(j),:) = dtrees(j)%tp%THE_DATA(closeobs(1:usenear(j)),:)
+        call kdtree2_n_nearest(dtrees(j)%tp, queryxy, usenear(j), closeobs)
+        nearsets(j)%xy(1:usenear(j),:) = dtrees(j)%tp%THE_DATA(closeobs(1:usenear(j))%idx,:)
         nearsets(j)%n = usenear(j)
         do k=1, usenear(j)
           if (j==1) then
-            nearsets(j)%v(k) = obsval(closeobs(k))
-            obsv(k) = obsval(closeobs(k))
+            nearsets(j)%v(k) = obsval(closeobs(k)%idx)
+            obsv(k) = obsval(closeobs(k)%idx)
           else if (aquitard==1) then
-            nearsets(j)%v(k) = dsets(j-1)%aqtv(closeobs(k),lay)
+            nearsets(j)%v(k) = dsets(j-1)%aqtv(closeobs(k)%idx,lay)
           else
-            nearsets(j)%v(k) = dsets(j-1)%layv(closeobs(k),lay)
+            nearsets(j)%v(k) = dsets(j-1)%layv(closeobs(k)%idx,lay)
             if (nearsets(j)%v(k) < 0.0) then
             ! TEMP
               stop

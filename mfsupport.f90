@@ -109,7 +109,7 @@ module MFSupport
 !-----------------------------------------------------------------------------!
 SUBROUTINE inputwells_modflow(readzones)
     use MakePar
-    use kd_tree
+    use kdtree2_module
     use str_utls
     use errorhandle
     implicit none
@@ -126,13 +126,13 @@ SUBROUTINE inputwells_modflow(readzones)
     integer, parameter       :: nnear=4
     integer                  :: i, iwell, izone, igeo, ilay, readzones, &
                                 currwellelem, node, ierr, nwellgeozones
-    integer                  :: closenodes(nnear)
     real                     :: depth, tx, ty, tz, td, tpc
-    real                     :: nodedists(nnear), queryxy(2)
+    real                     :: queryxy(2)
     character(30)            :: wellname, geobylayer(nlayers), &
                                 wellgeonames(max_zones)
     character(265)           :: cerr
     logical                  :: newzone
+    type(kdtree2_result)     :: closenodes(nnear)
 
     ! Initialize (to prevent issues where compiler does not initilize to 0)
     nwellgeozones = 0
@@ -160,8 +160,8 @@ SUBROUTINE inputwells_modflow(readzones)
           ! Use node tree to find closest node
           queryxy(1) = tx
           queryxy(2) = ty
-          call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
-          node = get_well_cell(tx, ty, closenodes, nnear)
+          call kdtree2_n_nearest(nodetree, queryxy, nnear, closenodes)
+          node = get_well_cell(tx, ty, closenodes(:)%idx, nnear)
           wellelem(iwell) = node
           ! While looping over wells, might as well assign modflow
           ! elevations to wells, as no interpolation is required
@@ -200,8 +200,8 @@ SUBROUTINE inputwells_modflow(readzones)
           ! Use node tree to find closest node
           queryxy(1) = tx
           queryxy(2) = ty
-          call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
-          node = get_well_cell(tx, ty, closenodes, nnear)
+          call kdtree2_n_nearest(nodetree, queryxy, nnear, closenodes)
+          node = get_well_cell(tx, ty, closenodes(:)%idx, nnear)
           wellelem(iwell) = node
           ! While looping over wells, might as well assign modflow
           ! elevations to wells, as no interpolation is required

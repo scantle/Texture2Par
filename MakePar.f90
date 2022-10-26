@@ -1,5 +1,5 @@
 MODULE MakePar
-  use kd_tree
+  use kdtree2_module
   use pddata
   implicit none
 
@@ -59,7 +59,7 @@ MODULE MakePar
     type(pddataset),allocatable :: codata(:)
     
     ! Global Trees
-    type(tree_master_record), pointer :: nodetree
+    type(kdtree2), pointer :: nodetree
 
     CONTAINS
 
@@ -115,16 +115,16 @@ SUBROUTINE pd_elev_at_points(nsets, top_elev, bot_elev, top_tard, bot_tard)
     do i=1, nsets
       codata(i)%laytop = 0.0
       codata(i)%laybot = 0.0
-      call IDW(codata(i)%npdat, codata(i)%xy(:,1), codata(i)%xy(:,2), &
+      call IDW(codata(i)%npdat, codata(i)%xy(1,:), codata(i)%xy(2,:), &
                codata(i)%node, codata(i)%laytop, nnodes, nlayers, nodex, nodey, &
                top_elev, nelements, elements)
-      call IDW(codata(i)%npdat, codata(i)%xy(:,1), codata(i)%xy(:,2), &
+      call IDW(codata(i)%npdat, codata(i)%xy(1,:), codata(i)%xy(2,:), &
                codata(i)%node, codata(i)%laybot, nnodes, nlayers, nodex, nodey, &
                bot_elev, nelements, elements)
-      call IDW(codata(i)%npdat, codata(i)%xy(:,1), codata(i)%xy(:,2), & 
+      call IDW(codata(i)%npdat, codata(i)%xy(1,:), codata(i)%xy(2,:), & 
                codata(i)%node, codata(i)%aqttop, nnodes, nlayers, nodex, nodey, &
                top_tard, nelements, elements)
-      call IDW(codata(i)%npdat, codata(i)%xy(:,1), codata(i)%xy(:,2), &
+      call IDW(codata(i)%npdat, codata(i)%xy(1,:), codata(i)%xy(2,:), &
                codata(i)%node, codata(i)%aqtbot, nnodes, nlayers, nodex, nodey, &
                bot_tard, nelements, elements)
     end do
@@ -251,6 +251,7 @@ end subroutine pd_avg2lay
 SUBROUTINE interpolate()
     use Krige
     use PilotPoints
+    use kdtree2_module
     implicit none
 !-----------------------------------------------------------------------------!
 ! Interpolates from wells to nodes 
@@ -275,7 +276,7 @@ SUBROUTINE interpolate()
              KvC(nnodes, nlayers), &
              KvF(nnodes, nlayers), &
              pc(nnodes))
-    allocate(wellxy(nwell,2), wellv(nwell),temppc(nnodes))
+    allocate(wellxy(2,nwell), wellv(nwell),temppc(nnodes))
     allocate(tempzones(nnodes),fmt(2))
     allocate(dtrees(ndata))
 
@@ -292,8 +293,8 @@ SUBROUTINE interpolate()
                 (wellgeozones(iwell,ilay) == geonames_lay(igeo,ilay))) then
               wcount = wcount + 1
               wellv(wcount) = pcwellelem(iwell, ilay)
-              wellxy(wcount,1) = xwell(iwell)
-              wellxy(wcount,2) = ywell(iwell)
+              wellxy(1,wcount) = xwell(iwell)
+              wellxy(2,wcount) = ywell(iwell)
             end if
           end do
           if (wcount > 0) then
@@ -302,7 +303,7 @@ SUBROUTINE interpolate()
               write(*,'(4x,a,i8,3a,i3,a)') 'Warning - Layer', ilay, ' - ', &
                        trim(geonames_lay(igeo,ilay)), ', only ', wcount, ' wells'
             end if
-            dtrees(1)%tp => create_tree(wellxy(1:wcount,:))
+            dtrees(1)%tp => kdtree2_create(wellxy(:,1:wcount))
             ! Pass well tree to kriging routine
             ! Will ignore nodes not in the target group
             if (ndata>1) then
@@ -311,7 +312,7 @@ SUBROUTINE interpolate()
               do i=2, ndata
                 !TODO zone subset
                 call pd4tree(codata(i-1), codata_nona_lay(i-1), ilay, 0)
-                dtrees(i)%tp => create_tree(codata_nona_lay(i-1)%xy(:,:))
+                dtrees(i)%tp => kdtree2_create(codata_nona_lay(i-1)%xy(:,:))
               end do
               !cokrige
               call spcokrige_tree_group(codata_nona_lay, ndata, nnodes, nodex, nodey, temppc, 1, &
@@ -342,7 +343,7 @@ SUBROUTINE interpolate()
         PcNode(1:nnodes,ilay) = temppc
         ! Destroy trees & temp pddatasets
         do i=1, ndata
-          call destroy_tree(dtrees(i)%tp)
+          call kdtree2_destroy(dtrees(i)%tp)
           if (i>1) then
             call deallocate_pddataset(codata_nona_lay(i-1))
           end if
@@ -438,7 +439,7 @@ end subroutine interpolate
 SUBROUTINE interpolate_aqtard()
   use Krige
   use PilotPoints
-  use kd_tree
+  use kdtree2_module
     implicit none
 !-----------------------------------------------------------------------------!
 ! Interpolates from wells to nodes using inverse-distance method
@@ -458,7 +459,7 @@ SUBROUTINE interpolate_aqtard()
              KvC(nnodes, nlayers), &
              KvF(nnodes, nlayers), &
              pc(nnodes))
-    allocate(wellxy(nwell,2), wellv(nwell))
+    allocate(wellxy(2,nwell), wellv(nwell))
     allocate(fmt(2))
     if (USE_IDW == 0) then
       ! Calculate percent coarse at each node by kriging well data by layer
@@ -469,19 +470,19 @@ SUBROUTINE interpolate_aqtard()
           if (PcWellAqtardElem(iwell, ilay) >= 0.0d0) then
             wcount = wcount + 1
             wellv(wcount) = PcWellAqtardElem(iwell, ilay)
-            wellxy(wcount,1) = xwell(iwell)
-            wellxy(wcount,2) = ywell(iwell)
+            wellxy(1,wcount) = xwell(iwell)
+            wellxy(2,wcount) = ywell(iwell)
           end if
         end do
 
         ! Only build tree & krige if there's data for the layer
         if (wcount > 0) then
-          dtrees(1)%tp => create_tree(wellxy(1:wcount,:))
+          dtrees(1)%tp => kdtree2_create(wellxy(:,1:wcount))
           if (ndata>1) then
             ! Create cokriging trees
             do i=2, ndata
               call pd4tree(codata(i-1), codata_nona_lay(i-1), ilay, 1)
-              dtrees(i)%tp => create_tree(codata(i)%xy(:,:))
+              dtrees(i)%tp => kdtree2_create(codata(i)%xy(:,:))
             end do
             !cokrige
             call spcokrige_tree_group(codata_nona_lay, ndata, nnodes, nodex, nodey, pc, 1, &
@@ -499,7 +500,7 @@ SUBROUTINE interpolate_aqtard()
           PcNode_aqtard(1:nnodes,ilay) = pc(1:nnodes)
           ! Destroy trees & temp pddatasets
           do i=1, ndata
-            call destroy_tree(dtrees(i)%tp)
+            call kdtree2_destroy(dtrees(i)%tp)
             if (i>1) then
               call deallocate_pddataset(codata_nona_lay(i-1))
             end if
@@ -600,7 +601,7 @@ end subroutine interpolate_aqtard
 !-----------------------------------------------------------------------------!
 
 subroutine create_nodetree()
-  use kd_tree
+  use kdtree2_module
   implicit none
 
   integer                  :: i
@@ -608,11 +609,11 @@ subroutine create_nodetree()
   ! Reassignment into a single xy array
   ! memory usage could be improved by modifying KDTree
   do i=1, nnodes
-    nodexy(i,1) = nodex(i)
-    nodexy(i,2) = nodey(i)
+    nodexy(1,i) = nodex(i)
+    nodexy(2,i) = nodey(i)
   end do
 
-  nodetree => create_tree(nodexy)
+  nodetree => kdtree2_create(nodexy, dim=2)
 
 end subroutine create_nodetree
 

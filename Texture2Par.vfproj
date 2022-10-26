@@ -51,12 +51,12 @@
 		<File RelativePath=".\T2P.rc"/></Filter>
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
 		<File RelativePath=".\fpath.f90"/>
-		<File RelativePath=".\KDTree.f90"/>
+		<File RelativePath=".\kdtree2.f90"/>
 		<File RelativePath=".\MakePar.f90"/>
 		<File RelativePath=".\mfsupport.f90"/>
+		<File RelativePath=".\pddata.f90"/>
 		<File RelativePath=".\PilotPoints.f90"/>
 		<File RelativePath=".\readIWFM.f90"/>
-		<File RelativePath=".\pddata.f90"/>
 		<File RelativePath=".\spkrige.f90"/>
 		<File RelativePath=".\Texture2Par.f90"/>
 		<File RelativePath=".\Tools.f90"/>

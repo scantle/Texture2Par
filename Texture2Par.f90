@@ -351,6 +351,10 @@ program Texture2Par
         write(*,'(2x,a)') 'Writing Node Parameter Files'
         call writeWellFile_IWFM(PcWellElem,       't2p_WellPC.out')
         call writeWellFile_IWFM(PcWellAqtardElem, 't2p_WellAqTardPC.out')
+        ! TEMP?
+        call writeWellFile_IWFM(TopElev, 't2p_WellTop.out')
+        call writeWellFile_IWFM(BotElev, 't2p_WellBot.out')
+        
         call writeNodeFile(PcNode, 't2p_NodePC.out')
         call writeNodeFile(KhB,    't2p_KhB.out'   )
         call writeNodeFile(KvB,    't2p_KvB.out'   )

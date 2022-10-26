@@ -45,7 +45,7 @@ subroutine allocate_pddataset(pdset, maxint, nlay)
   integer,intent(in)          :: maxint, nlay
   
   allocate(pdset%ndint   (pdset%npdat),    &
-           pdset%xy      (pdset%npdat,2),  &
+           pdset%xy    (2,pdset%npdat),    &
            pdset%zland   (pdset%npdat),    &
            pdset%node    (pdset%npdat),    &
            pdset%z(maxint,pdset%npdat),    &
@@ -57,7 +57,6 @@ subroutine allocate_pddataset(pdset, maxint, nlay)
            pdset%aqtbot(pdset%npdat,nlay), &
            pdset%layv  (pdset%npdat,nlay), &
            pdset%aqtv  (pdset%npdat,nlay)  )
-           !kd tree poor data setup   pdset%xy    (2,pdset%npdat),    &
 
 end subroutine allocate_pddataset
 !-----------------------------------------------------------------------------!
@@ -140,7 +139,7 @@ subroutine pd4tree(pdset, pdsetout, lay, aquitard)
     do i=1, pdset%npdat
       if (pdset%aqtv(i,lay) > cutoff) then
         pdsetout%aqtv(p,1) = pdset%aqtv(i,lay)
-        pdsetout%xy(p,:) = pdset%xy(i,:)
+        pdsetout%xy(:,p) = pdset%xy(:,i)
         pdsetout%zone(p,1) = pdset%zone(i,lay)
         p = p+1
       end if
@@ -150,7 +149,7 @@ subroutine pd4tree(pdset, pdsetout, lay, aquitard)
     do i=1, pdset%npdat
       if (pdset%layv(i,lay) > cutoff) then
         pdsetout%layv(p,1) = pdset%layv(i,lay)
-        pdsetout%xy(p,:) = pdset%xy(i,:)
+        pdsetout%xy(:,p) = pdset%xy(:,i)
         pdsetout%zone(p,1) = pdset%zone(i,lay)
         p = p+1
       end if
@@ -181,7 +180,7 @@ subroutine write_pd_file(pdset, filename, nlayers)
   write(20,fmt(1)) 'Point', 'Element', 'X', 'Y', (ilay, ilay=1, nlayers)
   ! Values
   do i = 1, pdset%npdat
-    write(20,fmt(2)) i, pdset%node(i), pdset%xy(i,1:2), (pdset%layv(i,ilay), ilay=1, nlayers)
+    write(20,fmt(2)) i, pdset%node(i), pdset%xy(1:2,i), (pdset%layv(i,ilay), ilay=1, nlayers)
   end do
   
   close(20)
