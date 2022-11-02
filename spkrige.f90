@@ -55,6 +55,7 @@ MODULE Krige
   integer                      :: ndata,         &
                                   nvario,        &
                                   maxstruct
+  real                         :: max_secondary_dist
   integer, allocatable         :: nstruct(:)
   real, allocatable            :: rotmat(:,:,:,:)
   type(grid2D)                 :: kgrid
@@ -555,8 +556,8 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
     type(kdata)              :: nearsets(ndsets)
     real,intent(in)          :: gx(ngrid), gy(ngrid), obsval(nobs),obsmean
     real, intent(inout)      :: kriged_val(ngrid)
-    integer                  :: maxpt, npoints, ntot, i, j, k, g, n,nn, ier, ind, rcount, d
-    integer                  :: usenear(ndsets)
+    integer                  :: maxpt, npoints, ntot, i, j, k, g, n,nn, ier, ind, rcount, nearcount, d
+    integer                  :: maxnear(ndsets)
     integer, allocatable     :: id(:)
     real                     :: value, zkrig, queryxy(2)
     real, allocatable        :: p(:), r(:), w(:), obsv(:), obsdists(:)
@@ -568,23 +569,16 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
     character(30),intent(in),optional :: ggroup(ngrid), targetgroup
     
     ! Warn if less data than expected
-    usenear = knnear
+    maxnear = knnear
     do i=1, ndsets
       if (dtrees(i)%tp%n < knnear(i)) then
         write(*,'(4x,a,i3,a)') 'Dataset' ,i,' - Well Data < Kriging Tree Search. Adjusting...'
-        usenear(i) = dtrees(i)%tp%n
+        maxnear(i) = dtrees(i)%tp%n
       end if
-      allocate(nearsets(i)%xy(2,usenear(i)), & 
-               nearsets(i)%v(usenear(i))        )
+      allocate(nearsets(i)%xy(2,maxnear(i)), & 
+               nearsets(i)%v(maxnear(i))        )
     end do
-    npoints = sum(usenear)
-    
-    ! TEMP
-    !obsmean = sum(obsval)/nobs
-    
-    ntot = npoints + 1                         ! +1 for unbias
-    maxpt = ntot * (ntot + 1) / 2
-    allocate(p(maxpt),r(ntot),w(ntot),id(ntot),obsv(ntot))
+    !npoints = sum(maxnear)
 
     do i=1, ngrid
       if (present(targetgroup)) then
@@ -596,36 +590,61 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
       end if
       
       ! Get nnear closest observation points
-      obsv = 0.0d0
+      !obsv = 0.0d0
       queryxy = (/ gx(i), gy(i) /)
       do j=1, ndsets
         ! Gather data
-        allocate(closeobs(usenear(j)), obsdists(usenear(j)))
-        call kdtree2_n_nearest(dtrees(j)%tp, queryxy, usenear(j), closeobs)
-        nearsets(j)%xy(:,1:usenear(j)) = dtrees(j)%tp%THE_DATA(:,closeobs(1:usenear(j))%idx)
-        nearsets(j)%n = usenear(j)
-        do k=1, usenear(j)
+        allocate(closeobs(maxnear(j)), obsdists(maxnear(j)))
+        call kdtree2_n_nearest(dtrees(j)%tp, queryxy, maxnear(j), closeobs)
+        !nearsets(j)%xy(:,1:maxnear(j)) = dtrees(j)%tp%THE_DATA(:,closeobs(1:maxnear(j))%idx)
+        !nearsets(j)%n = maxnear(j)
+        nearcount     = 0
+        do k=1, maxnear(j)
           if (j==1) then
-            nearsets(j)%v(k) = obsval(closeobs(k)%idx)
-            obsv(k) = obsval(closeobs(k)%idx)
+            nearcount = nearcount + 1
+            nearsets(j)%v(nearcount) = obsval(closeobs(k)%idx)
+            !obsv         (nearcount) = obsval(closeobs(k)%idx)
+          else if (sqrt(closeobs(k)%dis) > max_secondary_dist) then
+            ! Skip
+            cycle
           else if (aquitard==1) then
-            nearsets(j)%v(k) = dsets(j-1)%aqtv(closeobs(k)%idx,lay)
+            nearcount = nearcount + 1
+            nearsets(j)%v(nearcount) = dsets(j-1)%aqtv(closeobs(k)%idx,lay)
           else
-            nearsets(j)%v(k) = dsets(j-1)%layv(closeobs(k)%idx,lay)
-            if (nearsets(j)%v(k) < 0.0) then
-            ! TEMP
-              stop
-            end if
+            nearcount = nearcount + 1
+            nearsets(j)%v(nearcount) = dsets(j-1)%layv(closeobs(k)%idx,lay)
           end if
+          nearsets(j)%xy(:,nearcount) = dtrees(j)%tp%THE_DATA(:,closeobs(nearcount)%idx)
         end do
+        nearsets(j)%n = nearcount
         ! Move secondary data to observation array
-        if (j>1) then
-          rcount = sum(usenear(1:(j-1)))
-          ! Standardize if secondary data
-          !obsv(rcount+1:rcount+usenear(j)) = nearsets(j)%v - dsets(j)%v_mean + dsets(1)%v_mean
-          obsv(rcount+1:rcount+usenear(j)) = nearsets(j)%v - dsets(j-1)%v_mean + obsmean
+        !if (j>1) then
+        !  !rcount = sum(maxnear(1:(j-1)))
+        !  rcount = sum(nearsets(1:(j-1))%n)
+        !  ! Standardize if secondary data
+        !  !obsv(rcount+1:rcount+maxnear(j)) = nearsets(j)%v - dsets(j)%v_mean + dsets(1)%v_mean
+        !  !obsv(rcount+1:rcount+maxnear(j)) = nearsets(j)%v - dsets(j-1)%v_mean + obsmean
+        !  obsv(rcount+1:rcount+nearcount) = nearsets(j)%v(1:nearcount) - dsets(j-1)%v_mean + obsmean
+        !end if
+        deallocate(closeobs, obsdists)
+      end do
+      
+      npoints = sum(nearsets(:)%n)
+      ntot = npoints + 1                         ! +1 for unbias
+      maxpt = ntot * (ntot + 1) / 2
+      allocate(p(maxpt),r(ntot),w(ntot),id(ntot),obsv(ntot))
+      
+      ! Fill obsv
+      obsv = 0.0d0
+      rcount = 0
+      do j=1, ndsets
+        if (j==1) then
+          obsv(rcount+1:rcount+nearsets(j)%n) = nearsets(j)%v(1:nearsets(j)%n)
+        else  !(j>1)
+          ! Standardize secondary data
+          obsv(rcount+1:rcount+nearsets(j)%n) = nearsets(j)%v(1:nearsets(j)%n) - dsets(j-1)%v_mean + obsmean
         end if
-         deallocate(closeobs, obsdists)
+        rcount = rcount + nearsets(j)%n
       end do
       
       ! Build correlation matrix
@@ -658,9 +677,9 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
       end do
       call doolittle(r,p,id,w,ntot)
       kriged_val(i) = DOT_PRODUCT(w,obsv)
+      deallocate(p, r, w, id, obsv)
     end do
 
-    deallocate(p, r, w, id, obsv)
 
 end subroutine spcokrige_tree_group
 !-----------------------------------------------------------------------------!

@@ -106,6 +106,7 @@ program Texture2Par
     do i=1, ndata
       read(10,*) knnear(i)
     end do
+    read(10,*) max_secondary_dist
     read(10,*) maxstruct
     
     ! Variogram-related calcs and allocation
