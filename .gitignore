@@ -50,3 +50,6 @@ mfUSGLib/Debug/**
 # Extras
 *.vfproj.*
 *.7z
+*.lock
+
+*.vsidx
