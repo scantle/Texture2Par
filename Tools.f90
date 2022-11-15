@@ -95,7 +95,8 @@ MODULE errorhandle
   ! Assemble character of optinally included error information
       message = ''
       if (present(filename)) write(message, '(2a)') ' -Filename: ', trim(filename)
-      if (present(linenumber)) write(message, '(2a,i5)') trim(message), ' -Line: ', & linenumber
+      if (present(linenumber)) write(message, '(2a,i5)') trim(message), ' -Line: ', &
+			  linenumber
 
   ! Only does something if iostat is not zero
       if (ierr /= 0) then
