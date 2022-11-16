@@ -622,8 +622,12 @@ subroutine spcokrige_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
 		! Build observation array (obsv)
 		rcount = 0
     do d = 1, ndsets
-      ! Standardize if secondary data
-      obsv(rcount+1:rcount+dsets(d)%n) = dsets(d)%v - dsets(d)%v_mean + dsets(1)%v_mean
+		  if (d>1) then
+        ! Standardize if secondary data
+        obsv(rcount+1:rcount+dsets(d)%n) = dsets(d)%v - dsets(d)%v_mean + dsets(1)%v_mean
+			else
+			  obsv(rcount+1:rcount+dsets(d)%n) = dsets(d)%v
+			end if
       rcount = rcount + dsets(d)%n
     end do
 
