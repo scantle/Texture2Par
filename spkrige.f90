@@ -95,6 +95,51 @@ end subroutine allocate_krige
   end subroutine kdata_allocator
 
 !-----------------------------------------------------------------------------!
+	
+subroutine pd2kdata(pdset, kset, lay, aquitard)
+  use pddata
+  implicit none
+  
+  type(pddataset),intent(in)    :: pdset
+	type(kdata),intent(inout)			:: kset
+  integer,intent(in)            :: lay, aquitard
+  integer                       :: i, p
+  real,parameter                :: cutoff=-1.0
+  
+  if (aquitard==1) then
+    kset%n = count(pdset%aqtv(:,lay) > cutoff)
+  else
+    kset%n = count(pdset%layv(:,lay) > cutoff)
+  end if
+  
+  call kdata_allocator(kset)
+  
+  p = 1
+  if (aquitard==1) then
+    do i=1, pdset%npdat
+      if (pdset%aqtv(i,lay) > cutoff) then
+        kset%v(p) = pdset%aqtv(i,lay)
+        kset%xy(:,p) = pdset%xy(:,i)
+        p = p + 1
+      end if
+    end do
+  else
+    do i=1, pdset%npdat
+      if (pdset%layv(i,lay) > cutoff) then
+        kset%v(p) = pdset%layv(i,lay)
+        kset%xy(:,p) = pdset%xy(:,i)
+        p = p + 1
+      end if
+    end do
+    !pdsetout%v_mean = sum(pdsetout%layv(:,1)) / pdsetout%npdat
+  end if
+  
+  ! maintain mean
+  kset%v_mean = pdset%v_mean    
+
+end subroutine pd2kdata
+
+!-----------------------------------------------------------------------------!
 subroutine init_krige()
   implicit none
   ! To be called AFTER allocate_krige()
@@ -537,6 +582,110 @@ end subroutine spcokrige
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
+subroutine spcokrige_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
+													 aquitard, nobs, obsval, obsxy, obsmean, &
+													 ggroup, targetgroup)
+		use pddata
+    use kdtree2_module
+    implicit none
+!-----------------------------------------------------------------------------!
+!                       Standardized Ordinary Cokriging
+!                     ***********************************
+!
+! Requires: PSET, decomp, variogram, doolittle
+!
+!
+!-----------------------------------------------------------------------------!
+    integer, intent(in)      :: ndsets, ngrid, nobs, lay, aquitard
+    type(kdata), intent(in)  :: dsets(ndsets)
+		real,intent(in)          :: gx(ngrid), gy(ngrid), obsval(nobs), obsxy(2,nobs), obsmean
+    real, intent(inout)      :: kriged_val(ngrid)
+    integer                  :: maxpt, npoints, ntot, i, j, g, n,nn, ier, ind, rcount, d
+    integer, allocatable     :: id(:)
+    real                     :: value, zkrig
+    real, allocatable        :: p(:), r(:), w(:), obsv(:)
+		
+		! Group arguments
+		character(30),intent(in),optional :: ggroup(ngrid), targetgroup
+    
+    ! Pre-build observation dataset (constant over points)
+    obsv = 0.0d0
+		!TODO Until welldata is stored in a ndset...
+    !obsv(1:dsets(1)%n) = dsets(1)%v
+		obsv(1:nobs) = obsval
+		
+		! Build observation array (obsv)
+		rcount = nobs
+		npoints = nobs + sum(dsets(:)%n)
+    do d = 1, ndsets-1
+      ! Standardize if secondary data
+      obsv(rcount+1:rcount+dsets(d)%n) = dsets(d)%v - dsets(d)%v_mean + obsmean
+      rcount = rcount + dsets(d)%n
+    end do
+		
+    ntot = npoints + 1                         ! +1 for unbias
+    maxpt = ntot * (ntot + 1) / 2
+    allocate(p(maxpt),r(ntot),w(ntot),id(ntot),obsv(ntot))
+    id = 0
+		
+		call pset_extreme(dsets, ndsets, ntot, p, id, maxpt)
+    call decomp(p,id,ntot, ier)
+
+    if (ier == 1) then
+      write(*,'(2x,a)') 'Error - Kriging Matrix Decomposition Failure.'
+      write(*,'(2x,a)') 'This error is usually caused by co-located values.'
+      stop
+    end if
+
+    ! Loop over each grid point
+    do i = 1, ngrid
+			if (present(targetgroup)) then
+        ! Skip if grid point not in group
+        if (ggroup(i) /= targetgroup) then
+          !kriged_val(i) = nodataval
+          cycle
+        end if
+      end if
+
+      r = 0.d0
+      w = 0.d0
+      r(ntot) = 1.0d0              ! commented = simple, uncommented = ordinary
+      rcount = 1
+      ind = 1
+      ! Loop over datasets
+      do d = 1, ndsets
+        !if (d>1) ind = ind + ndsets
+				!TODO Until welldata is stored in a ndset...
+				if (d==1) then
+				  do n=1, nobs
+            do j=1, nstruct(ind)
+              call variogram(ind,j,gx(i),gy(i),0.0d0,obsxy(1,n),obsxy(2,n),0.0d0,value)
+              r(rcount) = r(rcount) + value
+            end do
+            rcount = rcount + 1
+					end do
+				else 
+        ! loop over data points
+					ind = ind + ndsets
+          do n=1, dsets(d-1)%n
+            do j=1, nstruct(ind)
+              call variogram(ind,j,gx(i),gy(i),0.0d0,dsets(d-1)%xy(1,n),dsets(d-1)%xy(2,n),0.0d0,value)
+              r(rcount) = r(rcount) + value
+            end do
+            rcount = rcount + 1
+          end do
+				end if
+      end do
+      call doolittle(r,p,id,w,ntot)
+      kriged_val(i) = DOT_PRODUCT(w,obsv)
+    end do
+
+    deallocate(p, r, w, id, obsv)
+
+end subroutine spcokrige_group
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
 subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
                                 dtrees, knnear, aquitard, &
                                 nobs, obsval, obsmean, ggroup, targetgroup)
@@ -575,6 +724,7 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
         write(*,'(4x,a,i3,a)') 'Dataset' ,i,' - Well Data < Kriging Tree Search. Adjusting...'
         maxnear(i) = dtrees(i)%tp%n
       end if
+			!TODO use kdata_allocator(obj)
       allocate(nearsets(i)%xy(2,maxnear(i)), & 
                nearsets(i)%v(maxnear(i))        )
     end do

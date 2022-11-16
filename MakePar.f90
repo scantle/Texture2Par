@@ -39,7 +39,7 @@ MODULE MakePar
                                   knnear(:)
     integer                    :: nlayers, nnodes, nwell, wfilelen, &
                                   nelements, maxWPoints, &
-                                  ngeozones, natlayers
+                                  ngeozones, natlayers, all_data_flag
     real                       :: kfk, stp, khp, kvp, kck, wellmean
     character(30),allocatable  :: geozones(:,:), wellgeozones(:,:), &
                                   geonames_lay(:,:)
@@ -268,6 +268,7 @@ SUBROUTINE interpolate()
     character(30),allocatable :: tempzones(:)
     character(60),allocatable :: fmt(:)
     type(pddataset)           :: codata_nona_lay(ndata-1)
+		type(kdata)								:: cokdata(ndata-1)
     type(tree_array),allocatable :: dtrees(:)
 
 !  Avoiding stack overflow by allocating after declaration
@@ -298,34 +299,43 @@ SUBROUTINE interpolate()
             end if
           end do
           if (wcount > 0) then
-            if (wcount < knnear(1)) then
-              ! Warn if less wells than expected
-              write(*,'(4x,a,i8,3a,i3,a)') 'Warning - Layer', ilay, ' - ', &
-                       trim(geonames_lay(igeo,ilay)), ', only ', wcount, ' wells'
-            end if
-            dtrees(1)%tp => kdtree2_create(wellxy(:,1:wcount))
-            ! Pass well tree to kriging routine
-            ! Will ignore nodes not in the target group
-            if (ndata>1) then
-              ! Create cokriging trees
-              ! ZONES UNIMPLEMENTED
+					  ! All Data
+					  if (all_data_flag==1) then
               do i=2, ndata
                 !TODO zone subset
-                call pd4tree(codata(i-1), codata_nona_lay(i-1), ilay, 0)
-                dtrees(i)%tp => kdtree2_create(codata_nona_lay(i-1)%xy(:,:))
-              end do
-              !cokrige
-              call spcokrige_tree_group(codata_nona_lay, ndata, nnodes, nodex, nodey, temppc, 1, &
-                                        dtrees, knnear, 0, &
-                                        wcount, wellv, wellmean, tempzones, geonames_lay(igeo,ilay))
-            else
-              ! One data -> ordinary kriging (ind=1, first variogram)
-              call spkrige_tree_group(nnodes, nodex, nodey, dtrees(1)%tp, wcount, &
-                                wellv, 1, temppc, knnear(1), &
-                                ggroup=tempzones, targetgroup=geonames_lay(igeo,ilay))
+						    call pd2kdata(codata(i-1), cokdata(i-1), ilay, 0)
+							end do
+						  call spcokrige_group(cokdata, ndata, nnodes, nodex, nodey, temppc, 1, &
+													 0, wcount, wellv, wellxy, wellmean, tempzones, geonames_lay(igeo,ilay))
+						else
+						! Nearest Neightbors
+              if (wcount < knnear(1)) then
+                ! Warn if less wells than expected
+                write(*,'(4x,a,i8,3a,i3,a)') 'Warning - Layer', ilay, ' - ', &
+                         trim(geonames_lay(igeo,ilay)), ', only ', wcount, ' wells'
+              end if
+              dtrees(1)%tp => kdtree2_create(wellxy(:,1:wcount))
+              ! Pass well tree to kriging routine
+              ! Will ignore nodes not in the target group
+              if (ndata>1) then
+                ! Create cokriging trees
+                ! ZONES UNIMPLEMENTED
+                do i=2, ndata
+                  !TODO zone subset
+                  call pd4tree(codata(i-1), codata_nona_lay(i-1), ilay, 0)
+                  dtrees(i)%tp => kdtree2_create(codata_nona_lay(i-1)%xy(:,:))
+                end do
+                !cokrige
+                call spcokrige_tree_group(codata_nona_lay, ndata, nnodes, nodex, nodey, temppc, 1, &
+                                          dtrees, knnear, 0, &
+                                          wcount, wellv, wellmean, tempzones, geonames_lay(igeo,ilay))
+              else
+                ! One data -> ordinary kriging (ind=1, first variogram)
+                call spkrige_tree_group(nnodes, nodex, nodey, dtrees(1)%tp, wcount, &
+                                  wellv, 1, temppc, knnear(1), &
+                                  ggroup=tempzones, targetgroup=geonames_lay(igeo,ilay))
+              end if
             end if
-            ! Correct values too high or low
-            !TODO
           else
             write(*,'(4x,a,i8,2a)') 'Warning - No well data in layer ', ilay, &
                                    'for geologic zone', geonames_lay(igeo,ilay)
@@ -451,6 +461,7 @@ SUBROUTINE interpolate_aqtard()
     real,allocatable         :: wellxy(:,:), wellv(:)
     character(60),allocatable:: fmt(:)
     type(pddataset)           :: codata_nona_lay(ndata-1)
+		type(kdata)								:: cokdata(ndata-1)
     type(tree_array),allocatable :: dtrees(:)
     allocate(dtrees(ndata))
 
@@ -477,34 +488,45 @@ SUBROUTINE interpolate_aqtard()
 
         ! Only build tree & krige if there's data for the layer
         if (wcount > 0) then
-          dtrees(1)%tp => kdtree2_create(wellxy(:,1:wcount))
-          if (ndata>1) then
-            ! Create cokriging trees
+					! All Data
+					if (all_data_flag==1) then
             do i=2, ndata
-              call pd4tree(codata(i-1), codata_nona_lay(i-1), ilay, 1)
-              dtrees(i)%tp => kdtree2_create(codata(i)%xy(:,:))
-            end do
-            !cokrige
-            call spcokrige_tree_group(codata_nona_lay, ndata, nnodes, nodex, nodey, pc, 1, &
-                                      dtrees, knnear, 0, wcount, wellv, wellmean)
-          else
-            call spkrige_tree(nnodes, nodex, nodey, dtrees(i)%tp, wcount, wellv, &
-                              1, pc, knnear(1))
-          end if
-          ! Enforce 0-1 boundaries of percent coarse
-          where(pc < 0.0)
-            pc = 0
-          elsewhere(pc > 1.0)
-            pc = 1
-          end where
-          PcNode_aqtard(1:nnodes,ilay) = pc(1:nnodes)
-          ! Destroy trees & temp pddatasets
-          do i=1, ndata
-            call kdtree2_destroy(dtrees(i)%tp)
-            if (i>1) then
-              call deallocate_pddataset(codata_nona_lay(i-1))
+              !TODO zone subset
+						  call pd2kdata(codata(i-1), cokdata(i-1), ilay, 1)
+						end do
+						call spcokrige_group(cokdata, ndata, nnodes, nodex, nodey, pc, 1, &
+													1, wcount, wellv, wellxy, wellmean)
+					else
+					  ! Nearest Neightbors
+            dtrees(1)%tp => kdtree2_create(wellxy(:,1:wcount))
+            if (ndata>1) then
+              ! Create cokriging trees
+              do i=2, ndata
+                call pd4tree(codata(i-1), codata_nona_lay(i-1), ilay, 1)
+                dtrees(i)%tp => kdtree2_create(codata(i)%xy(:,:))
+              end do
+              !cokrige
+              call spcokrige_tree_group(codata_nona_lay, ndata, nnodes, nodex, nodey, pc, 1, &
+                                        dtrees, knnear, 1, wcount, wellv, wellmean)
+            else
+              call spkrige_tree(nnodes, nodex, nodey, dtrees(i)%tp, wcount, wellv, &
+                                1, pc, knnear(1))
             end if
-          end do
+            ! Enforce 0-1 boundaries of percent coarse
+            where(pc < 0.0)
+              pc = 0
+            elsewhere(pc > 1.0)
+              pc = 1
+            end where
+            PcNode_aqtard(1:nnodes,ilay) = pc(1:nnodes)
+            ! Destroy trees & temp pddatasets
+            do i=1, ndata
+              call kdtree2_destroy(dtrees(i)%tp)
+              if (i>1) then
+                call deallocate_pddataset(codata_nona_lay(i-1))
+              end if
+            end do
+					end if
         else
           ! Check for layer thickness
           do inode = 1, nnodes

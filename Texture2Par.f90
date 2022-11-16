@@ -102,11 +102,23 @@ program Texture2Par
 
     ! Variograms
     call ReadToSymbol(10, '*')
-    !TODO REMOVE read(10,*) pckrige_nwells
-    do i=1, ndata
-      read(10,*) knnear(i)
-    end do
-    read(10,*) max_secondary_dist
+    read(10,*) line
+		all_data_flag = 0  ! Assume nearest neighbors (NN)
+		! But check for ALL
+		if (index(to_upper(trim(line)), 'ALL')>0) all_data_flag = 1
+		! TODO: What about improper entries??
+		
+		if (all_data_flag==0) then
+		  ! For NN we need the NN values all data sets, as well as the max secondary data distance
+      do i=1, ndata
+        read(10,*) knnear(i)
+      end do
+			! Only need max secondary if secondary data exists
+			if (ndata > 1) then
+        read(10,*) max_secondary_dist
+			end if
+		end if
+		
     read(10,*) maxstruct
     
     ! Variogram-related calcs and allocation
