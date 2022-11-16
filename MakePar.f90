@@ -268,7 +268,7 @@ SUBROUTINE interpolate()
     character(30),allocatable :: tempzones(:)
     character(60),allocatable :: fmt(:)
     type(pddataset)           :: codata_nona_lay(ndata-1)
-		type(kdata)								:: cokdata(ndata-1)
+		type(kdata)								:: cokdata(ndata)
     type(tree_array),allocatable :: dtrees(:)
 
 !  Avoiding stack overflow by allocating after declaration
@@ -301,12 +301,18 @@ SUBROUTINE interpolate()
           if (wcount > 0) then
 					  ! All Data
 					  if (all_data_flag==1) then
+						  ! Sure is great to copy this around a million times
+						  cokdata(1)%n = wcount
+						  call kdata_allocator(cokdata(1))
+							cokdata(1)%xy(:,:) = wellxy(:,:)
+							cokdata(1)%v(:) = wellv(:)
+							cokdata(1)%v_mean = wellmean
               do i=2, ndata
                 !TODO zone subset
-						    call pd2kdata(codata(i-1), cokdata(i-1), ilay, 0)
+						    call pd2kdata(codata(i-1), cokdata(i), ilay, 0)
 							end do
 						  call spcokrige_group(cokdata, ndata, nnodes, nodex, nodey, temppc, 1, &
-													 0, wcount, wellv, wellxy, wellmean, tempzones, geonames_lay(igeo,ilay))
+													 0, tempzones, geonames_lay(igeo,ilay))
 						else
 						! Nearest Neightbors
               if (wcount < knnear(1)) then
@@ -494,8 +500,7 @@ SUBROUTINE interpolate_aqtard()
               !TODO zone subset
 						  call pd2kdata(codata(i-1), cokdata(i-1), ilay, 1)
 						end do
-						call spcokrige_group(cokdata, ndata, nnodes, nodex, nodey, pc, 1, &
-													1, wcount, wellv, wellxy, wellmean)
+						call spcokrige_group(cokdata, ndata, nnodes, nodex, nodey, pc, 1, 1)
 					else
 					  ! Nearest Neightbors
             dtrees(1)%tp => kdtree2_create(wellxy(:,1:wcount))

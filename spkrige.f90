@@ -583,8 +583,7 @@ end subroutine spcokrige
 
 !-----------------------------------------------------------------------------!
 subroutine spcokrige_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
-													 aquitard, nobs, obsval, obsxy, obsmean, &
-													 ggroup, targetgroup)
+													 aquitard, ggroup, targetgroup)
 		use pddata
     use kdtree2_module
     implicit none
@@ -596,9 +595,9 @@ subroutine spcokrige_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
 !
 !
 !-----------------------------------------------------------------------------!
-    integer, intent(in)      :: ndsets, ngrid, nobs, lay, aquitard
+    integer, intent(in)      :: ndsets, ngrid, lay, aquitard
     type(kdata), intent(in)  :: dsets(ndsets)
-		real,intent(in)          :: gx(ngrid), gy(ngrid), obsval(nobs), obsxy(2,nobs), obsmean
+		real,intent(in)          :: gx(ngrid), gy(ngrid)
     real, intent(inout)      :: kriged_val(ngrid)
     integer                  :: maxpt, npoints, ntot, i, j, g, n,nn, ier, ind, rcount, d
     integer, allocatable     :: id(:)
@@ -607,22 +606,8 @@ subroutine spcokrige_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
 		
 		! Group arguments
 		character(30),intent(in),optional :: ggroup(ngrid), targetgroup
-    
-    ! Pre-build observation dataset (constant over points)
-    obsv = 0.0d0
-		!TODO Until welldata is stored in a ndset...
-    !obsv(1:dsets(1)%n) = dsets(1)%v
-		obsv(1:nobs) = obsval
-		
-		! Build observation array (obsv)
-		rcount = nobs
-		npoints = nobs + sum(dsets(:)%n)
-    do d = 1, ndsets-1
-      ! Standardize if secondary data
-      obsv(rcount+1:rcount+dsets(d)%n) = dsets(d)%v - dsets(d)%v_mean + obsmean
-      rcount = rcount + dsets(d)%n
-    end do
-		
+
+		npoints = sum(dsets(:)%n)
     ntot = npoints + 1                         ! +1 for unbias
     maxpt = ntot * (ntot + 1) / 2
     allocate(p(maxpt),r(ntot),w(ntot),id(ntot),obsv(ntot))
@@ -630,6 +615,17 @@ subroutine spcokrige_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
 		
 		call pset_extreme(dsets, ndsets, ntot, p, id, maxpt)
     call decomp(p,id,ntot, ier)
+    
+    ! Pre-build observation dataset (constant over points)
+    obsv = 0.0d0
+		
+		! Build observation array (obsv)
+		rcount = 0
+    do d = 1, ndsets
+      ! Standardize if secondary data
+      obsv(rcount+1:rcount+dsets(d)%n) = dsets(d)%v - dsets(d)%v_mean + dsets(1)%v_mean
+      rcount = rcount + dsets(d)%n
+    end do
 
     if (ier == 1) then
       write(*,'(2x,a)') 'Error - Kriging Matrix Decomposition Failure.'
@@ -654,27 +650,15 @@ subroutine spcokrige_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
       ind = 1
       ! Loop over datasets
       do d = 1, ndsets
-        !if (d>1) ind = ind + ndsets
-				!TODO Until welldata is stored in a ndset...
-				if (d==1) then
-				  do n=1, nobs
-            do j=1, nstruct(ind)
-              call variogram(ind,j,gx(i),gy(i),0.0d0,obsxy(1,n),obsxy(2,n),0.0d0,value)
-              r(rcount) = r(rcount) + value
-            end do
-            rcount = rcount + 1
-					end do
-				else 
-        ! loop over data points
-					ind = ind + ndsets
-          do n=1, dsets(d-1)%n
-            do j=1, nstruct(ind)
-              call variogram(ind,j,gx(i),gy(i),0.0d0,dsets(d-1)%xy(1,n),dsets(d-1)%xy(2,n),0.0d0,value)
-              r(rcount) = r(rcount) + value
-            end do
-            rcount = rcount + 1
+      ! loop over data points
+				ind = ind + ndsets
+        do n=1, dsets(d)%n
+          do j=1, nstruct(ind)
+            call variogram(ind,j,gx(i),gy(i),0.0d0,dsets(d)%xy(1,n),dsets(d)%xy(2,n),0.0d0,value)
+            r(rcount) = r(rcount) + value
           end do
-				end if
+          rcount = rcount + 1
+        end do
       end do
       call doolittle(r,p,id,w,ntot)
       kriged_val(i) = DOT_PRODUCT(w,obsv)
