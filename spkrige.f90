@@ -95,6 +95,15 @@ end subroutine allocate_krige
   end subroutine kdata_allocator
 
 !-----------------------------------------------------------------------------!
+  
+subroutine kdata_deallocator(obj)
+  implicit none
+  type(kdata),intent(inout)  :: obj
+  obj%n = 0
+  deallocate(obj%xy, obj%v)
+end subroutine kdata_deallocator
+
+!-----------------------------------------------------------------------------!
 	
 subroutine pd2kdata(pdset, kset, lay, aquitard)
   use pddata
@@ -584,8 +593,9 @@ end subroutine spcokrige
 !-----------------------------------------------------------------------------!
 subroutine spcokrige_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
 													 aquitard, ggroup, targetgroup)
+    use lapack95
+    use f95_precision
 		use pddata
-    use kdtree2_module
     implicit none
 !-----------------------------------------------------------------------------!
 !                       Standardized Ordinary Cokriging
@@ -599,46 +609,36 @@ subroutine spcokrige_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
     type(kdata), intent(in)  :: dsets(ndsets)
 		real,intent(in)          :: gx(ngrid), gy(ngrid)
     real, intent(inout)      :: kriged_val(ngrid)
-    integer                  :: maxpt, npoints, ntot, i, j, g, n,nn, ier, ind, rcount, d
-    integer, allocatable     :: id(:)
+    integer                  :: maxpt, npoints, ntot, i, j, g, n,nn, ier, ind, bcount, d, lwork, lwmax
+    integer, allocatable     :: ipiv(:)
     real                     :: value, zkrig
-    real, allocatable        :: p(:), r(:), w(:), obsv(:)
+    real, allocatable        :: a(:,:), b(:,:), obsv(:), work(:)
 		
 		! Group arguments
 		character(30),intent(in),optional :: ggroup(ngrid), targetgroup
 
-		npoints = sum(dsets(:)%n)
+    npoints = 0 + sum(dsets(:)%n) !(dsets(i)%n, i=1,ndsets)
     ntot = npoints + 1                         ! +1 for unbias
-    maxpt = ntot * (ntot + 1) / 2
-    allocate(p(maxpt),r(ntot),w(ntot),id(ntot),obsv(ntot))
-    id = 0
+    lwmax = ntot*64
+    allocate(a(ntot,ntot),b(ntot,ngrid),ipiv(ntot),obsv(ntot))
+    call lowtri_covmat(dsets, ndsets, ntot, a)
 		
-		call pset_extreme(dsets, ndsets, ntot, p, id, maxpt)
-    call decomp(p,id,ntot, ier)
-    
     ! Pre-build observation dataset (constant over points)
     obsv = 0.0d0
-		
-		! Build observation array (obsv)
-		rcount = 0
-    do d = 1, ndsets
-		  if (d>1) then
-        ! Standardize if secondary data
-        obsv(rcount+1:rcount+dsets(d)%n) = dsets(d)%v - dsets(d)%v_mean + dsets(1)%v_mean
-			else
-			  obsv(rcount+1:rcount+dsets(d)%n) = dsets(d)%v
-			end if
-      rcount = rcount + dsets(d)%n
+    obsv(1:dsets(1)%n) = dsets(1)%v
+    do d = 2, ndsets
+      bcount = sum(dsets(1:(d-1))%n)
+      ! Standardize if secondary data
+      obsv(bcount+1:bcount+dsets(d)%n) = dsets(d)%v - dsets(d)%v_mean + dsets(1)%v_mean
     end do
-
-    if (ier == 1) then
-      write(*,'(2x,a)') 'Error - Kriging Matrix Decomposition Failure.'
-      write(*,'(2x,a)') 'This error is usually caused by co-located values.'
-      stop
-    end if
+    
+    ! Setup up b array
+    b = 0.d0
+    b(ntot,:) = 1.0d0              ! commented = simple, uncommented = ordinary
 
     ! Loop over each grid point
     do i = 1, ngrid
+      !write(*,'(2x,a,6i)') 'Working on grid point: ', i
 			if (present(targetgroup)) then
         ! Skip if grid point not in group
         if (ggroup(i) /= targetgroup) then
@@ -646,29 +646,45 @@ subroutine spcokrige_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
           cycle
         end if
       end if
-
-      r = 0.d0
-      w = 0.d0
-      r(ntot) = 1.0d0              ! commented = simple, uncommented = ordinary
-      rcount = 1
-      ind = 1
+      
       ! Loop over datasets
+      bcount = 1
+      ind = 1
       do d = 1, ndsets
       ! loop over data points
-				ind = ind + ndsets
+				if (d>1) ind = ind + ndsets
         do n=1, dsets(d)%n
           do j=1, nstruct(ind)
             call variogram(ind,j,gx(i),gy(i),0.0d0,dsets(d)%xy(1,n),dsets(d)%xy(2,n),0.0d0,value)
-            r(rcount) = r(rcount) + value
+            b(bcount,i) = b(bcount,i) + value
           end do
-          rcount = rcount + 1
+          bcount = bcount + 1
         end do
       end do
-      call doolittle(r,p,id,w,ntot)
-      kriged_val(i) = DOT_PRODUCT(w,obsv)
+    end do
+      
+    lwork = -1
+    allocate(work(1))
+    call dsysv('L', ntot, ngrid, a, ntot, ipiv, b, ntot, work, lwork, ier)
+    lwork = int(work(1))  !min(int(work(1)), lwmax)  ! Error handling?
+    deallocate(work)
+    allocate(work(lwork))
+        
+    ! Solve
+    write(*,'(2x,3(a,i8))') 'Starting Matrix solve | n_data= ', ntot, ' | n_grid= ', ngrid, ' | work size= ', lwork 
+    call dsysv('L', ntot, ngrid, a, ntot, ipiv, b, ntot, work, lwork, ier)
+        
+    if (ier > 0) then
+      write(*,'(2x,a)') 'Error - Kriging Matrix is Singular: mission impossible'
+      write(*,'(2x,a)') 'This error is often caused by co-located values.'
+      stop
+    end if
+			
+    do i = 1, ngrid
+      kriged_val(i) = DOT_PRODUCT(b(:,i),obsv)
     end do
 
-    deallocate(p, r, w, id, obsv)
+    deallocate(a, b, ipiv, obsv)
 
 end subroutine spcokrige_group
 !-----------------------------------------------------------------------------!
@@ -1019,7 +1035,7 @@ end subroutine spcokrige_tree_group
         ! Variogram index for section
         ind = j
         if (i/=j) then
-          ind = ndsets + j*(i-1)  ! ndsets + j-1 + i-1 ??
+          ind = ndsets + (i-1) + (j-1)
         end if
         ! Outer loop over column points
         do jj=1, dsets(j)%n
@@ -1053,6 +1069,64 @@ end subroutine spcokrige_tree_group
     RETURN
 
   end subroutine pset_extreme
+  
+!-----------------------------------------------------------------------------!
+  
+subroutine lowtri_covmat(dsets, ndsets, ntot, a)
+    implicit none
+    ! Rewrite of PSET to create a (n,n) lower diagonal matrix instead of an array
+    ! (and to handle multiple datasets)
+    ! Author Leland Scantlebury
+    
+    ! Inputs
+    integer,intent(in)     :: ndsets, ntot
+    type(kdata),intent(in) :: dsets(ndsets)
+    real,intent(inout)     :: a(ntot,ntot)
+    
+    ! Subroutine variables
+    integer             :: n,i,ii,j,jj,ind, dout, din
+    real                :: x1,x2,y1,y2,value,value_sum
+    
+    ! Zero out A
+    a=0.0
+    
+    ! Loop over columns (both datasets)
+    j = 1 ! Tracks column
+    do dout=1, ndsets
+      ! Loop over points in outer dataset
+      do jj=1, dsets(dout)%n
+        x2=dsets(dout)%xy(1,jj)
+        y2=dsets(dout)%xy(2,jj)
+        i = j  ! Start on the diagonal
+        ! Loop over rows (starts from dout dataset, b/c diag)
+        do din=dout, ndsets
+          ind = din
+          if (din/=dout) ind = ndsets + (din-1) + (dout-1)
+          ! Loop over points in inner dataset
+          do ii=1, dsets(din)%n
+            if ((din==dout).and.(ii<jj)) cycle  ! Stay on diagonal
+            x1=dsets(din)%xy(1,ii)
+            y1=dsets(din)%xy(2,ii)
+            ! Loop over variogram structures
+            value_sum=0.0d0
+            do n=1, nstruct(ind)
+              call variogram(ind,n,x1,y1,0.0d0,x2,y2,0.0d0,value)
+              value_sum = value_sum + value
+            end do
+            ! Store in matrix
+            a(i,j) = value_sum
+            i = i + 1
+          end do ! End of ii loop over din points
+        end do  ! End of din row loop
+      j = j+1
+      end do  ! End of jj loop over dout points
+    end do  ! End of dout column loop
+    
+    ! Unbias
+    a(ntot,1:ntot-1) = 1.0
+    RETURN
+
+  end subroutine lowtri_covmat
 
 !-----------------------------------------------------------------------------!
 subroutine decomp(p,id,ntot,ier)
@@ -1105,15 +1179,13 @@ subroutine variogram(ind,str,x1,y1,z1,x2,y2,z2,value)
   ! Check for "zero" distance, return with maximum value
       if (h < epsilon) then
         value = vario(str,ind)%nugget + vario(str,ind)%sill
-        return
-      end if
+        return  ! EARLY RETURN
   ! linear variogram
-      if(vario(str,ind)%itype.eq.0) then
+      else if(vario(str,ind)%itype.eq.0) then
         h=sqrt(h)*vario(str,ind)%sill
         !write(11,*) 'Linear', h
-      end if
   ! spherical variogram
-      if(vario(str,ind)%itype.eq.1) then
+      else if(vario(str,ind)%itype.eq.1) then
         H=SQRT(h)
         tmp=h/vario(str,ind)%a_hmax
         if(tmp.ge.1.) then
@@ -1121,9 +1193,8 @@ subroutine variogram(ind,str,x1,y1,z1,x2,y2,z2,value)
         else
           h=vario(str,ind)%sill*(1.5*tmp-0.5*tmp*tmp*tmp)
         endif
-      endif
   ! exponential variogram
-      if (vario(str,ind)%itype.eq.2) then
+      else if (vario(str,ind)%itype.eq.2) then
         H=SQRT(h)
         h=vario(str,ind)%sill*(1.d0-exp(-3.d0*h/vario(str,ind)%a_hmax))
       endif

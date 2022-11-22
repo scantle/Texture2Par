@@ -301,6 +301,8 @@ SUBROUTINE interpolate()
           if (wcount > 0) then
 					  ! All Data
 					  if (all_data_flag==1) then
+              ! Write some output so the user knows T2P is working (can be slow!)
+              write(*,'(a,i2)') 'LAYER', ilay
 						  ! Sure is great to copy this around a million times
 						  cokdata(1)%n = wcount
 						  call kdata_allocator(cokdata(1))
@@ -359,9 +361,13 @@ SUBROUTINE interpolate()
         PcNode(1:nnodes,ilay) = temppc
         ! Destroy trees & temp pddatasets
         do i=1, ndata
-          call kdtree2_destroy(dtrees(i)%tp)
-          if (i>1) then
-            call deallocate_pddataset(codata_nona_lay(i-1))
+          if (all_data_flag==0) then
+            call kdtree2_destroy(dtrees(i)%tp)
+            if (i>1) then
+              call deallocate_pddataset(codata_nona_lay(i-1))
+            end if
+          else !== alldata
+            call kdata_deallocator(cokdata(i))
           end if
         end do
       end do
@@ -526,9 +532,13 @@ SUBROUTINE interpolate_aqtard()
             PcNode_aqtard(1:nnodes,ilay) = pc(1:nnodes)
             ! Destroy trees & temp pddatasets
             do i=1, ndata
-              call kdtree2_destroy(dtrees(i)%tp)
-              if (i>1) then
-                call deallocate_pddataset(codata_nona_lay(i-1))
+              if (all_data_flag==0) then
+                call kdtree2_destroy(dtrees(i)%tp)
+                if (i>1) then
+                  call deallocate_pddataset(codata_nona_lay(i-1))
+                end if
+              else !== alldata
+                call kdata_deallocator(cokdata(i))
               end if
             end do
 					end if
