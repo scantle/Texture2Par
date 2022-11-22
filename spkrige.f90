@@ -662,7 +662,8 @@ subroutine spcokrige_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
         end do
       end do
     end do
-      
+    
+    ! Workspace query
     lwork = -1
     allocate(work(1))
     call dsysv('L', ntot, ngrid, a, ntot, ipiv, b, ntot, work, lwork, ier)
@@ -671,12 +672,15 @@ subroutine spcokrige_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
     allocate(work(lwork))
         
     ! Solve
-    write(*,'(2x,3(a,i8))') 'Starting Matrix solve | n_data= ', ntot, ' | n_grid= ', ngrid, ' | work size= ', lwork 
+    !write(*,'(2x,3(a,i8))') 'Starting Matrix solve | n_data= ', ntot, ' | n_grid= ', ngrid, ' | work size= ', lwork 
     call dsysv('L', ntot, ngrid, a, ntot, ipiv, b, ntot, work, lwork, ier)
         
     if (ier > 0) then
-      write(*,'(2x,a)') 'Error - Kriging Matrix is Singular: mission impossible'
+      write(*,'(2x,a)') 'Error - Kriging Matrix is Singular.'
       write(*,'(2x,a)') 'This error is often caused by co-located values.'
+      stop
+    else if (ier < 0) then
+      write(*,'(2x,a,8i)') 'Error - illegal value at ', ier
       stop
     end if
 			
