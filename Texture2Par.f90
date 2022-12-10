@@ -62,6 +62,13 @@ program Texture2Par
     do i=1, (ndata-1)
       read(10,*) cokrigefiles(i)
     end do
+    read(10,*) ntclasses
+    
+    ! Cokriging with classes check (unimplemented)
+    if (ndata>1.and.ntclasses>1) then
+      write(*,*) 'Error - Currently only cokriging OR multiple datasets supported.'
+      stop
+    end if
     call ReadToSymbol(10, '*')
 
     ! Check if MODFLOW or IWFM
@@ -122,8 +129,12 @@ program Texture2Par
     read(10,*) maxstruct
     
     ! Variogram-related calcs and allocation
-    nvario = (ndata*(ndata+1)/2) + 1 ! Calculate number of variograms (+1 for pps)
-    call allocate_krige()  ! requires nvario & maxstruct
+    if (ntclasses==1) then             ! NOT using multiple data classes
+      nvario = (ndata*(ndata+1)/2) + 1 ! Calculate number of variograms (+1 for pps)
+    else
+      nvario = ntclasses +1            ! Multiple tex classes = 1 vario per class +1 for pps
+    end if
+    call allocate_krige()              ! requires nvario & maxstruct
     
     ! Read variograms
     do i=1, nvario
@@ -146,37 +157,52 @@ program Texture2Par
 
     ! Sediment Settings
     call ReadToSymbol(10, '*')
-    read(10,*) KCk
-    read(10,*) KFk
+    if (ntclasses==1) then
+      read(10,*) KCk
+      read(10,*) KFk
+    else
+      allocate(KkCvals(ntclasses))
+      do i=1, ntclasses
+        read(10,*) KkCvals(i)
+      end do
+    end if
     read(10,*) KHp
     read(10,*) KVp
     read(10,*) Stp
     ! Handle p==0 - power-law function is discountinuous at 0
     if (KHp == 0.0) KHp = tiny(KHp)
     if (KVp == 0.0) KVp = tiny(KVp)
-
+    
     ! Aquifer Pilot Point section
     ! TODO: Add descriptive error when not all pilot point parameters are present
     call ReadToSymbol(10, '*')
     call FindSectionLength(10, ppn, '*')
-    call AquiferPPAllocate()
-    do ipp = 1, ppn
-      read(10,*) ppx(ipp), ppy(ipp), ppKCMin(ipp), ppdKC(ipp), ppKFMin(ipp), &
-                 ppdKF(ipp), ppSsC(ipp), ppSsF(ipp), ppSyC(ipp),ppSyF(ipp), &
-                 ppAnisoC(ipp), ppAnisoF(ipp), ppZone(ipp)
-    end do
+    if (ntclasses==1) then
+      call AquiferPPAllocate()
+      do ipp = 1, ppn
+        read(10,*) ppx(ipp), ppy(ipp), ppKCMin(ipp), ppdKC(ipp), ppKFMin(ipp), &
+                   ppdKF(ipp), ppSsC(ipp), ppSsF(ipp), ppSyC(ipp),ppSyF(ipp), &
+                   ppAnisoC(ipp), ppAnisoF(ipp), ppZone(ipp)
+      end do
 
-    ! Aquitard Pilot Point section
-    !read(10,*)    !call ReadToSymbol(10, '*')
-    call ReadToSymbol(10, '*')
-    call FindSectionLength(10, atppn, '*')
-    call AquitardPPAllocate()
-    do ipp = 1, atppn
-      read(10,*) ppatx(ipp), ppaty(ipp), ppatKCMin(ipp), ppatdKC(ipp), &
-                 ppatKFMin(ipp), ppatdKF(ipp), ppatAnisoC(ipp), &
-                 ppatAnisoF(ipp), ppatZone(ipp)
-    end do
-    close(10)
+      ! Aquitard Pilot Point section
+      !read(10,*)    !call ReadToSymbol(10, '*')
+      call ReadToSymbol(10, '*')
+      call FindSectionLength(10, atppn, '*')
+      call AquitardPPAllocate()
+      do ipp = 1, atppn
+        read(10,*) ppatx(ipp), ppaty(ipp), ppatKCMin(ipp), ppatdKC(ipp), &
+                   ppatKFMin(ipp), ppatdKF(ipp), ppatAnisoC(ipp), &
+                   ppatAnisoF(ipp), ppatZone(ipp)
+      end do
+      close(10)
+    else
+      ! Multiple texture classes on each pilot point property
+      call AquiferPPAllocate_multiclass(ntclasses)
+      do ipp=1, ppn
+        read(10,*) ppx(ipp), ppy(ipp), (ppKMinCvals(ipp,i), ppdKCvals(ipp,i), i=1, ntclasses), ppSsCvals(ipp,:), ppSyCvals(ipp,:), ppAnisoCvals(ipp,:), ppZone(ipp)
+      end do
+    end if
 
     ! MODEL SPECIFIC
     if (modflowflag == 0) then
@@ -297,14 +323,16 @@ program Texture2Par
 
 ! Call Layer Texture subroutine
     write(*,'(2x,a)') 'Calculating Percent Coarse at Wells'
-    call layertexture(wellelevtop, wellelevbot, PcWellElem)
-    ! TODO find a more reasonable place for this
-    wellmean = sum(PcWellElem,PcWellElem>0.0)/count(PcWellElem>0.0)
-    ! If IWFM or if there are MODFLOW confining beds
-    if ((modflowflag == 0).or.(ncbd > 0 )) then
-      call layertexture(wellaqtardelevtop, wellaqtardelevbot, PcWellAqtardElem)
-    end if
-    
+    do i=1, ntclasses
+      call layertexture(wellelevtop, wellelevbot, PcWellElem(:,:,i))
+      ! TODO find a more reasonable place for this
+      wellmean = sum(PcWellElem(:,:,i),PcWellElem(:,:,i)>0.0)/count(PcWellElem(:,:,i)>0.0)
+      ! If IWFM or if there are MODFLOW confining beds
+      if ((modflowflag == 0).or.(ncbd > 0 )) then
+        call layertexture(wellaqtardelevtop, wellaqtardelevbot, PcWellAqtardElem(:,:,i))
+      end if
+    end do
+      
     ! Average pddatasets by layer
     do i=1, (ndata-1)
       call pd_avg2lay(codata(i), codata(i)%npdat, codata(i)%laytop, codata(i)%laybot, codata(i)%layv)
@@ -317,43 +345,58 @@ program Texture2Par
 
     ! Krige from pilot points to nodes
     ! Aquifer Parameters - KCMin, DeltaKC, KFMin, DeltaKF, SsC, SsF, SyC, Aniso
-    write(*,'(2x,a,i3)') 'Kriging Aquifer Pilot Point Parameters'
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKCMin,  nvario, nKCMin )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKC,    nvario, dKC    )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKFMin,  nvario, nKFMin )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKF,    nvario, dKF    )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsC,    nvario, nSsC   )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsF,    nvario, nSsF   )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyC,    nvario, nSyC   )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyF,    nvario, nSyF   )
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoC, nvario, nAnisoC)
-    call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoF, nvario, nAnisoF)
+    if (ntclasses==1) then
+      write(*,'(2x,a,i3)') 'Kriging Aquifer Pilot Point Parameters'
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKCMin,  nvario, nKCMin )
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKC,    nvario, dKC    )
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKFMin,  nvario, nKFMin )
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKF,    nvario, dKF    )
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsC,    nvario, nSsC   )
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsF,    nvario, nSsF   )
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyC,    nvario, nSyC   )
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyF,    nvario, nSyF   )
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoC, nvario, nAnisoC)
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoF, nvario, nAnisoF)
 
-    ! Krige Aquitard parameters from pilot points to nodes
-    if ((modflowflag == 0).or.(ncbd > 0 )) then
-      if (atppn > 0) then
-        ! Aquitard Parameters - KCMin, DeltaKC, KFMin, DeltaKF, Aniso
-        write(*,'(2x,a,i3)') 'Kriging Aquitard Pilot Point Parameters'
-        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKCMin,  nvario, nKCMin )
-        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKC,    nvario, dKC    )
-        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKFMin,  nvario, nKFMin )
-        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKF,    nvario, dKF    )
-        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatAnisoC, nvario, nAnisoC)
-        call ppat_parkrige_arr(nnodes, nodex, nodey, ppatAnisoF, nvario, nAnisoF)
-      else
-        write(*,'(2x,a,/)') 'No Aquitard Pilot Points - Skipping       '
-        nKCMin(:,ppaq_narr+1:pp_narr) = -999
-        dKC   (:,ppaq_narr+1:pp_narr) = -999
-        nKFMin(:,ppaq_narr+1:pp_narr) = -999
-        dKF   (:,ppaq_narr+1:pp_narr) = -999
+      ! Krige Aquitard parameters from pilot points to nodes
+      if ((modflowflag == 0).or.(ncbd > 0 )) then
+        if (atppn > 0) then
+          ! Aquitard Parameters - KCMin, DeltaKC, KFMin, DeltaKF, Aniso
+          write(*,'(2x,a,i3)') 'Kriging Aquitard Pilot Point Parameters'
+          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKCMin,  nvario, nKCMin )
+          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKC,    nvario, dKC    )
+          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKFMin,  nvario, nKFMin )
+          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKF,    nvario, dKF    )
+          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatAnisoC, nvario, nAnisoC)
+          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatAnisoF, nvario, nAnisoF)
+        else
+          write(*,'(2x,a,/)') 'No Aquitard Pilot Points - Skipping       '
+          nKCMin(:,ppaq_narr+1:pp_narr) = -999
+          dKC   (:,ppaq_narr+1:pp_narr) = -999
+          nKFMin(:,ppaq_narr+1:pp_narr) = -999
+          dKF   (:,ppaq_narr+1:pp_narr) = -999
+        end if
       end if
+    else
+      ! Multiple Classes
+      do i=1, ntclasses
+        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKMinCvals,   nvario,   KMinCvals(:,:,i))
+        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKCvals,     nvario,     dKCvals(:,:,i))
+        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsCvals,     nvario,     SsCvals(:,:,i))
+        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyCVals,     nvario,     SyCVals(:,:,i))
+        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoCvals, nvario, nAnisoCvals(:,:,i))
+      end do
     end if
-
+      
 ! Call interpolate subroutines (Well PC to Node Aquifer parameter)
     write(*,'(2x,a)') 'Calculating Node Aquifer Parameters           '
-    call interpolate()
-    if ((modflowflag == 0).or.(ncbd > 0 )) then
-      call interpolate_aqtard()
+    if (ntclasses==1) then
+      call interpolate()
+      if ((modflowflag == 0).or.(ncbd > 0 )) then
+        call interpolate_aqtard()
+      end if
+    else
+      call interpolate_multiclass()
     end if
 
 ! Write Output files, routines called depend on model type

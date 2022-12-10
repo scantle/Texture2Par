@@ -233,7 +233,7 @@ SUBROUTINE inputwells_IWFM(readzones)
     integer, parameter       :: nnear=5
     integer                  :: i, iwell, izone, igeo, ilay, readzones, &
                                 currwellelem, node, nwellgeozones, ierr
-    real                     :: depth, tx, ty, tz, td, tpc
+    real                     :: depth, tx, ty, tz, td, tpc(ntclasses)
     real                     :: queryxy(2)
     character(30)            :: wellname, geobylayer(nlayers), &
                                 wellgeonames(max_zones)
@@ -255,10 +255,10 @@ SUBROUTINE inputwells_IWFM(readzones)
       nwellgeozones = 1
       wellgeozones(1:nwell,1:nlayers) = '[NONE]'
       do i=1, wfilelen
-        read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td
+        read(10,*) wellname, iwell, izone, tx, ty, tz, td, tpc(1:ntclasses)
         ! Well "zone" is discrete depth interval counter and should not be
         ! confused with other uses of zone (e.g. pilot points, geologic)
-        PcWellZone(iwell, izone) = tpc
+        PcWellZone(iwell, izone, 1) = tpc(1)
         numZone(iwell) = izone
         if (izone == 1) then
           Xwell(iwell) = tx
@@ -275,10 +275,10 @@ SUBROUTINE inputwells_IWFM(readzones)
     else
       ! GeoZones
       do i=1, wfilelen
-        read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td, geobylayer
+        read(10,*) wellname, iwell, izone, tx, ty, tz, td, tpc(1:ntclasses), geobylayer
         ! Well "zone" is discrete depth interval counter and should not be
         ! confused with other uses of zone (e.g. pilot points, geologic)
-        PcWellZone(iwell, izone) = tpc
+        PcWellZone(iwell, izone, 1:ntclasses) = tpc(1:ntclasses)
         numZone(iwell) = izone
         if (izone == 1) then
           Xwell(iwell) = tx

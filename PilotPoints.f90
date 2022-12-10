@@ -42,6 +42,13 @@ module PilotPoints
                                pp_node_zone(:,:), &  ! Zone membership by nodes (cells) (nnodes, pp_narr)
                                pp_arr_zones(:,:), &  ! Zones present in each array (nzones, pp_narr)
                                pp_arr_nzones(:)          ! Count of zones present in each array
+                               
+! For the massive change that is texture classes. Each array is (ppn, ntclasses)
+real, allocatable          ::   ppKMinCvals(:,:), &  ! Hydraulic conductivity minimum
+                                  ppdKCvals(:,:), &  ! Hydraulic conductivity maximum change (delta)
+                                  ppSsCvals(:,:), &  ! Specific Storage
+                                  ppSyCVals(:,:), &  ! Specific Yield
+                               ppAnisoCvals(:,:)     ! Anisotropy (Kh/Kv)
 
 CONTAINS  !-- Module Subroutines
 
@@ -197,5 +204,22 @@ subroutine AquitardPPAllocate()
             ppatAnisoF(atppn), ppatZone(atppn))
 end subroutine AquitardPPAllocate
 !-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
+subroutine AquiferPPAllocate_multiclass(nc)
+  implicit none
+  
+  integer, intent(in)  :: nc ! Number of classes
+  
+  allocate(ppx(ppn), ppy(ppn), ppZone(ppn))
+  allocate(  ppKMinCvals(ppn,nc), &
+               ppdKCvals(ppn,nc), &
+               ppSsCvals(ppn,nc), &
+               ppSyCVals(ppn,nc), &
+            ppAnisoCvals(ppn,nc)  )
+  
+end subroutine AquiferPPAllocate_multiclass
+!-----------------------------------------------------------------------------!
+
 
 end module

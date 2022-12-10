@@ -17,29 +17,31 @@ MODULE MakePar
                                   max_nodeid=5E6                                ! Maximum nodeid value (to prevent enormous array allocation)
     real, parameter            :: NODATA=-999.0
                                
-    real,allocatable           :: wellelevbot(:,:), ssb(:,:), pcwellelem(:,:), &
+    real,allocatable           :: wellelevbot(:,:), ssb(:,:), pcwellelem(:,:,:), &
                                   xwell(:), wellaqtardelevtop(:,:), &
                                   wellelevtop(:,:),  &
                                   ywell(:), &
                                   zland(:), aqtardbotelev(:,:), &
                                   nodex(:), nodey(:), &
                                   zwell(:,:), khb(:,:), &
-                                  pcwellaqtardelem(:,:), &
+                                  pcwellaqtardelem(:,:,:), &
                                   aqtardtopelev(:,:),  kvb(:,:), &
                                   syb(:,:), elevation(:), botelev(:,:), &
                                   wellaqtardelevbot(:,:), topelev(:,:), &
                                   pcnode(:,:), pcnode_aqtard(:,:), &
-                                  kvb_aqtard(:,:), pcwellzone(:,:), &
+                                  kvb_aqtard(:,:), pcwellzone(:,:,:), &
                                   Thick(:,:), AqTardThick(:,:), &
                                   nodexy(:,:), &
-                                  interbed_thick(:,:)
+                                  interbed_thick(:,:), &
+                                  nodecval       (:,:,:), &
+                                  nodecval_aqtard(:,:,:)
     integer,allocatable        :: wellelem(:), numzone(:), &
                                   elements(:,:), nodeelem(:,:), nnodeelem(:), &
                                   ngeozones_lay(:), nodeid(:), nodebyid(:), &
                                   knnear(:)
     integer                    :: nlayers, nnodes, nwell, wfilelen, &
                                   nelements, maxWPoints, &
-                                  ngeozones, natlayers, all_data_flag
+                                  ngeozones, natlayers, all_data_flag, ntclasses
     real                       :: kfk, stp, khp, kvp, kck, wellmean
     character(30),allocatable  :: geozones(:,:), wellgeozones(:,:), &
                                   geonames_lay(:,:)
@@ -57,6 +59,12 @@ MODULE MakePar
 
     ! Cokriging data
     type(pddataset),allocatable :: codata(:)
+    
+    ! Alternatively, multi-class (texture class) data
+    type(pddataset)             :: tcdata
+    real,allocatable            :: KkCvals(:),KMinCvals(:,:,:), &
+                                   dKCvals(:,:,:),SsCvals(:,:,:),       &
+                                   SyCVals(:,:,:),nAnisoCvals(:,:,:)    
     
     ! Global Trees
     type(kdtree2), pointer :: nodetree
@@ -148,7 +156,7 @@ SUBROUTINE layertexture(well_topelev, well_botelev, pcwellout)
 
     real,intent(in)          :: well_topelev(nwell, nlayers), &
                                 well_botelev(nwell, nlayers)
-    real,intent(inout)       :: pcwellout(nwell, nlayers)
+    real,intent(inout)       :: pcwellout(nwell, nlayers,1)
     real                     :: elemtop, elembot, zonetop, zonebot, &
                                 ztop, zbot, lengthin, sumlengthin, &
                                 sumpcwellzone
@@ -173,18 +181,18 @@ SUBROUTINE layertexture(well_topelev, well_botelev, pcwellout)
           end if
 !       Calculate vertical weight for screen interval within element
           if ((zoneTop >= elemBot).and.(zoneBot <= elemTop).and.&
-              (PcWellZone(iwell, izone) >= 0)) then
+              (PcWellZone(iwell, izone, 1) >= 0)) then
             ! Find min top/bot values
             Ztop = min(elemTop, zoneTop)
             Zbot = max(elemBot, zoneBot)
             LengthIn = Ztop - Zbot
             SumLengthIn = SumLengthIn + LengthIn
-            SumPcWellZone = SumPcWellZone + LengthIn * PcWellZone(iwell, izone)
+            SumPcWellZone = SumPcWellZone + LengthIn * PcWellZone(iwell, izone, 1)
           end if
         end do
-        pcwellout(iwell, ilay) = NODATA
+        pcwellout(iwell, ilay, 1) = NODATA
         if (SumLengthIn > 0.0) then
-          pcwellout(iwell, ilay) = SumPcWellZone / SumLengthIn
+          pcwellout(iwell, ilay, 1) = SumPcWellZone / SumLengthIn
         end if
       end do
     end do
@@ -262,7 +270,7 @@ SUBROUTINE interpolate()
 ! -LS
 !-----------------------------------------------------------------------------!
     real                      :: sum1, sum2, weight, dcol
-    real,allocatable          :: khc(:,:), khf(:,:), kvc(:,:), kvf(:,:), pc(:)
+    real,allocatable          :: khc(:,:), khf(:,:), kvc(:,:), kvf(:,:)
     integer                   :: iwell, ilay, inode, iarr, igeo, i, wcount, count
     real,allocatable          :: wellxy(:,:), wellv(:),temppc(:)
     character(30),allocatable :: tempzones(:)
@@ -275,8 +283,7 @@ SUBROUTINE interpolate()
     allocate(KhC(nnodes, nlayers), &
              KhF(nnodes, nlayers), &
              KvC(nnodes, nlayers), &
-             KvF(nnodes, nlayers), &
-             pc(nnodes))
+             KvF(nnodes, nlayers)  )
     allocate(wellxy(2,nwell), wellv(nwell),temppc(nnodes))
     allocate(tempzones(nnodes),fmt(2))
     allocate(dtrees(ndata))
@@ -290,10 +297,10 @@ SUBROUTINE interpolate()
         do igeo=1, ngeozones_lay(ilay)
           wcount = 0
           do iwell=1, nwell 
-            if ((pcwellelem(iwell, ilay) >= 0.0d0).and.&
+            if ((pcwellelem(iwell, ilay,1) >= 0.0d0).and.&
                 (wellgeozones(iwell,ilay) == geonames_lay(igeo,ilay))) then
               wcount = wcount + 1
-              wellv(wcount) = pcwellelem(iwell, ilay)
+              wellv(wcount) = pcwellelem(iwell, ilay,1)
               wellxy(1,wcount) = xwell(iwell)
               wellxy(2,wcount) = ywell(iwell)
             end if
@@ -381,13 +388,13 @@ SUBROUTINE interpolate()
           sum2 = 0.0
           count = 0            ! LS Added to avoid "no well data" when PC is 0.0 from data
           do iwell = 1, nwell
-            if ((PcWellElem(iwell, ilay) >= 0).and.&
+            if ((PcWellElem(iwell, ilay,1) >= 0).and.&
                        (geozones(inode,ilay) == wellgeozones(iwell,ilay))) then
               count = count + 1
               weight = (((Xwell(Iwell) - nodex(inode)) ** 2 &
                        + (Ywell(Iwell) - nodey(inode)) ** 2) ** 0.5) ** 2
               weight = 1 / weight
-              sum1 = sum1 + weight * PcWellElem(iwell, ilay)
+              sum1 = sum1 + weight * PcWellElem(iwell, ilay,1)
               sum2 = sum2 + weight
             end if
           end do
@@ -450,7 +457,7 @@ SUBROUTINE interpolate()
     end do
 
     ! Deallocate
-    deallocate(KhC, KhF, KvC, KvF, pc)
+    deallocate(KhC, KhF, KvC, KvF)
     deallocate(wellxy, wellv, temppc)
     deallocate(tempzones,fmt)
 
@@ -490,9 +497,9 @@ SUBROUTINE interpolate_aqtard()
         ! Get wells (x,y,val) that have PC for this layer to build kd-tree
         wcount = 0
         do iwell=1, nwell
-          if (PcWellAqtardElem(iwell, ilay) >= 0.0d0) then
+          if (PcWellAqtardElem(iwell, ilay,1) >= 0.0d0) then
             wcount = wcount + 1
-            wellv(wcount) = PcWellAqtardElem(iwell, ilay)
+            wellv(wcount) = PcWellAqtardElem(iwell, ilay,1)
             wellxy(1,wcount) = xwell(iwell)
             wellxy(2,wcount) = ywell(iwell)
           end if
@@ -571,12 +578,12 @@ SUBROUTINE interpolate_aqtard()
             sum2 = 0.0
             count = 0
             do iwell = 1, nwell
-              if (PcWellAqtardElem(iwell, ilay) > -1e-5) then                   ! PcWellAqtardElem is -999 if blank
+              if (PcWellAqtardElem(iwell, ilay,1) > -1e-5) then                   ! PcWellAqtardElem is -999 if blank
                 count = count + 1
                 weight = (((Xwell(Iwell) - nodex(inode)) ** 2 &
                          + (Ywell(Iwell) - nodey(inode)) ** 2) ** 0.5) ** 2
                 weight = 1 / weight
-                sum1 = sum1 + weight * PcWellAqtardElem(iwell, ilay)
+                sum1 = sum1 + weight * PcWellAqtardElem(iwell, ilay,1)
                 sum2 = sum2 + weight
               end if
             end do
@@ -629,6 +636,125 @@ SUBROUTINE interpolate_aqtard()
     deallocate(fmt)
 
 end subroutine interpolate_aqtard
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
+SUBROUTINE interpolate_multiclass()
+    use Krige
+    use PilotPoints
+    use kdtree2_module
+    implicit none
+!-----------------------------------------------------------------------------!
+! Interpolates from wells to nodes
+!
+! Well GeoZones Loop added 7/1/2019
+! Utilizes arrays geonames_lay and ngeozones_lay which list geologic zones
+! ("Units") present in each model layer, based upon geologic node zones
+! -LS
+!-----------------------------------------------------------------------------!
+    real                      :: sum1, sum2, weight, dcol
+    real,allocatable          :: khD(:,:,:), kvd(:,:,:), tcvals(:,:)
+    integer                   :: iwell, ilay, iclass, inode, iarr, igeo, i, wcount, count
+    real,allocatable          :: wellxy(:,:), wellv(:),tempv(:)
+    character(30),allocatable :: tempzones(:)
+    character(60),allocatable :: fmt(:)
+    type(pddataset)           :: codata_nona_lay(ndata-1)
+		type(kdata)								:: cokdata(ndata)
+    type(tree_array),allocatable :: dtrees(:)
+
+!  Avoiding stack overflow by allocating after declaration
+    allocate(KhD(nnodes, nlayers, ntclasses), &
+             KvD(nnodes, nlayers, ntclasses), &
+             tcvals(nnodes, ntclasses))
+    allocate(wellxy(2,nwell), wellv(nwell),tempv(nnodes))
+    allocate(tempzones(nnodes),fmt(2))
+    allocate(dtrees(ndata))
+
+    ! Loop over classes
+    do iclass=1, ntclasses
+      ! Calculate class value at each node by kriging well data by layer
+      do ilay=1, nlayers
+        tempzones = geozones(1:nnodes,ilay)
+        ! Compile wells (x,y,val) that have PC for each layer/geo zone
+        ! Use to build kd-tree for kriging subroutine
+        do igeo=1, ngeozones_lay(ilay)
+          wcount = 0
+          do iwell=1, nwell 
+            if ((pcwellelem(iwell, ilay,1) >= 0.0d0).and.&
+                (wellgeozones(iwell,ilay) == geonames_lay(igeo,ilay))) then
+              wcount = wcount + 1
+              wellv(wcount) = pcwellelem(iwell, ilay, iclass)
+              wellxy(1,wcount) = xwell(iwell)
+              wellxy(2,wcount) = ywell(iwell)
+            end if
+          end do
+          if (wcount > 0) then
+            if (wcount < knnear(1)) then
+              ! Warn if less wells than expected
+              write(*,'(4x,a,i8,3a,i3,a)') 'Warning - Layer', ilay, ' - ', &
+                        trim(geonames_lay(igeo,ilay)), ', only ', wcount, ' wells'
+            end if
+            dtrees(1)%tp => kdtree2_create(wellxy(:,1:wcount))
+            ! Pass well tree to kriging routine
+            ! Will ignore nodes not in the target group
+            ! One data -> ordinary kriging (ind=1, first variogram)
+            call spkrige_tree_group(nnodes, nodex, nodey, dtrees(1)%tp, wcount, &
+                              wellv, 1, tempv, knnear(1), &
+                              ggroup=tempzones, targetgroup=geonames_lay(igeo,ilay))
+          else
+            write(*,'(4x,a,i8,2a)') 'Warning - No well data in layer ', ilay, &
+                                    'for geologic zone', geonames_lay(igeo,ilay)
+            ! Only affect one zone
+            where (tempzones == geonames_lay(igeo,ilay)) tempv = NODATA
+          end if
+        end do
+        ! Copy over
+        nodecval(:,ilay,iclass) = tempv
+        ! Destroy trees & temp pddatasets
+        do i=1, ndata
+          if (all_data_flag==0) then
+            call kdtree2_destroy(dtrees(i)%tp)
+            if (i>1) then
+              call deallocate_pddataset(codata_nona_lay(i-1))
+            end if
+          else !== alldata
+            call kdata_deallocator(cokdata(i))
+          end if
+        end do
+      end do
+    end do
+
+! Use input values to calculate aquifer parameters for each node
+    !write(*,'(4x,a)') 'Calculating element aquifer parameters'
+    do ilay = 1, nlayers
+      iarr = pp_lay2arr(ilay)  ! Get array index
+      do inode = 1, nnodes
+        Dcol = elevation(inode) - ((topelev(inode,ilay) + botelev(inode, ilay)) / 2.0)
+        
+        ! Ensure classes add to one
+        ! TODO add dominant classes option
+        nodecval(inode,ilay,:) = nodecval(inode,ilay,:)/sum(nodecval(inode,ilay,:))
+        
+        ! Calculate Depth-decay hydraulic conductivity values...
+        KhD(inode,ilay,:) = KMinCvals(inode,iarr,:) + dKCvals(inode,iarr,:) * exp(-1.0 * KkCvals(:) * Dcol)
+        KvD(inode,ilay,:) = KhD(inode,iarr,:) / nAnisoCvals(inode,iarr,:)
+        
+        ! Calculate bulk conductivity values
+        KhB(inode,ilay) = DOT_PRODUCT(KhD(inode,ilay,:)**KHp, nodecval(inode,ilay,:)) ** (1.0 / KHp)
+        KvB(inode,ilay) = DOT_PRODUCT(KvD(inode,ilay,:)**Kvp, nodecval(inode,ilay,:)) ** (1.0 / Kvp)
+        
+        ! Calculate bulk storage values
+        SsB(inode,ilay) = DOT_PRODUCT(SsCvals(inode,ilay,:)**Stp, nodecval(inode,ilay,:)) ** (1.0 / Stp)
+        SyB(inode,ilay) = DOT_PRODUCT(SyCvals(inode,ilay,:)**Stp, nodecval(inode,ilay,:)) ** (1.0 / Stp)
+      end do
+    end do
+
+    ! Deallocate
+    deallocate(KhD, KvD, tcvals)
+    deallocate(wellxy, wellv, tempv)
+    deallocate(tempzones,fmt)
+
+end subroutine interpolate_multiclass
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
@@ -786,9 +912,9 @@ subroutine WellAllocate()
              Zwell(nwell, maxWPoints), &
              wellelem(nwell), &
              numZone(nwell), &
-             PcWellZone(nwell, maxWPoints), &
-             PcWellElem(nwell, nlayers), &
-             PcWellAqtardElem(nwell,nlayers), &
+             PcWellZone(nwell, maxWPoints, ntclasses), &
+             PcWellElem(nwell, nlayers,ntclasses), &
+             PcWellAqtardElem(nwell,nlayers,ntclasses), &
              wellelevtop(nwell, nlayers), &
              wellelevbot(nwell, nlayers), &
              wellaqtardelevtop(nwell,nlayers), &
@@ -821,6 +947,16 @@ subroutine NodeAllocate()
            geozones     (nnodes, nlayers), &
            ngeozones_lay(nlayers), &
            geonames_lay (max_zones,nlayers))
+           
+  if (ntclasses > 1) then
+    allocate(nodecval       (nnodes,nlayers,ntclasses), &
+             nodecval_aqtard(nnodes,nlayers,ntclasses), &
+               KMinCvals    (nnodes,pp_narr,ntclasses), &
+                 dKCvals    (nnodes,pp_narr,ntclasses), &
+                 SsCvals    (nnodes,pp_narr,ntclasses), &
+                 SyCVals    (nnodes,pp_narr,ntclasses), &
+             nAnisoCvals    (nnodes,pp_narr,ntclasses)  )
+  end if
 
 end subroutine
 !-----------------------------------------------------------------------------!

@@ -151,7 +151,7 @@ SUBROUTINE inputwells_modflow(readzones)
         read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td
         ! Well "zone" is discrete depth interval and should not be confused with
         ! other uses of zone (e.g. pilot points)
-        PcWellZone(iwell, izone) = tpc
+        PcWellZone(iwell, izone, 1) = tpc
         numZone(iwell) = izone
         if (izone == 1) then
           Xwell(iwell) = tx
@@ -182,7 +182,7 @@ SUBROUTINE inputwells_modflow(readzones)
         read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td, geobylayer(:)
         ! Well "zone" is discrete depth interval and should not be confused with
         ! other uses of zone (e.g. pilot points, geologic)
-        PcWellZone(iwell, izone) = tpc
+        PcWellZone(iwell, izone, 1) = tpc
         numZone(iwell) = izone
         if (izone == 1) then
           Xwell(iwell) = tx
