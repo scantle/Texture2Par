@@ -61,7 +61,7 @@ subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged)
 !-----------------------------------------------------------------------------!
 
   integer,intent(in)       :: nnodes, ind
-  real,intent(in)          :: nodex(nnodes), nodey(nnodes), pp_par_vals(nnodes)
+  real,intent(in)          :: nodex(nnodes), nodey(nnodes), pp_par_vals(ppn)
   real,intent(out)         :: kriged(nnodes, pp_narr)
 
   integer                  :: i, iarr, ipp, ppcount, zone

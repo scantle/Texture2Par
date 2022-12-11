@@ -258,7 +258,7 @@ SUBROUTINE inputwells_IWFM(readzones)
         read(10,*) wellname, iwell, izone, tx, ty, tz, td, tpc(1:ntclasses)
         ! Well "zone" is discrete depth interval counter and should not be
         ! confused with other uses of zone (e.g. pilot points, geologic)
-        PcWellZone(iwell, izone, 1) = tpc(1)
+        PcWellZone(iwell, izone, :) = tpc
         numZone(iwell) = izone
         if (izone == 1) then
           Xwell(iwell) = tx
@@ -278,7 +278,7 @@ SUBROUTINE inputwells_IWFM(readzones)
         read(10,*) wellname, iwell, izone, tx, ty, tz, td, tpc(1:ntclasses), geobylayer
         ! Well "zone" is discrete depth interval counter and should not be
         ! confused with other uses of zone (e.g. pilot points, geologic)
-        PcWellZone(iwell, izone, 1:ntclasses) = tpc(1:ntclasses)
+        PcWellZone(iwell, izone, :) = tpc
         numZone(iwell) = izone
         if (izone == 1) then
           Xwell(iwell) = tx

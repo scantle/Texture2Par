@@ -141,7 +141,7 @@ end subroutine pd_elev_at_points
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-SUBROUTINE layertexture(well_topelev, well_botelev, pcwellout)
+SUBROUTINE layertexture(well_topelev, well_botelev, tclass, pcwellout)
     implicit none
 !-----------------------------------------------------------------------------!
 ! This subprogram calculates the proportion of coarse-grained material at each
@@ -154,9 +154,10 @@ SUBROUTINE layertexture(well_topelev, well_botelev, pcwellout)
 !    - pcwellout    - Percent coarse at each well element
 !-----------------------------------------------------------------------------!
 
+    integer,intent(in)       :: tclass
     real,intent(in)          :: well_topelev(nwell, nlayers), &
                                 well_botelev(nwell, nlayers)
-    real,intent(inout)       :: pcwellout(nwell, nlayers,1)
+    real,intent(inout)       :: pcwellout(nwell, nlayers,ntclasses)
     real                     :: elemtop, elembot, zonetop, zonebot, &
                                 ztop, zbot, lengthin, sumlengthin, &
                                 sumpcwellzone
@@ -181,18 +182,18 @@ SUBROUTINE layertexture(well_topelev, well_botelev, pcwellout)
           end if
 !       Calculate vertical weight for screen interval within element
           if ((zoneTop >= elemBot).and.(zoneBot <= elemTop).and.&
-              (PcWellZone(iwell, izone, 1) >= 0)) then
+              (PcWellZone(iwell, izone, tclass) >= 0)) then
             ! Find min top/bot values
             Ztop = min(elemTop, zoneTop)
             Zbot = max(elemBot, zoneBot)
             LengthIn = Ztop - Zbot
             SumLengthIn = SumLengthIn + LengthIn
-            SumPcWellZone = SumPcWellZone + LengthIn * PcWellZone(iwell, izone, 1)
+            SumPcWellZone = SumPcWellZone + LengthIn * PcWellZone(iwell, izone, tclass)
           end if
         end do
-        pcwellout(iwell, ilay, 1) = NODATA
+        pcwellout(iwell, ilay, tclass) = NODATA
         if (SumLengthIn > 0.0) then
-          pcwellout(iwell, ilay, 1) = SumPcWellZone / SumLengthIn
+          pcwellout(iwell, ilay, tclass) = SumPcWellZone / SumLengthIn
         end if
       end do
     end do
@@ -680,7 +681,7 @@ SUBROUTINE interpolate_multiclass()
         do igeo=1, ngeozones_lay(ilay)
           wcount = 0
           do iwell=1, nwell 
-            if ((pcwellelem(iwell, ilay,1) >= 0.0d0).and.&
+            if ((pcwellelem(iwell, ilay,iclass) >= 0.0d0).and.&
                 (wellgeozones(iwell,ilay) == geonames_lay(igeo,ilay))) then
               wcount = wcount + 1
               wellv(wcount) = pcwellelem(iwell, ilay, iclass)
@@ -697,9 +698,9 @@ SUBROUTINE interpolate_multiclass()
             dtrees(1)%tp => kdtree2_create(wellxy(:,1:wcount))
             ! Pass well tree to kriging routine
             ! Will ignore nodes not in the target group
-            ! One data -> ordinary kriging (ind=1, first variogram)
+            ! vario index is just the class (ind = iclass)
             call spkrige_tree_group(nnodes, nodex, nodey, dtrees(1)%tp, wcount, &
-                              wellv, 1, tempv, knnear(1), &
+                              wellv, iclass, tempv, knnear(1), &
                               ggroup=tempzones, targetgroup=geonames_lay(igeo,ilay))
           else
             write(*,'(4x,a,i8,2a)') 'Warning - No well data in layer ', ilay, &

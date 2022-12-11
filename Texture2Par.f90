@@ -324,12 +324,12 @@ program Texture2Par
 ! Call Layer Texture subroutine
     write(*,'(2x,a)') 'Calculating Percent Coarse at Wells'
     do i=1, ntclasses
-      call layertexture(wellelevtop, wellelevbot, PcWellElem(:,:,i))
+      call layertexture(wellelevtop, wellelevbot, i, PcWellElem)
       ! TODO find a more reasonable place for this
       wellmean = sum(PcWellElem(:,:,i),PcWellElem(:,:,i)>0.0)/count(PcWellElem(:,:,i)>0.0)
       ! If IWFM or if there are MODFLOW confining beds
       if ((modflowflag == 0).or.(ncbd > 0 )) then
-        call layertexture(wellaqtardelevtop, wellaqtardelevbot, PcWellAqtardElem(:,:,i))
+        call layertexture(wellaqtardelevtop, wellaqtardelevbot, 1, PcWellAqtardElem)
       end if
     end do
       
@@ -380,11 +380,11 @@ program Texture2Par
     else
       ! Multiple Classes
       do i=1, ntclasses
-        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKMinCvals,   nvario,   KMinCvals(:,:,i))
-        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKCvals,     nvario,     dKCvals(:,:,i))
-        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsCvals,     nvario,     SsCvals(:,:,i))
-        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyCVals,     nvario,     SyCVals(:,:,i))
-        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoCvals, nvario, nAnisoCvals(:,:,i))
+        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKMinCvals(:,i),   nvario,   KMinCvals(:,:,i))
+        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKCvals(:,i),     nvario,     dKCvals(:,:,i))
+        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsCvals(:,i),     nvario,     SsCvals(:,:,i))
+        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyCVals(:,i),     nvario,     SyCVals(:,:,i))
+        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoCvals(:,i),  nvario, nAnisoCvals(:,:,i))
       end do
     end if
       
