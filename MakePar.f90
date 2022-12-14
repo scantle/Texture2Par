@@ -692,8 +692,9 @@ SUBROUTINE interpolate_multiclass()
           if (wcount > 0) then
             if (wcount < knnear(1)) then
               ! Warn if less wells than expected
-              write(*,'(4x,a,i8,3a,i3,a)') 'Warning - Layer', ilay, ' - ', &
-                        trim(geonames_lay(igeo,ilay)), ', only ', wcount, ' wells'
+              write(*,'(4x,a,i8,3a,i3,2a,i2)') 'Warning - Layer', ilay, ' - ', &
+                        trim(geonames_lay(igeo,ilay)), ', only ', wcount, ' wells', &
+                                    ' - class', iclass
             end if
             dtrees(1)%tp => kdtree2_create(wellxy(:,1:wcount))
             ! Pass well tree to kriging routine
@@ -704,7 +705,8 @@ SUBROUTINE interpolate_multiclass()
                               ggroup=tempzones, targetgroup=geonames_lay(igeo,ilay))
           else
             write(*,'(4x,a,i8,2a)') 'Warning - No well data in layer ', ilay, &
-                                    'for geologic zone', geonames_lay(igeo,ilay)
+                                    'for geo unit', geonames_lay(igeo,ilay), &
+                                    'and class ', iclass
             ! Only affect one zone
             where (tempzones == geonames_lay(igeo,ilay)) tempv = NODATA
           end if
@@ -738,15 +740,15 @@ SUBROUTINE interpolate_multiclass()
         
         ! Calculate Depth-decay hydraulic conductivity values...
         KhD(inode,ilay,:) = KMinCvals(inode,iarr,:) + dKCvals(inode,iarr,:) * exp(-1.0 * KkCvals(:) * Dcol)
-        KvD(inode,ilay,:) = KhD(inode,iarr,:) / nAnisoCvals(inode,iarr,:)
+        KvD(inode,ilay,:) = KhD(inode,ilay,:) / nAnisoCvals(inode,iarr,:)
         
         ! Calculate bulk conductivity values
         KhB(inode,ilay) = DOT_PRODUCT(KhD(inode,ilay,:)**KHp, nodecval(inode,ilay,:)) ** (1.0 / KHp)
         KvB(inode,ilay) = DOT_PRODUCT(KvD(inode,ilay,:)**Kvp, nodecval(inode,ilay,:)) ** (1.0 / Kvp)
         
         ! Calculate bulk storage values
-        SsB(inode,ilay) = DOT_PRODUCT(SsCvals(inode,ilay,:)**Stp, nodecval(inode,ilay,:)) ** (1.0 / Stp)
-        SyB(inode,ilay) = DOT_PRODUCT(SyCvals(inode,ilay,:)**Stp, nodecval(inode,ilay,:)) ** (1.0 / Stp)
+        SsB(inode,ilay) = DOT_PRODUCT(SsCvals(inode,iarr,:)**Stp, nodecval(inode,ilay,:)) ** (1.0 / Stp)
+        SyB(inode,ilay) = DOT_PRODUCT(SyCvals(inode,iarr,:)**Stp, nodecval(inode,ilay,:)) ** (1.0 / Stp)
       end do
     end do
 

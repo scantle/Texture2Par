@@ -397,6 +397,8 @@ program Texture2Par
       end if
     else
       call interpolate_multiclass()
+      ! AQUITARD INTERPOLATE UNIMPLEMENTED FOR MULTICLASS
+      KvB_aqtard = 0.0
     end if
 
 ! Write Output files, routines called depend on model type
@@ -405,7 +407,10 @@ program Texture2Par
         ! Only calculate if writing the file
         call calc_interbed_thickness()
         write(*,'(2x,a)') 'Writing Node Parameter Files'
-        call writeWellFile_IWFM(PcWellElem,       't2p_WellPC.out')
+        do i=1, ntclasses
+          write(line,'(a,i1,a)') 't2p_WellPC_class', i, '.out'
+          call writeWellFile_IWFM(PcWellElem(:,:,i), line)
+        end do
         call writeWellFile_IWFM(PcWellAqtardElem, 't2p_WellAqTardPC.out')
         ! TEMP?
         call writeWellFile_IWFM(TopElev, 't2p_WellTop.out')
