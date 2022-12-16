@@ -412,11 +412,17 @@ program Texture2Par
           call writeWellFile_IWFM(PcWellElem(:,:,i), line)
         end do
         call writeWellFile_IWFM(PcWellAqtardElem, 't2p_WellAqTardPC.out')
-        ! TEMP?
-        call writeWellFile_IWFM(TopElev, 't2p_WellTop.out')
-        call writeWellFile_IWFM(BotElev, 't2p_WellBot.out')
-        
-        call writeNodeFile(PcNode, 't2p_NodePC.out')
+        ! Future output selection
+        !call writeWellFile_IWFM(TopElev, 't2p_WellTop.out')
+        !call writeWellFile_IWFM(BotElev, 't2p_WellBot.out')
+        if (ntclasses==1) then
+          call writeNodeFile(PcNode, 't2p_NodePC.out')
+        else if (ntclasses > 1) then
+          do i=1, ntclasses
+            write(line,'(a,i1,a)') 't2p_NodePc_class', i, '.out'
+            call writeNodeFile(nodecval(:,:,i), line)
+          end do
+        end if
         call writeNodeFile(KhB,    't2p_KhB.out'   )
         call writeNodeFile(KvB,    't2p_KvB.out'   )
         call writeNodeFile(SsB,    't2p_SsB.out'   )
