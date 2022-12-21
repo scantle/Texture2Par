@@ -13,9 +13,9 @@ program Texture2Par
 !-----------------------------------------------------------------------------!
 !                             Texture2Par
 !                         ********************
-!                               V 1.0.0
+!                               V 1.1.0
 !
-! Converts well percent course with depth (1 or 0) data to aquifer parameters
+! Converts well percent course with depth data to aquifer parameters
 ! at specified nodes. Intended to work with input/output files of the
 ! Integrated Water Flow Model (IWFM) with added support for MODFLOW 2000/2005.
 ! Written by Leland Scantlebury and Marinko Karanovic of S.S. Papadopulos &
@@ -41,7 +41,7 @@ program Texture2Par
 !    open(6, carriagecontrol='fortran')  ! Uses removed by VB
 
     ! Write Flag
-    write(*,'(/,8x,a)') '   Texture2Par v1.0.0'
+    write(*,'(/,8x,a)') '   Texture2Par v1.1.0'
     write(*,'(8x,a)')   '------------------------'
 
     ! Read input file
@@ -288,9 +288,10 @@ program Texture2Par
       write(*, '(4x,1a36,i8)') 'Quasi-3D Confining Beds: ', ncbd
     end if
     !write(*,'(4x,1a36,i)') 'Well File Length: ', wfilelen
+    write(*,'(4x,1a36,i8)') 'Number of Texture Classes: ', ntclasses
     write(*,'(4x,1a36,i8)') 'Number of Well Logs: ', nwell
     write(*,'(4x,1a36,i8)') 'Number of Pilot Point Zones: ', maxval(pp_arr_nzones)
-    write(*,'(4x,1a36,i8,/)') 'Number of Geologic Zones: ', ngeozones
+    write(*,'(4x,1a36,i8,/)') 'Number of Geologic Units: ', ngeozones
 
 ! MODEL SPECIFIC
 ! Call input wells subroutine
