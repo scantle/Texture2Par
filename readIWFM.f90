@@ -16,6 +16,8 @@ MODULE IWFM
 !   (node for short, somewhat confusingly)
 ! - To get a nodeid from a node number, use the nodeid() array
 ! - To get a node index from a node id, use the nodebyid() array
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
   SAVE

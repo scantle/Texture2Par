@@ -21,9 +21,9 @@ program Texture2Par
 ! Associates, based on original method and VBA program created by Timothy J.
 ! Durbin.
 !
-!
 ! Requires Input File: Texture2Par.in
 !
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
     integer                    :: ioerr, ilay, ifail, ipp, &
@@ -39,8 +39,9 @@ program Texture2Par
 !    open(6, carriagecontrol='fortran')  ! Uses removed by VB
 
     ! Write Flag
-    write(*,'(/,8x,a)') '   Texture2Par v1.0.0'
-    write(*,'(8x,a)')   '------------------------'
+    write(*,'(/,4x,a)') '             Texture2Par v1.0.0             '
+    write(*,'(3x,a)') '----------------------------------------------'
+    write(*,'(4x,a)')   'Copyright S.S. Papadopulos & Associates Inc.'
 
     ! Read input file
     ierr = 0

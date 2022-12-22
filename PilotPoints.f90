@@ -5,6 +5,8 @@ module PilotPoints
 ! 
 ! Author: Leland Scantlebury of S.S. Papadopulos & Assoc.
 ! Improved/Moved by LS July 2022
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
 ! Variables specified at pilot points

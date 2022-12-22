@@ -2,7 +2,7 @@ module fpath
   implicit none
 !-----------------------------------------------------------------------------!
 ! Simple File Path Handling
-! Leland Scantlebury, SSP&A, 2018
+! Copyright Leland Scantlebury 2022
 !-----------------------------------------------------------------------------!
   integer,   parameter, private     :: maxlen=150
 !-----------------------------------------------------------------------------!

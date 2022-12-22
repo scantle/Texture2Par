@@ -1,4 +1,7 @@
 subroutine IDW(nobs,x,y,ObsElem, InterpValues, nnodes,nlayers,nodex,nodey,NodeVal,nelements,elements)
+! Author: Marinko Karanovic, SSP&A
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
   implicit none
 
   integer         :: i,j,k,n,m,nelements,nodeID
@@ -83,6 +86,8 @@ MODULE errorhandle
   ! Error Code Source: https://software.intel.com/en-us/node/678472
   !
   ! Author: Leland Scantlebury, SSP&A
+  !
+  ! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
   !-----------------------------------------------------------------------------!
 
       integer, intent(in)        :: ierr
@@ -93,7 +98,7 @@ MODULE errorhandle
   ! Assemble character of optinally included error information
       message = ''
       if (present(filename)) write(message, '(2a)') ' -Filename: ', trim(filename)
-      if (present(linenumber)) write(message, '(2a,i5)') trim(message), ' -Line: ', & linenumber
+      if (present(linenumber)) write(message, '(2a,i5)') trim(message), ' -Line: ', linenumber
 
   ! Only does something if iostat is not zero
       if (ierr /= 0) then
@@ -125,6 +130,8 @@ MODULE errorhandle
   ! Error Code Source: https://software.intel.com/en-us/node/678472
   !
   ! Author: Leland Scantlebury, SSP&A
+  !
+  ! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
   !-----------------------------------------------------------------------------!
 
       integer, intent(in)        :: ierr
@@ -216,6 +223,8 @@ subroutine FindSectionLength(unitno, length, symbol)
 ! is reached, returns that length instead.
 !
 ! Author: Leland Scantlebury, SSP&A
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
     integer, intent(in)        :: unitno
@@ -250,6 +259,8 @@ subroutine FindSectionLength(unitno, length, symbol)
     ! Effictively giving you the next "non-commented" line for reading
     ! Useful for jumping past commented lines
     ! LS 7/10/2018
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 
     integer, intent(in)      :: unitno
     integer                  :: ierr
@@ -299,11 +310,12 @@ real function pinpol(px, py, polyx, polyy, npoly) result(inpoly)
   ! Requires:
   !   -- Function tridet to calculate triangle determinant
   !
-  !
   ! Adapted from Sloan, S. W., 1985 A point-in-polygon program, Adv. Eng.
   !                  Software, Vol 7., No. 1
   !
   !               Implemented in f90 by Leland Scantlebury
+  !
+  ! Copyright 2022 Leland Scantlebury
   !---------------------------------------------------------------------------!
 
   integer, intent(in)      :: npoly
