@@ -203,6 +203,8 @@ subroutine spkrige(nobs, ngrid, gx, gy, obsx, obsy, obsv, ind, kriged_val)
 !   a
 !   nugget
 !   kriged_val (real array) kriging results
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
     integer                  :: maxpt, ntot, i, g, n, ier, j, ind
@@ -263,7 +265,11 @@ subroutine spkrige_tree(ngrid, gx, gy, obstree, nobs, obsval, ind, kriged_val, n
 !-----------------------------------------------------------------------------!
 !                       Simple Point Kriging Subroutine
 !                     ***********************************
+!
 ! Requires: PSET, decomp, variogram, doolittle
+!
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
     integer                  :: maxpt, ntot, i, j, g, n, &
@@ -352,8 +358,9 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, ind, &
 !-----------------------------------------------------------------------------!
 !                       Simple Point Kriging Subroutine
 !                     ***********************************
-!
 ! Groups are set as CHARACTERS(30)
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
     integer                  :: maxpt, ntot, i, j, g, n, &
@@ -450,8 +457,9 @@ subroutine spkrige_group(nobs, ngrid, gx, gy, obsx, obsy, obsv, ind, kriged_val,
 !-----------------------------------------------------------------------------!
 !                       Simple Point Kriging Subroutine
 !                     ***********************************
-!
 ! Groups are set as INTEGERS
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
     integer                  :: maxpt, ntot, i, j, g, n, ier
@@ -850,6 +858,8 @@ end subroutine spcokrige_tree_group
 ! screen effect. Follows the advice of Deutsch (1995) "Correcting for Negative
 ! Weights in Ordinary Kriging" and assigns negative weights to 0 and normalizes
 ! the weight sum back to one
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
     real, intent(inout)    :: wts(nwts)

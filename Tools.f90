@@ -1,4 +1,7 @@
 subroutine IDW(nobs,x,y,ObsElem, InterpValues, nnodes,nlayers,nodex,nodey,NodeVal,nelements,elements)
+! Author: Marinko Karanovic, SSP&A
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
   implicit none
 
   integer         :: i,j,k,n,m,nelements,nodeID
@@ -85,6 +88,8 @@ MODULE errorhandle
   ! Error Code Source: https://software.intel.com/en-us/node/678472
   !
   ! Author: Leland Scantlebury, SSP&A
+  !
+  ! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
   !-----------------------------------------------------------------------------!
 
       integer, intent(in)        :: ierr
@@ -128,6 +133,8 @@ MODULE errorhandle
   ! Error Code Source: https://software.intel.com/en-us/node/678472
   !
   ! Author: Leland Scantlebury, SSP&A
+  !
+  ! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
   !-----------------------------------------------------------------------------!
 
       integer, intent(in)        :: ierr
@@ -219,6 +226,8 @@ subroutine FindSectionLength(unitno, length, symbol)
 ! is reached, returns that length instead.
 !
 ! Author: Leland Scantlebury, SSP&A
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
     integer, intent(in)        :: unitno
@@ -253,6 +262,8 @@ subroutine FindSectionLength(unitno, length, symbol)
     ! Effictively giving you the next "non-commented" line for reading
     ! Useful for jumping past commented lines
     ! LS 7/10/2018
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 
     integer, intent(in)      :: unitno
     integer                  :: ierr
@@ -307,6 +318,8 @@ real function pinpol(px, py, polyx, polyy, npoly) result(inpoly)
   !                  Software, Vol 7., No. 1
   !
   !               Implemented in f90 by Leland Scantlebury
+  !
+  ! Copyright 2022 Leland Scantlebury
   !---------------------------------------------------------------------------!
 
   integer, intent(in)      :: npoly
