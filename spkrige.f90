@@ -537,6 +537,7 @@ subroutine spcokrige(dsets, ndsets, grid, kriged_val)
 ! Requires: PSET, decomp, variogram, doolittle
 !
 !
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
     integer, intent(in)      :: ndsets
     type(grid2D), intent(in) :: grid
@@ -612,6 +613,7 @@ subroutine spcokrige_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
 ! Requires: PSET, decomp, variogram, doolittle
 !
 !
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
     integer, intent(in)      :: ndsets, ngrid, lay, aquitard
     type(kdata), intent(in)  :: dsets(ndsets)
@@ -715,6 +717,7 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
 ! Requires: PSET, decomp, variogram, doolittle
 !
 !
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
     integer, intent(in)      :: ndsets, ngrid, nobs, aquitard, lay
     type(pddataset),intent(in) :: dsets(ndsets-1)
@@ -1015,6 +1018,8 @@ end subroutine spcokrige_tree_group
     implicit none
     ! Rewrite of PSET routine above for cokriging
     ! Author Leland Scantlebury
+    !
+    ! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
     
     ! Inputs
     integer,intent(in)     :: ndsets, ntot, maxpt
@@ -1091,6 +1096,8 @@ subroutine lowtri_covmat(dsets, ndsets, ntot, a)
     ! Rewrite of PSET to create a (n,n) lower diagonal matrix instead of an array
     ! (and to handle multiple datasets)
     ! Author Leland Scantlebury
+    !
+    ! Copyright 2022 Leland Scantlebury
     
     ! Inputs
     integer,intent(in)     :: ndsets, ntot

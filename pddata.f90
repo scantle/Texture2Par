@@ -4,6 +4,8 @@ module pddata
 ! Point depth data
 ! Data, at a point location, containing data with depth
 ! e.g., a well log
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
   SAVE
 !-----------------------------------------------------------------------------!
