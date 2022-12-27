@@ -17,12 +17,19 @@ MODULE IWFM
 ! - To get a nodeid from a node number, use the nodeid() array
 ! - To get a node index from a node id, use the nodebyid() array
 !
+! Note on Elements (12/27/2022)
+! - Internally elements are numbered i:nelements within the array
+!   elements(nelement,4[nodes])
+! - Support non-contiguous (or otherwise) element IDs is provided through
+!   an elemid(nelement) array in this module.
+!
 ! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
   SAVE
   integer, parameter                  :: NUM_WORD_DIM=100
   integer, dimension(NUM_WORD_DIM)    :: left_word, right_word
+  integer, allocatable                :: elemid(:)
   character(3000)                     :: cline
   character(200)                      :: nodefile, elementfile, prefolder, &
                                          preSimFile, simFile, stratfile, &
@@ -112,7 +119,7 @@ subroutine readIWFM()
 
     ! TODO : ALLOCATE ELEMENTS ROUTINE
 
-    allocate(elements(nelements,4))
+    allocate(elements(nelements,4), elemid(nelements))
 
     call readOneLine(elementfile,12,cline)
     call multisplit(ifail,1,ls,rs,cline)
@@ -121,27 +128,29 @@ subroutine readIWFM()
     call ifailhandler(ifail, elementfile, cline)
     call readOneLine(elementfile,12,cline)
 
+    ! Subregions
     do i=1,nreg-1
       call readOneLine(elementfile,12,cline)
     end do
 
+    ! Element array - element_id, node1, node2, node3, [node4], subregion
     call readOneLine(elementfile,12,cline)
     BACKSPACE(12)
     do i=1,nelements
-      READ(12,*)intd,(elements(intd,k),k=1,4)
+      READ(12,*) elemid(i), (elements(i,k),k=1,4)
       ! Translate nodeid to node index for each connection LS 10/28/2020
       do k=1,4
-        if (elements(intd,k) > 0) then
-          if (nodebyid(elements(intd,k)) < 1) then
-            write(*,*) 'ERROR! Invalid node ID in Element File = ', elements(intd,k)
+        if (elements(i,k) > 0) then
+          if (nodebyid(elements(i,k)) < 1) then
+            write(*,*) 'ERROR! Invalid node ID in Element File. Element Number = ', elemid(i)  !elements(intd,k)
             stop
           end if
-          elements(intd,k) = nodebyid(elements(intd,k))
+          elements(i,k) = nodebyid(elements(i,k))
         end if
       end do
       ! Add to node-element relationship array
       ! So we can identify by node what element we're in
-      call add_elem2nodeelem(intd)
+      call add_elem2nodeelem(i)
     end do
     close(12)
 
@@ -245,6 +254,7 @@ SUBROUTINE inputwells_IWFM(readzones)
 
     ! Initialize (to prevent issues where compiler does not initilize to 0)
     nwellgeozones = 0
+    wellelem = NODATA
 
     ! Read well file
     write(*,'(2x,2a)') 'Reading Well File ', trim(wellfile)
@@ -482,7 +492,9 @@ subroutine writeWellFile_IWFM(v, filename)
   write(20,fmt(1)) 'Well', 'Element', (ilay, ilay=1, nlayers)
   ! Values
   do iwell = 1, nwell
-    write(20,fmt(2)) iwell, wellelem(iwell), (v(iwell,ilay), ilay=1, nlayers)
+    if (wellelem(iwell) > 0) then  ! Make sure well exists
+      write(20,fmt(2)) iwell, elemid(wellelem(iwell)), (v(iwell,ilay), ilay=1, nlayers)
+    end if
   end do
 
   close(20)
