@@ -50,6 +50,14 @@
 		<File RelativePath=".\T2P.ico"/>
 		<File RelativePath=".\T2P.rc"/></Filter>
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
+		<Filter Name="Data Structures">
+		<File RelativePath=".\Lists.f90"/></Filter>
+		<Filter Name="File Readers">
+		<File RelativePath=".\FileReader.f90"/>
+		<File RelativePath=".\Read_Main_Input.f90"/>
+		<File RelativePath=".\Str_Module.f90"/></Filter>
+		<Filter Name="Flow Models"/>
+		<Filter Name="Interpolators"/>
 		<File RelativePath=".\fpath.f90"/>
 		<File RelativePath=".\kdtree2.f90"/>
 		<File RelativePath=".\Texture2Par.f90"/>
