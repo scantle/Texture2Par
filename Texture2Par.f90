@@ -458,7 +458,7 @@ program Texture2Par
         write(*,'(2x,a)') 'WriteCellFiles set to FALSE - no parameter files written'
       end if
       call readwriteFlowPackage()
-      call clear_modflow_memory()
+      !call clear_modflow_memory()  ! Causing issues. Not necessary, but should revisit.
     end if
     
     !TODO Poorly Implemented
