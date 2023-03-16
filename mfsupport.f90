@@ -126,7 +126,7 @@ SUBROUTINE inputwells_modflow(readzones)
     integer, parameter       :: nnear=4
     integer                  :: i, iwell, izone, igeo, ilay, readzones, &
                                 currwellelem, node, ierr, nwellgeozones
-    real                     :: depth, tx, ty, tz, td, tpc
+    real                     :: depth, tx, ty, tz, td, tpc(ntclasses)
     real                     :: queryxy(2)
     character(30)            :: wellname, geobylayer(nlayers), &
                                 wellgeonames(max_zones)
@@ -148,10 +148,10 @@ SUBROUTINE inputwells_modflow(readzones)
       nwellgeozones = 1
       wellgeozones(1:nwell,1:nlayers) = '[NONE]'
       do i=1, wfilelen
-        read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td
+        read(10,*) wellname, iwell, izone, tx, ty, tz, td, tpc(1:ntclasses)
         ! Well "zone" is discrete depth interval and should not be confused with
         ! other uses of zone (e.g. pilot points)
-        PcWellZone(iwell, izone, 1) = tpc
+        PcWellZone(iwell, izone, :) = tpc
         numZone(iwell) = izone
         if (izone == 1) then
           Xwell(iwell) = tx
@@ -179,10 +179,10 @@ SUBROUTINE inputwells_modflow(readzones)
     else
       ! GeoZones
       do i=1, wfilelen
-        read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td, geobylayer(:)
+        read(10,*) wellname, iwell, izone, tx, ty, tz, td, tpc(1:ntclasses), geobylayer(:)
         ! Well "zone" is discrete depth interval and should not be confused with
         ! other uses of zone (e.g. pilot points, geologic)
-        PcWellZone(iwell, izone, 1) = tpc
+        PcWellZone(iwell, izone, :) = tpc
         numZone(iwell) = izone
         if (izone == 1) then
           Xwell(iwell) = tx
@@ -485,7 +485,7 @@ end function get_well_cell
     ! Since these are all use for both models
     allocate(nodex(nnodes),              &
              nodey(nnodes),              &
-             nodexy(nnodes,2),           &
+             nodexy(2,nnodes),           &
              Elevation(nnodes),          &
              topelev(nnodes,nlay),       &
              botelev(nnodes,nlay),       &
