@@ -55,7 +55,8 @@ real, allocatable          ::   ppKMinCvals(:,:), &  ! Hydraulic conductivity mi
 CONTAINS  !-- Module Subroutines
 
 !-----------------------------------------------------------------------------!
-subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged)
+subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged, &
+                             trans)
   use krige, only: spkrige_group
   implicit none
 !-----------------------------------------------------------------------------!
@@ -68,6 +69,13 @@ subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged)
 
   integer                  :: i, iarr, ipp, ppcount, zone
   real                     :: pzx(ppn), pzy(ppn), pzv(ppn)
+  
+  ! K transform (for now, only log10 transform)
+  integer,intent(in),optional :: trans
+  logical                     :: transform=.false.
+  
+  ! Handle optional argument (keeps code clean)
+  if (present(trans)) transform = .true.
 
   ! Loop over aquifer arrays
   do iarr=1, ppaq_narr
@@ -81,7 +89,11 @@ subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged)
           ppcount = ppcount + 1
           pzx(ppcount) = ppx(ipp)
           pzy(ppcount) = ppy(ipp)
-          pzv(ppcount) = pp_par_vals(ipp)
+          if (transform) then
+            pzv(ppcount) = log10(pp_par_vals(ipp))
+          else
+            pzv(ppcount) = pp_par_vals(ipp)
+          end if
         end if
       end do ! pilot points
       if (ppcount > 0) then
@@ -95,12 +107,18 @@ subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged)
       end if
     end do ! Zones
   end do ! Arrays
+  
+  ! De-transform, if required
+  if (transform) then
+    kriged(:, iarr) = 10**kriged(:, iarr)
+  end if
 
 end subroutine ppaq_parkrige_arr
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
-subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged)
+subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged, &
+                             trans)
   use krige, only: spkrige_group
   implicit none
 !-----------------------------------------------------------------------------!
@@ -113,6 +131,13 @@ subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged)
 
   integer                  :: i, iarr, ipp, ppcount, zone
   real                     :: pzx(ppn), pzy(ppn), pzv(ppn)
+  
+  ! K transform (for now, only log10 transform)
+  integer,intent(in),optional :: trans
+  logical                     :: transform=.false.
+  
+  ! Handle optional argument (keeps code clean)
+  if (present(trans)) transform = .true.
 
   ! Loop over aquifer arrays
   do iarr=ppaq_narr+1, pp_narr
@@ -126,7 +151,11 @@ subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged)
           ppcount = ppcount + 1
           pzx(ppcount) = ppatx(ipp)
           pzy(ppcount) = ppaty(ipp)
-          pzv(ppcount) = pp_par_vals(ipp)
+          if (transform) then
+            pzv(ppcount) = log10(pp_par_vals(ipp))
+          else
+            pzv(ppcount) = pp_par_vals(ipp)
+          end if
         end if
       end do ! pilot points
       if (ppcount > 0) then
@@ -140,6 +169,11 @@ subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged)
       end if
     end do ! Zones
   end do ! Arrays
+  
+  ! De-transform, if required
+  if (transform) then
+    kriged(:, iarr) = 10**kriged(:, iarr)
+  end if
 
 end subroutine ppat_parkrige_arr
 !-----------------------------------------------------------------------------!

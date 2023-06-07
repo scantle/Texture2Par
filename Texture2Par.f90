@@ -30,7 +30,8 @@ program Texture2Par
     integer                    :: ioerr, ilay, ifail, ipp, &
                                   i, j, ierr, iarr, twell, wpoint, zone, &
                                   modflowflag, zoneflag, geoflag, &
-                                  vi, vj, ind, maxint, flen
+                                  vi, vj, ind, maxint, flen, &
+                                  ktrans                 ! K transform, 0-none, 1-log
     real                       :: a_hmin
     character(150)             :: jnk,fpath_line
     character(256)             :: cerr
@@ -82,6 +83,11 @@ program Texture2Par
       write(*,'(a)') 'Valid Model Types: IWFM, MODFLOW'
       stop
     end if
+    
+    ! K transform
+    read(10,*) line
+    ktrans = 0
+    if (index(to_upper(trim(line)),'LOG')>0) ktrans = 1
 
     ! Different order/different files for each model
     if (modflowflag==0) then
@@ -349,10 +355,10 @@ program Texture2Par
     ! Aquifer Parameters - KCMin, DeltaKC, KFMin, DeltaKF, SsC, SsF, SyC, Aniso
     if (ntclasses==1) then
       write(*,'(2x,a,i3)') 'Kriging Aquifer Pilot Point Parameters'
-      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKCMin,  nvario, nKCMin )
-      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKC,    nvario, dKC    )
-      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKFMin,  nvario, nKFMin )
-      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKF,    nvario, dKF    )
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKCMin,  nvario, nKCMin, trans=ktrans)
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKC,    nvario, dKC,    trans=ktrans)
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKFMin,  nvario, nKFMin, trans=ktrans)
+      call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKF,    nvario, dKF,    trans=ktrans)
       call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsC,    nvario, nSsC   )
       call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsF,    nvario, nSsF   )
       call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyC,    nvario, nSyC   )
@@ -365,10 +371,10 @@ program Texture2Par
         if (atppn > 0) then
           ! Aquitard Parameters - KCMin, DeltaKC, KFMin, DeltaKF, Aniso
           write(*,'(2x,a,i3)') 'Kriging Aquitard Pilot Point Parameters'
-          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKCMin,  nvario, nKCMin )
-          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKC,    nvario, dKC    )
-          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKFMin,  nvario, nKFMin )
-          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKF,    nvario, dKF    )
+          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKCMin,  nvario, nKCMin, trans=ktrans)
+          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKC,    nvario, dKC,    trans=ktrans)
+          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatKFMin,  nvario, nKFMin, trans=ktrans)
+          call ppat_parkrige_arr(nnodes, nodex, nodey, ppatdKF,    nvario, dKF,    trans=ktrans)
           call ppat_parkrige_arr(nnodes, nodex, nodey, ppatAnisoC, nvario, nAnisoC)
           call ppat_parkrige_arr(nnodes, nodex, nodey, ppatAnisoF, nvario, nAnisoF)
         else
@@ -382,8 +388,8 @@ program Texture2Par
     else
       ! Multiple Classes
       do i=1, ntclasses
-        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKMinCvals(:,i),   nvario,   KMinCvals(:,:,i))
-        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKCvals(:,i),     nvario,     dKCvals(:,:,i))
+        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppKMinCvals(:,i),   nvario,   KMinCvals(:,:,i), trans=ktrans)
+        call ppaq_parkrige_arr(nnodes, nodex, nodey, ppdKCvals(:,i),     nvario,     dKCvals(:,:,i), trans=ktrans)
         call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSsCvals(:,i),     nvario,     SsCvals(:,:,i))
         call ppaq_parkrige_arr(nnodes, nodex, nodey, ppSyCVals(:,i),     nvario,     SyCVals(:,:,i))
         call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoCvals(:,i),  nvario, nAnisoCvals(:,:,i))
