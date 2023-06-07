@@ -450,6 +450,108 @@ subroutine spkrige_tree_group(ngrid, gx, gy, obstree, nobs, obsval, ind, &
 end subroutine spkrige_tree_group
 !-----------------------------------------------------------------------------!
 
+
+!-----------------------------------------------------------------------------!
+subroutine spkrige_tree_intgroup(ngrid, gx, gy, obstree, nobs, obsval, ind, &
+                              kriged_val, nnear, ggroup, targetgroup)
+    use kdtree2_module
+    implicit none
+!-----------------------------------------------------------------------------!
+!                       Simple Point Kriging Subroutine
+!                     ***********************************
+! Groups are set as CHARACTERS(30)
+!
+! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
+!-----------------------------------------------------------------------------!
+
+    integer                  :: maxpt, ntot, i, j, g, n, &
+                                usenear, ier
+    integer, allocatable     :: id(:)
+    integer, intent(in)      :: ngrid, nnear, nobs, ind
+    real                     :: value, zkrig, queryxy(2), &
+                                obsx(nnear), obsy(nnear)
+    real, allocatable        :: p(:), r(:), w(:)
+    real, intent(in)         :: gx(ngrid), gy(ngrid), obsval(nobs)
+    real, intent(inout)      :: kriged_val(ngrid)
+    integer,intent(in)       :: ggroup(ngrid), targetgroup
+
+    type(kdtree2_result)     :: closeobs(nnear)
+    type(kdtree2), intent(in), pointer :: obstree
+
+    ! If there's not many datapoints
+    if (obstree%N < nnear) then
+      ! Warning moved outside routine
+      !write(*,'(4x,2a)') 'Well Data < Kriging Tree Search in group: ', targetgroup
+      usenear = obstree%N
+    else
+      usenear = nnear
+    end if
+
+    ntot = usenear + 1              ! +1 for ordinary
+    maxpt = ntot * (ntot + 1) / 2
+    allocate(p(maxpt),r(ntot),w(ntot),id(ntot))
+
+    ! Loop over each grid point
+    do i = 1, ngrid
+
+      ! Skip if grid point not in group
+      if (ggroup(i) /= targetgroup) then
+        !kriged_val(i) = nodataval
+        cycle
+      end if
+
+      ! Get nnear closest observation points
+      queryxy = (/ gx(i), gy(i) /)
+      call kdtree2_n_nearest(obstree, queryxy, usenear, closeobs)
+      do j=1, usenear
+        obsx(j) = obstree%THE_DATA(1,closeobs(j)%idx)
+        obsy(j) = obstree%THE_DATA(2,closeobs(j)%idx)
+      end do
+
+      ! Reset values, matricies for new grid point
+      p = 0.d0
+      id = 0
+      call PSET(ind,p,obsx,obsy,id,usenear,ntot)
+      call decomp(p,id,ntot, ier)
+
+      if (ier == 1) then
+        write(*,'(2x,a)') 'Error - Kriging Matrix Decomposition Failure.'
+        write(*,'(2x,a)') 'This error is usually caused by co-located wells.'
+        stop
+      end if
+      r = 0.d0
+      w = 0.d0
+      r(ntot) = 1.0d0              ! commented = simple, uncommented = ordinary
+
+      ! Loop over observations
+      do n = 1, usenear
+        do j=1, nstruct(ind)
+          call variogram(ind,j,gx(i),gy(i),0.0d0,obsx(n),obsy(n),0.0d0,value)
+          r(n) = r(n) + value
+        end do
+      end do
+      call doolittle(r,p,id,w,ntot)
+
+      ! Correct for negative weights, if necessary
+      if (minval(w(1:usenear)) < 0.0d0) then
+        call ok_negative_correction(w, usenear)
+      end if
+
+      value = 0.0d0
+      zkrig = 0.0d0
+      do n=1, usenear
+        zkrig = zkrig + w(n) * obsval(closeobs(n)%idx)
+      end do
+      zkrig = zkrig + value
+      kriged_val(i) = zkrig
+    end do
+
+    deallocate(p, r, w, id)
+
+end subroutine spkrige_tree_intgroup
+!-----------------------------------------------------------------------------!
+
+
 !-----------------------------------------------------------------------------!
 subroutine spkrige_group(nobs, ngrid, gx, gy, obsx, obsy, obsv, ind, kriged_val, &
                    ggroup, targetgroup)

@@ -11,7 +11,8 @@ module PilotPoints
 
 ! Variables specified at pilot points
   SAVE
-  integer                 :: ppn, atppn             ! Counts for aquifer & aquitard pilot points 
+  integer                 :: ppn, atppn,    &       ! Counts for aquifer & aquitard pilot points 
+                             ppnear                 ! Number of pilot points
   integer,allocatable     :: ppZone(:),     &       ! Zone of each aquifer pilot point
                              ppatZone(:)            ! Zone of each aquitard pilot point
   real, allocatable       :: ppx(:),        &       ! X-coordinate of aquifer pilot points
@@ -57,7 +58,8 @@ CONTAINS  !-- Module Subroutines
 !-----------------------------------------------------------------------------!
 subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged, &
                              trans)
-  use krige, only: spkrige_group
+  use krige, only: spkrige_tree_intgroup
+  use kdtree2_module, only: kdtree2,kdtree2_create
   implicit none
 !-----------------------------------------------------------------------------!
 ! Loops over zones kriging aquiFER pilot point parameter values to nodes
@@ -68,7 +70,8 @@ subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged, &
   real,intent(out)         :: kriged(nnodes, pp_narr)
 
   integer                  :: i, iarr, ipp, ppcount, zone
-  real                     :: pzx(ppn), pzy(ppn), pzv(ppn)
+  real                     :: pzcoord(2,ppn), pzv(ppn)
+  type (kdtree2), pointer  :: pztree
   
   ! K transform (for now, only log10 transform)
   integer,intent(in),optional :: trans
@@ -87,8 +90,8 @@ subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged, &
       do ipp=1, ppn
         if (ppZone(ipp) == zone) then
           ppcount = ppcount + 1
-          pzx(ppcount) = ppx(ipp)
-          pzy(ppcount) = ppy(ipp)
+          pzcoord(1,ppcount) = ppx(ipp)
+          pzcoord(2,ppcount) = ppy(ipp)
           if (transform) then
             pzv(ppcount) = log10(pp_par_vals(ipp))
           else
@@ -97,9 +100,11 @@ subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged, &
         end if
       end do ! pilot points
       if (ppcount > 0) then
+        ! Create Tree
+        pztree = kdtree2_create(pzcoord, dim=ppcount)
         ! Krige
-        call spkrige_group(ppcount, nnodes, nodex, nodey, pzx, pzy, pzv, ind, &
-                           kriged(:, iarr), pp_node_zone(:,iarr), zone)
+        call spkrige_tree_intgroup(ppcount, nodex, nodey, pztree, nnodes, pzv, ind, &
+                           kriged(:, iarr), ppnear, pp_node_zone(:,iarr), zone)
       else
         write(*,'(2(a,i3))') 'ERROR - no pilot points for pilot point zone ', &
                    zone, ' in array ', iarr
@@ -119,7 +124,8 @@ end subroutine ppaq_parkrige_arr
 !-----------------------------------------------------------------------------!
 subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged, &
                              trans)
-  use krige, only: spkrige_group
+  use krige, only: spkrige_tree_intgroup
+  use kdtree2_module, only: kdtree2,kdtree2_create
   implicit none
 !-----------------------------------------------------------------------------!
 ! Loops over zones kriging aquiTARD pilot point parameter values to nodes
@@ -130,7 +136,8 @@ subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged, &
   real,intent(inout)       :: kriged(nnodes, pp_narr)
 
   integer                  :: i, iarr, ipp, ppcount, zone
-  real                     :: pzx(ppn), pzy(ppn), pzv(ppn)
+  real                     :: pzcoord(2,ppn), pzv(ppn)
+  type (kdtree2), pointer  :: pztree
   
   ! K transform (for now, only log10 transform)
   integer,intent(in),optional :: trans
@@ -149,8 +156,8 @@ subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged, &
       do ipp=1, atppn
         if (ppatZone(ipp) == zone) then
           ppcount = ppcount + 1
-          pzx(ppcount) = ppatx(ipp)
-          pzy(ppcount) = ppaty(ipp)
+          pzcoord(1,ppcount) = ppatx(ipp)
+          pzcoord(2,ppcount) = ppaty(ipp)
           if (transform) then
             pzv(ppcount) = log10(pp_par_vals(ipp))
           else
@@ -159,9 +166,11 @@ subroutine ppat_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged, &
         end if
       end do ! pilot points
       if (ppcount > 0) then
+        ! Create Tree
+        pztree = kdtree2_create(pzcoord, dim=ppcount)
         ! Krige (ind=ndata i.e. last variogram)
-        call spkrige_group(ppcount, nnodes, nodex, nodey, pzx, pzy, pzv, ind, &
-                           kriged(:, iarr), pp_node_zone, zone)
+        call spkrige_tree_intgroup(ppcount, nodex, nodey, pztree, nnodes, pzv, ind, &
+                           kriged(:, iarr), ppnear, pp_node_zone(:,iarr), zone)
       else
         write(*,'(2(a,i3))') 'ERROR - no pilot points for pilot point zone ', &
                    zone, ' in array ', iarr

@@ -96,7 +96,7 @@
 !6------WRITE PARAMETER DEFINITIONS
       IF(NPLPF.GT.0) THEN
         ! Parameters are not supported by Texture2Par
-        write(*,'(4x,a,4a,a)') 'Warning - ', gwftype, ' file contains parameters (Uncompatable)'
+        write(*,'(4x,a,4a,a)') 'Warning - ', gwftype, ' file contains parameters (Incompatable)'
         write(*,'(4x,a,4a,a)') 'Parameters NOT written to new ', gwftype, ' file'
       end if
 

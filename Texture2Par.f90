@@ -71,7 +71,6 @@ program Texture2Par
       write(*,*) 'Error - Currently only cokriging OR multiple datasets supported.'
       stop
     end if
-    call ReadToSymbol(10, '*')
 
     ! Check if MODFLOW or IWFM
     if (index(to_upper(trim(line)),'IWFM')>0) then
@@ -88,8 +87,9 @@ program Texture2Par
     read(10,*) line
     ktrans = 0
     if (index(to_upper(trim(line)),'LOG')>0) ktrans = 1
-
+    
     ! Different order/different files for each model
+    call ReadToSymbol(10, '*')
     if (modflowflag==0) then
       ! IWFM
       read(10,*) simFile
@@ -145,6 +145,8 @@ program Texture2Par
     
     ! Read variograms
     do i=1, nvario
+      ! Last one is pilot points - read ppnear
+      if (i==nvario) read(10,*) ppnear
       read(10,*) vi, vj
       if (vi==0) then
         ind=nvario
