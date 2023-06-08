@@ -78,7 +78,7 @@ subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged, &
   logical                     :: transform=.false.
   
   ! Handle optional argument (keeps code clean)
-  if (present(trans)) transform = .true.
+  if (present(trans)) transform = trans
 
   ! Loop over aquifer arrays
   do iarr=1, ppaq_narr
@@ -101,9 +101,9 @@ subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged, &
       end do ! pilot points
       if (ppcount > 0) then
         ! Create Tree
-        pztree = kdtree2_create(pzcoord, dim=ppcount)
+        pztree => kdtree2_create(pzcoord(:,1:ppcount))
         ! Krige
-        call spkrige_tree_intgroup(ppcount, nodex, nodey, pztree, nnodes, pzv, ind, &
+        call spkrige_tree_intgroup(nnodes, nodex, nodey, pztree, ppcount, pzv, ind, &
                            kriged(:, iarr), ppnear, pp_node_zone(:,iarr), zone)
       else
         write(*,'(2(a,i3))') 'ERROR - no pilot points for pilot point zone ', &
@@ -115,7 +115,7 @@ subroutine ppaq_parkrige_arr(nnodes, nodex, nodey, pp_par_vals, ind, kriged, &
   
   ! De-transform, if required
   if (transform) then
-    kriged(:, iarr) = 10**kriged(:, iarr)
+    kriged = 10**kriged
   end if
 
 end subroutine ppaq_parkrige_arr
