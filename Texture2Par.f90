@@ -258,7 +258,13 @@ program Texture2Par
 
     ! Handle No Pilot Point Zones (same as one zone)
     if (zoneflag == 0) then
-      call no_ppzone_setup(nnodes, nlayers, natlayers)
+      if ((modflowflag == 0).or.(ncbd > 0 )) then
+        ! Aquitards exist
+        call no_ppzone_setup(nnodes, nlayers, natlayers, 1)
+      else
+        ! No aquitards
+        call no_ppzone_setup(nnodes, nlayers, natlayers, 0)
+      end if
     end if
 
     ! Allocate now that many dimensions are known
