@@ -43,9 +43,10 @@
 Debug/**
 release/**
 x64/**
-mfUSGLib/Release/**
-mfUSGLib/x64/**
-mfUSGLib/Debug/**
+Libraries/*/Release/**
+Libraries/*/x64/**
+Libraries/*/Debug/**
+.vs/*
 
 # Extras
 *.vfproj.*

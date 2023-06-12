@@ -1,5 +1,7 @@
 module file_reader_module
   use str_module
+  use m_vstring, only : vstring_new, vstring_free, t_vstring, vstring_length
+  use m_vstringlist
   use list_module, only: stack, list_node
   implicit none
 
