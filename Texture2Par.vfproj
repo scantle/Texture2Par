@@ -61,6 +61,7 @@
 		<Filter Name="Interpolators"/>
 		<File RelativePath=".\fpath.f90"/>
 		<File RelativePath=".\kdtree2.f90"/>
+		<File RelativePath=".\T2P.f90"/>
 		<File RelativePath=".\Texture2Par.f90"/>
 		<File RelativePath=".\Tools.f90"/></Filter></Files>
 	<Globals/></VisualStudioProject>

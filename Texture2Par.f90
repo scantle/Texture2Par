@@ -33,6 +33,8 @@ program Texture2Par
     
   ! Read Main Input
   call read_main_input(main_input_file)
+  
+  ! TODO move most of this to T2P.f90
     
   ! Initialize
     

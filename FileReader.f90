@@ -1,6 +1,6 @@
 module file_reader_module
   use str_module
-  use m_vstring, only : vstring_new, vstring_free, t_vstring, vstring_length
+  use m_vstring
   use m_vstringlist
   use list_module, only: stack, list_node
   implicit none
@@ -17,7 +17,7 @@ module file_reader_module
       procedure :: jump_to_external
       procedure :: handle_eof
       procedure :: read_to_next_line
-      !procedure :: get_next_block_id
+      procedure :: read_next_block_id
       !procedure :: get_block_length
     
   end type file_reader
@@ -104,6 +104,7 @@ module file_reader_module
 !-------------------------------------------------------------------------------------------------!
   
   subroutine read_to_next_line(this, eof)
+    implicit none
     class(file_reader)  :: this
     type(file_reader),pointer   :: next_file
     integer             :: ierr
@@ -175,4 +176,42 @@ module file_reader_module
   end subroutine handle_eof
   
 !-------------------------------------------------------------------------------------------------!
+  subroutine read_next_block_id(this, eof, id)  
+    implicit none
+    ! The workhorse of T2P input file reading
+    class(file_reader)        :: this
+    integer,intent(out)       :: eof
+    character(*),intent(out)  :: id
+    integer                   :: ierr
+    type(t_vstring)           :: line_string
+    type(t_vstringlist)       :: slist
+
+    ! Get to the next line
+    call this%read_to_next_line(eof)
+    if (eof == 0) then
+    
+      ! Read string, ensure block -> pass to block reader
+      read(this%unit, '(a500)', iostat=ierr) line
+      ! TODO Error handling
+      ! TODO Log
+      call vstring_new(line_string, trim(adjustl(line)))
+      slist = vstrlist_split(line_string)
+    
+      ! Make sure there's enough there...
+      if (vstrlist_length(slist) < 2) then
+        ! ERROR
+        stop
+      end if
+    
+      !! Get block name
+      if (vstring_equals(vstring_toupper(vstrlist_index(slist, 1)), "BEGIN")) then
+        call vstring_cast(vstring_toupper(vstrlist_index(slist, 2)), id)
+      end if
+    else
+      ! End of file - just return
+    end if
+  
+  end subroutine read_next_block_id
+!-------------------------------------------------------------------------------------------------!
+  
 end module file_reader_module

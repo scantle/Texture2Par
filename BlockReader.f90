@@ -6,35 +6,7 @@ module block_reader_module
   
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine block_reader(name, unit)
-    implicit none
 
-    character(*), intent(in)        :: name
-
-    integer, intent(in)             :: unit
-
-    select case(to_upper(trim(name)))
-      case("OPTIONS")
-        !CALL read_OPTIONS_block(unit)
-      case("FLOW_MODEL")
-        !CALL read_FLOW_MODEL_block(unit)
-      case("CLASSES")
-        !CALL read_class_block(unit)
-      case("DATASET")
-        !CALL read_dataset_block(unit)
-      case("VARIOGRAMS")
-        !CALL read_variogram_block(unit)
-      case("PP_LOCS")
-        !CALL read_pploc_block(unit)
-      case("PP_PARAMETERS")
-        !CALL read_ppparm_block(unit)
-      case DEFAULT
-        ! TODO! Raise error!
-        write(*,*) "BAD BLOCK!"
-        stop
-    end select
-
-  end subroutine block_reader
 
 !-------------------------------------------------------------------------------------------------!
   

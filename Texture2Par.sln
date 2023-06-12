@@ -6,11 +6,16 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{6989167D-11E4-40FE-8C1A-2192A86A7E90}") = "Texture2Par", "Texture2Par.vfproj", "{211605F0-3466-4529-9535-7B862FD192B2}"
 	ProjectSection(ProjectDependencies) = postProject
 		{09186B33-DFB1-49BA-A3F1-747E1A9ABBFB} = {09186B33-DFB1-49BA-A3F1-747E1A9ABBFB}
+		{CBCF0A64-50E6-48EF-98EF-2CEFBF82678A} = {CBCF0A64-50E6-48EF-98EF-2CEFBF82678A}
 	EndProjectSection
 EndProject
-Project("{6989167D-11E4-40FE-8C1A-2192A86A7E90}") = "mfUSGLib", "mfUSGLib\mfUSGLib.vfproj", "{09186B33-DFB1-49BA-A3F1-747E1A9ABBFB}"
+Project("{6989167D-11E4-40FE-8C1A-2192A86A7E90}") = "mfUSGLib", "Libraries\mfUSGLib\mfUSGLib.vfproj", "{09186B33-DFB1-49BA-A3F1-747E1A9ABBFB}"
 EndProject
 Project("{6989167D-11E4-40FE-8C1A-2192A86A7E90}") = "T2PTests", "T2PTests\T2PTests.vfproj", "{25F42BBF-E220-409F-97A8-71B1DF5FF076}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Libraries", "Libraries", "{F2751D4B-1E55-492F-8F7D-80FA5025AB7B}"
+EndProject
+Project("{6989167D-11E4-40FE-8C1A-2192A86A7E90}") = "flibs", "Libraries\flibs\flibs.vfproj", "{CBCF0A64-50E6-48EF-98EF-2CEFBF82678A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -44,9 +49,21 @@ Global
 		{25F42BBF-E220-409F-97A8-71B1DF5FF076}.Release|Win32.Build.0 = Release|Win32
 		{25F42BBF-E220-409F-97A8-71B1DF5FF076}.Release|x64.ActiveCfg = Release|x64
 		{25F42BBF-E220-409F-97A8-71B1DF5FF076}.Release|x64.Build.0 = Release|x64
+		{CBCF0A64-50E6-48EF-98EF-2CEFBF82678A}.Debug|Win32.ActiveCfg = Debug|Win32
+		{CBCF0A64-50E6-48EF-98EF-2CEFBF82678A}.Debug|Win32.Build.0 = Debug|Win32
+		{CBCF0A64-50E6-48EF-98EF-2CEFBF82678A}.Debug|x64.ActiveCfg = Debug|x64
+		{CBCF0A64-50E6-48EF-98EF-2CEFBF82678A}.Debug|x64.Build.0 = Debug|x64
+		{CBCF0A64-50E6-48EF-98EF-2CEFBF82678A}.Release|Win32.ActiveCfg = Release|Win32
+		{CBCF0A64-50E6-48EF-98EF-2CEFBF82678A}.Release|Win32.Build.0 = Release|Win32
+		{CBCF0A64-50E6-48EF-98EF-2CEFBF82678A}.Release|x64.ActiveCfg = Release|x64
+		{CBCF0A64-50E6-48EF-98EF-2CEFBF82678A}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{09186B33-DFB1-49BA-A3F1-747E1A9ABBFB} = {F2751D4B-1E55-492F-8F7D-80FA5025AB7B}
+		{CBCF0A64-50E6-48EF-98EF-2CEFBF82678A} = {F2751D4B-1E55-492F-8F7D-80FA5025AB7B}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {6E599EBD-DD5D-43B1-94D2-4975208C3021}

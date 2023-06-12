@@ -1188,30 +1188,30 @@ contains
   !     determined relative to the comparison used in the sort.
   !     Two items are considered the same if the comparison command returns 0.
   !
-  function vstrlist_sort_command ( this , command , unique ) result ( newlist )
-    type ( t_vstringlist ) , intent(in) :: this
-    logical, optional , intent(in) :: unique
-    interface
-       integer function command ( string_a , string_b )
-         use m_vstring, only : t_vstring
-         type(t_vstring), intent(in) :: string_a
-         type(t_vstring), intent(in) :: string_b
-       end function command 
-    end interface
-    type ( t_vstringlist ) :: newlist
-    logical :: unique_real
-    if ( present ( unique ) ) then
-       unique_real = unique
-    else
-       unique_real = .false.
-    endif
-    call vstrlist_new ( newlist , this )
-    call qsort_array ( newlist % array , command )
-    if ( unique_real ) then
-       call vstrlist_eliminateduplicate ( newlist , command )
-    endif
-  end function vstrlist_sort_command
-  !
+!  function vstrlist_sort_command ( this , command , unique ) result ( newlist )
+!    type ( t_vstringlist ) , intent(in) :: this
+!    logical, optional , intent(in) :: unique
+!    interface
+!       integer function command ( string_a , string_b )
+!         use m_vstring, only : t_vstring
+!         type(t_vstring), intent(in) :: string_a
+!         type(t_vstring), intent(in) :: string_b
+!       end function command 
+!    end interface
+!    type ( t_vstringlist ) :: newlist
+!    logical :: unique_real
+!    if ( present ( unique ) ) then
+!       unique_real = unique
+!    else
+!       unique_real = .false.
+!    endif
+!    call vstrlist_new ( newlist , this )
+!    call qsort_array ( newlist % array , command )
+!    if ( unique_real ) then
+!       call vstrlist_eliminateduplicate ( newlist , command )
+!    endif
+!  end function vstrlist_sort_command
+!  !
   ! vstrlist_compare_asciiincreasing --
   !   Comparing function as a support for sorting a list of strings
   !   in increasing order.
