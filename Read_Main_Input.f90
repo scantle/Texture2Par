@@ -1,5 +1,6 @@
 module read_main_input_module
   use file_reader_module, only: file_reader, open_file, close_file
+  implicit none
 
   type(file_reader), pointer :: reader
   

@@ -1,18 +1,19 @@
 module str_module
+  implicit none
   
   contains
 
-!-----------------------------------------------------------------------------!
+!-------------------------------------------------------------------------------------------------!
     SUBROUTINE multisplit(IFAIL,NUM,LW,RW,CLINE)
 
 ! -- Subroutine multisplit splits a string into blank-delimited fragments.
 
 ! -- Subroutine arguments are as follows:-
 !       ifail:    returned as non-zero in case of failure
-!       num:      number of ...
-!       lw:       number of ...
-!       rw:       number of ...
-!       cline:    character string
+!       num:      input parameter representing the number of elements or fragments into which the string will be split
+!       lw:       output parameter that stores the left positions or indices of the fragments after splitting the string. The array LW has a size of NUM.
+!       rw:       output parameter that stores the right positions or indices of the fragments after splitting the string. The array RW also has a size of NUM.
+!       cline:    input parameter of type character that represents the input string to be split into fragments
 
 ! -- Author:-
 !       John Doherty
@@ -54,10 +55,43 @@ module str_module
        GO TO 5
 
     END subroutine multisplit
+    
+!-------------------------------------------------------------------------------------------------!
 
-!-----------------------------------------------------------------------------!
+function count_fragments(line) result(count)
+  implicit none
+  ! Counts the number of string "fragments". Intended to be a preprocessor to multisplit.
+  ! Spaces and tabs can separate values but does not consider commas (commented out)
+  !
+  ! Author: Leland Scantlebury
+  !
+  ! Arguments:
+  ! - line: input string to be split into fragments
+  CHARACTER(*), INTENT(IN)  :: line
+  INTEGER                   :: count
+  INTEGER                   :: i, length
 
-    subroutine TABREM(CLINE)
+  length = LEN_TRIM(line)
+  count = 0
+  i = 1
+  DO WHILE (i<= length)
+    IF (line(i:i) == ' ' .OR. ICHAR(line(i:i)) == 9) THEN  ! .OR. line(i:i) == ','
+      i = i + 1
+      CONTINUE
+    END IF
+    count = count + 1
+
+    DO WHILE (i <= length .AND. &
+              (line(i:i) /= ' '  .AND. ICHAR(line(i:i)) /= 9))  ! .AND. line(i:i) /= ','
+      i = i + 1
+    END DO
+  END DO
+  return
+end function count_fragments
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine TABREM(CLINE)
 
 ! -- Subroutine TABREM removes tabs from a string.
 
@@ -74,7 +108,7 @@ module str_module
        RETURN
   end subroutine tabrem
   
-!-----------------------------------------------------------------------------!
+!-------------------------------------------------------------------------------------------------!
   
 function to_upper(strIn) result(strOut)
 ! Adapted from http://www.star.le.ac.uk/~cgp/fortran.html (25 May 2012)
@@ -97,5 +131,5 @@ function to_upper(strIn) result(strOut)
 
 end function to_upper
 
-!-----------------------------------------------------------------------------!
+!-------------------------------------------------------------------------------------------------!
 end module str_module

@@ -53,6 +53,7 @@
 		<Filter Name="Data Structures">
 		<File RelativePath=".\Lists.f90"/></Filter>
 		<Filter Name="File Readers">
+		<File RelativePath=".\BlockReader.f90"/>
 		<File RelativePath=".\FileReader.f90"/>
 		<File RelativePath=".\Read_Main_Input.f90"/>
 		<File RelativePath=".\Str_Module.f90"/></Filter>
