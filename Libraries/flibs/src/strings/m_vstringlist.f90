@@ -727,7 +727,7 @@ contains
     integer :: splitChars_real_length
     integer :: this_length
     integer :: icharacter
-    type ( t_vstring ) :: current_char
+    type ( t_vstring ) :: current_char, next_char
     integer :: component_length
     !
     ! Process options
@@ -769,6 +769,13 @@ contains
              !
              ! Current character is a separator
              !
+             ! LS peak - is the next item a seperator too?
+             ! LS - only want to create new element if LAST seperator
+             if (icharacter < this_length) then
+               next_char = vstring_index ( this , icharacter + 1)
+               firstsplitchar = vstring_first ( splitChars_real , next_char )
+               if ( firstsplitchar /= 0 ) cycle
+             end if
              call vstrlist_append ( newlist , component )
              call vstring_free ( component )
              call vstring_new ( component , "" )
