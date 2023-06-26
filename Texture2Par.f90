@@ -1,6 +1,7 @@
 program Texture2Par
-  use file_reader_module, only: file_reader_module_initialize
-  use read_main_input_module, only: read_main_input
+  use m_file_reader, only: file_reader_module_initialize
+  use m_read_main_input, only: read_main_input
+  use m_global, only: t2p
   implicit none
 
 !-----------------------------------------------------------------------------!
@@ -20,7 +21,7 @@ program Texture2Par
 ! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
-  character(100) :: main_input_file = 'Texture2Par.in'
+  character(100)   :: main_input_file = 'Texture2Par.in'
   
   ! Write Flag
   write(*,'(/,4x,a)') '             Texture2Par v2.0.0             '
@@ -28,15 +29,13 @@ program Texture2Par
   write(*,'(4x,a)')   'Copyright S.S. Papadopulos & Associates Inc.'
     
   ! Pre-read initializations
+  call t2p%initialize()
   call file_reader_module_initialize()
-    
-    
+  
   ! Read Main Input
   call read_main_input(main_input_file)
-  
-  ! TODO move most of this to T2P.f90
     
-  ! Initialize
+  ! Check Major Inputs
     
     
   ! Allocate
@@ -45,7 +44,7 @@ program Texture2Par
   ! Read Sub-Input Files
     
     
-  ! Check Inputs
+  ! Check Sub Inputs
     
     
   ! Main

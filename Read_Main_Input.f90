@@ -1,5 +1,5 @@
-module read_main_input_module
-  use file_reader_module, only: file_reader, open_file, close_file
+module m_read_main_input
+  use m_file_reader, only: file_reader, open_file, close_file
   implicit none
 
   type(file_reader), pointer :: reader
@@ -10,16 +10,16 @@ module read_main_input_module
 
   subroutine read_main_input(file)
     implicit none
-    character(100) :: file
-    integer        :: eof_check
-    character(100) :: id
+    character(100), intent(in)  :: file
+    integer                     :: eof_check
+    character(100)              :: id
   
     reader => open_file(file)
     
     eof_check = 0
     do
-      call reader%read_next_block_id(eof_check, id)
-      if (eof_check == 1) exit
+      call reader%next_block_id(eof_check, id)
+      if (eof_check == -1) exit
       call block_redirect(id)
     end do
     write(*,*) 'DONE READING!'
@@ -31,6 +31,7 @@ module read_main_input_module
 !-------------------------------------------------------------------------------------------------!
   
     subroutine block_redirect(id)
+    use m_global, only: t2p
     implicit none
 
     character(*), intent(in)        :: id
@@ -38,7 +39,7 @@ module read_main_input_module
     select case(trim(id))
       case("OPTIONS")
         write(*,*) 'yeahhh'
-        !CALL read_OPTIONS_block(unit)
+        call t2p%opt%read_options(reader)
       case("FLOW_MODEL")
         !CALL read_FLOW_MODEL_block(unit)
       case("CLASSES")
@@ -61,4 +62,4 @@ module read_main_input_module
   
 !-------------------------------------------------------------------------------------------------!
   
-end module read_main_input_module
+end module m_read_main_input

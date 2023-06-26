@@ -1,14 +1,32 @@
-module T2P_module
-  
+module m_T2P
+  use m_options, only: t_options
 !-------------------------------------------------------------------------------------------------!
-  type T2P
-    !type(Options)                  ::
-    !type(FlowModel)                ::
-    !type(Interpolator)             ::
-    !type(Dataset),allocatable()    ::
-    !type(Variogram),allocatable()  ::
-    !type(PilotPoint),allocatable() ::
-  end type T2P
+  type t_T2P
+    type(t_options)                  :: opt  ! avoid conflict with Fortran intrinsic 'options'
+    !type(t_vstringlist)              :: errors
+    !type(t_FlowModel)                :: fmodel
+    !type(t_Interpolator)             :: interpolator
+    !type(t_Dataset),allocatable()    :: datasets
+    !type(t_Variogram),allocatable()  :: variograms
+    !type(t_PilotPoint),allocatable() :: pilot_points
+  
+  contains
+  
+    procedure :: initialize
+    !procedure :: allocate
+  
+  end type t_T2P
 !-------------------------------------------------------------------------------------------------!
   
-end module T2P_module
+  contains
+  
+  subroutine initialize(this)
+    implicit none
+    class(t_T2P), intent(inout)      :: this
+    
+    ! Initialize Elements
+    call this%opt%initialize()
+    
+  end subroutine initialize
+  
+end module m_T2P

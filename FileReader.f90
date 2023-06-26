@@ -1,4 +1,4 @@
-module file_reader_module
+module m_file_reader
   use str_module
   use m_vstring
   use m_vstringlist
@@ -14,11 +14,12 @@ module file_reader_module
     type(stack)              :: backstack
   
     contains
-      procedure :: jump_to_external
-      procedure :: handle_eof
-      procedure :: read_to_next_line
-      procedure :: read_next_block_id
-      !procedure :: get_block_length
+      procedure,private      :: jump_to_external
+      procedure,private      :: handle_eof
+      procedure,private      :: read_to_next_line
+      procedure,public       :: next_block_id
+      procedure,public       :: next_block_item
+      !procedure,public :: get_block_length
     
   end type file_reader
 !-------------------------------------------------------------------------------------------------!
@@ -97,7 +98,43 @@ module file_reader_module
     !nullify(f)
   end subroutine close_file
   
-!-------------------------------------------------------------------------------------------------!  
+!-------------------------------------------------------------------------------------------------!
+  
+    ! Should these be here or in a different module??
+  function item2int(strings, i) result(out_int)
+    implicit none
+    class(t_vstringlist),intent(in)   :: strings
+    integer, intent(in)               :: i
+    integer                           :: out_int
+    
+    call vstring_cast(vstrlist_index(strings, i), out_int)
+  end function item2int
+  
+!-------------------------------------------------------------------------------------------------!
+  
+    ! Should these be here or in a different module??
+  function item2real(strings, i) result(out_real)
+    implicit none
+    class(t_vstringlist),intent(in)   :: strings
+    integer, intent(in)               :: i
+    real                              :: out_real
+    
+    call vstring_cast(vstrlist_index(strings, i), out_real)
+  end function item2real
+  
+!-------------------------------------------------------------------------------------------------!
+  
+    ! Should these be here or in a different module??
+  subroutine item2char(strings, i, out_char)
+    implicit none
+    class(t_vstringlist),intent(in)   :: strings
+    integer, intent(in)               :: i
+    character(*),intent(out)             :: out_char
+    
+    call vstring_cast(vstrlist_index(strings, i), out_char)
+  end subroutine item2char
+  
+!-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!
 ! TYPE-BOUND PROCEDURES
@@ -170,21 +207,19 @@ module file_reader_module
       this%unit  = prev%value
       eof = 0
     else
-      eof = 1
+      eof = -1
     end if
     
   end subroutine handle_eof
   
 !-------------------------------------------------------------------------------------------------!
-  subroutine read_next_block_id(this, eof, id)  
+    subroutine next_item(this, eof, strings)
     implicit none
-    ! The workhorse of T2P input file reading
-    class(file_reader)        :: this
-    integer,intent(out)       :: eof
-    character(*),intent(out)  :: id
-    integer                   :: ierr
-    type(t_vstring)           :: line_string
-    type(t_vstringlist)       :: slist
+    class(file_reader)                :: this
+    integer,intent(out)               :: eof
+    type(t_vstringlist), intent(out)  :: strings
+    type(t_vstring)                   :: line_string
+    integer                           :: ierr
 
     ! Get to the next line
     call this%read_to_next_line(eof)
@@ -195,14 +230,31 @@ module file_reader_module
       ! TODO Error handling
       ! TODO Log
       call vstring_new(line_string, trim(adjustl(line)))
-      slist = vstrlist_split(line_string)
+      strings = vstrlist_split(line_string)
     
+    else
+      ! End of file - just return
+    end if
+  
+  end subroutine next_item
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine next_block_id(this, eof, id)  
+    implicit none
+    class(file_reader)        :: this
+    integer,intent(out)       :: eof
+    character(*),intent(out)  :: id
+    type(t_vstringlist)       :: slist
+
+    ! Get next item in file
+    call next_item(this, eof, slist)
+    if (eof == 0) then
       ! Make sure there's enough there...
       if (vstrlist_length(slist) < 2) then
         ! ERROR
         stop
       end if
-    
       !! Get block name
       if (vstring_equals(vstring_toupper(vstrlist_index(slist, 1)), "BEGIN")) then
         call vstring_cast(vstring_toupper(vstrlist_index(slist, 2)), id)
@@ -211,7 +263,36 @@ module file_reader_module
       ! End of file - just return
     end if
   
-  end subroutine read_next_block_id
+  end subroutine next_block_id
+
 !-------------------------------------------------------------------------------------------------!
   
-end module file_reader_module
+  subroutine next_block_item(this, status, id, strings, length)
+    implicit none
+    class(file_reader)        :: this
+    integer,intent(out)       :: status   ! 0 = Fine. -1 = EOF. +1 = End of Block
+    integer,intent(out)       :: length
+    character(*),intent(out)  :: id
+    type(t_vstringlist)       :: strings
+
+    ! Get next item in file
+    call next_item(this, status, strings)
+    if (status == 0) then
+      
+      !! Check for end
+      call vstring_cast(vstring_toupper(vstrlist_index(strings, 1)), id)
+      if (trim(id)=="END") then
+        status = 1
+        length = 1
+      else
+        length = vstrlist_length(strings)
+      end if
+    else
+      ! End of file - just return
+    end if
+  
+  end subroutine next_block_item
+
+!-------------------------------------------------------------------------------------------------!
+  
+end module m_file_reader
