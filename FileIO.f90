@@ -1,4 +1,4 @@
-module m_file_reader
+module m_file_io
   use str_module
   use m_vstring
   use m_vstringlist
@@ -6,11 +6,20 @@ module m_file_reader
   implicit none
 
 !-------------------------------------------------------------------------------------------------!
-  type file_reader
+  type t_file_handler  ! Abstract Base Class
     
     character(100)           :: file
     integer                  :: unit
     integer                  :: ioerr
+    
+    contains
+      procedure,private      :: iomsg_handler
+      procedure,public       :: close_file
+    
+  end type t_file_handler
+!-------------------------------------------------------------------------------------------------!
+  type, extends(t_file_handler) :: t_file_reader
+  
     type(stack)              :: backstack
   
     contains
@@ -21,10 +30,19 @@ module m_file_reader
       procedure,public       :: next_block_item
       !procedure,public :: get_block_length
     
-  end type file_reader
+  end type t_file_reader
+!-------------------------------------------------------------------------------------------------!
+    type, extends(t_file_handler) :: t_file_writer
+  
+    contains
+      procedure,public      :: write_line
+    
+  end type t_file_writer
+
 !-------------------------------------------------------------------------------------------------!
 
   integer                     :: max_unit
+  integer                     :: log_unit
   character(500)              :: line
   
   contains
@@ -33,12 +51,14 @@ module m_file_reader
 ! MODULE PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine file_reader_module_initialize()
+  subroutine io_initialize()
     implicit none
     
-    max_unit = 8
+    ! Sets the initial unit number used for opening a file
+    ! (notably, this is not the maximum units allowed open)
+    max_unit = 9
 
-  end subroutine file_reader_module_initialize
+  end subroutine io_initialize
 
 !-------------------------------------------------------------------------------------------------!
   
@@ -57,7 +77,7 @@ module m_file_reader
 
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine return_iunit(unit_no)
+  subroutine return_iunit(unit_no)  ! should re-name, maybe "de-register" ?
     implicit none
     integer, intent(in) :: unit_no
     
@@ -68,36 +88,44 @@ module m_file_reader
   
 !-------------------------------------------------------------------------------------------------!
   
-  function open_file(file) result(f)
+  function open_file_reader(file) result(f)
     implicit none
     
-    type(file_reader),pointer  :: f
-    character(*), intent(in) :: file
+    type(t_file_reader),pointer  :: f
+    character(*), intent(in)   :: file
+    character(256)             :: iomsg
     
     allocate(f)
     
     f%unit = get_next_iunit()
     f%file = trim(file)
     
-    open(f%unit, file=f%file, action='READ', STATUS='OLD', iostat=f%ioerr)
-    ! TODO ADD IOMSG & ISOMSG HANLDR
+    open(f%unit, file=f%file, action='READ', STATUS='OLD', iostat=f%ioerr, iomsg=iomsg)
+    call f%iomsg_handler(iomsg)
     ! TODO RECORD
     
-  end function open_file
+  end function open_file_reader
 
 !-------------------------------------------------------------------------------------------------!
-
-  subroutine close_file(f)
-    implicit none
-    type(file_reader),pointer :: f
-    close(f%unit)
-    
-    call return_iunit(f%unit)
-    
-    !deallocate(f)
-    !nullify(f)
-  end subroutine close_file
   
+  function open_file_writer(file) result(f)
+    implicit none
+    
+    type(t_file_writer),pointer  :: f
+    character(*), intent(in)   :: file
+    character(256)             :: iomsg
+    
+    allocate(f)
+    
+    f%unit = get_next_iunit()
+    f%file = trim(file)
+    
+    open(f%unit, file=f%file, action='WRITE', STATUS='REPLACE', iostat=f%ioerr, iomsg=iomsg)
+    call f%iomsg_handler(iomsg)
+    ! TODO RECORD
+    
+  end function open_file_writer
+
 !-------------------------------------------------------------------------------------------------!
   
     ! Should these be here or in a different module??
@@ -135,15 +163,48 @@ module m_file_reader
   end subroutine item2char
   
 !-------------------------------------------------------------------------------------------------!
+
+!-------------------------------------------------------------------------------------------------!
+! BASE CLASS FILE TYPE-BOUND PROCEDURES
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine iomsg_handler(this,iomsg)
+    implicit none
+    class(t_file_handler)        :: this
+    character(256),intent(in)    :: iomsg
+    
+    if (this%ioerr /= 0) then
+      write(*,'(a)') trim(iomsg)
+      ! TODO handle early exit, perhaps externally
+      close(this%unit)
+      error stop
+    end if
+    
+  end subroutine iomsg_handler
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine close_file(this)
+    implicit none
+    class(t_file_handler)        :: this
+    close(this%unit)
+    
+    call return_iunit(this%unit)
+    
+    !deallocate(f)
+    !nullify(f)
+  end subroutine close_file
   
 !-------------------------------------------------------------------------------------------------!
-! TYPE-BOUND PROCEDURES
+  
+!-------------------------------------------------------------------------------------------------!
+! READER TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
   subroutine read_to_next_line(this, eof)
     implicit none
-    class(file_reader)  :: this
-    type(file_reader),pointer   :: next_file
+    class(t_file_reader)  :: this
+    type(t_file_reader),pointer   :: next_file
     integer             :: ierr
     integer,intent(out) :: eof
     
@@ -178,8 +239,9 @@ module m_file_reader
   
   subroutine jump_to_external(this, file)
     implicit none
-    class(file_reader)  :: this
+    class(t_file_reader)  :: this
     character(*), intent(in) :: file
+    character(256)           :: iomsg
     
     ! Store old iunit
     call this%backstack%push(this%unit)
@@ -188,7 +250,7 @@ module m_file_reader
     this%unit = get_next_iunit()
   
     open(this%unit, file=file, action='READ', STATUS='OLD', iostat=this%ioerr)
-    ! TODO ADD IOMSG & ISOMSG HANLDR
+    call this%iomsg_handler(iomsg)
     ! TODO RECORD
     
   end subroutine jump_to_external
@@ -197,7 +259,7 @@ module m_file_reader
   
   subroutine handle_eof(this, eof)
     implicit none
-    class(file_reader)     :: this
+    class(t_file_reader)     :: this
     type(list_node)        :: prev
     integer, intent(inout) :: eof
     
@@ -215,7 +277,7 @@ module m_file_reader
 !-------------------------------------------------------------------------------------------------!
     subroutine next_item(this, eof, strings)
     implicit none
-    class(file_reader)                :: this
+    class(t_file_reader)                :: this
     integer,intent(out)               :: eof
     type(t_vstringlist), intent(out)  :: strings
     type(t_vstring)                   :: line_string
@@ -242,7 +304,7 @@ module m_file_reader
   
   subroutine next_block_id(this, eof, id)  
     implicit none
-    class(file_reader)        :: this
+    class(t_file_reader)        :: this
     integer,intent(out)       :: eof
     character(*),intent(out)  :: id
     type(t_vstringlist)       :: slist
@@ -269,7 +331,7 @@ module m_file_reader
   
   subroutine next_block_item(this, status, id, strings, length)
     implicit none
-    class(file_reader)        :: this
+    class(t_file_reader)        :: this
     integer,intent(out)       :: status   ! 0 = Fine. -1 = EOF. +1 = End of Block
     integer,intent(out)       :: length
     character(*),intent(out)  :: id
@@ -295,4 +357,33 @@ module m_file_reader
 
 !-------------------------------------------------------------------------------------------------!
   
-end module m_file_reader
+!-------------------------------------------------------------------------------------------------!
+! WRITER TYPE-BOUND PROCEDURES
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_line(this, outline, blank_start, blank_end)
+    implicit none
+    class(t_file_writer), intent(inout) :: this
+    character(len=*), intent(in)        :: outline
+    integer,intent(in),optional         :: blank_start, blank_end
+    integer                             :: i
+    
+    if (present(blank_start)) then
+      do i=1, blank_start
+        write(this%unit,*)
+      end do
+    end if
+    
+    write(this%unit, '(A)') outline
+    
+    if (present(blank_end)) then
+      do i=1, blank_end
+        write(this%unit,*)
+      end do
+    end if
+    
+  end subroutine write_line
+
+!-------------------------------------------------------------------------------------------------!
+
+end module m_file_io

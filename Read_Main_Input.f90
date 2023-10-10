@@ -1,8 +1,9 @@
 module m_read_main_input
-  use m_file_reader, only: file_reader, open_file, close_file
+  use m_file_io, only: t_file_reader, open_file_reader, close_file
+  use m_global, only: t2p
   implicit none
 
-  type(file_reader), pointer :: reader
+  type(t_file_reader), pointer :: reader
   
   contains
 
@@ -14,7 +15,7 @@ module m_read_main_input
     integer                     :: eof_check
     character(100)              :: id
   
-    reader => open_file(file)
+    reader => open_file_reader(file)
     
     eof_check = 0
     do
@@ -54,8 +55,7 @@ module m_read_main_input
         !CALL read_ppparm_block(unit)
       case DEFAULT
         ! TODO! Raise error!
-        write(*,*) "BAD BLOCK!"
-        stop
+        call t2p%error_handler(1,reader%file,"Bad Block Name: " // trim(id))
     end select
 
   end subroutine block_redirect

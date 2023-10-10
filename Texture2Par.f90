@@ -1,5 +1,5 @@
 program Texture2Par
-  use m_file_reader, only: file_reader_module_initialize
+  use m_file_io, only: io_initialize
   use m_read_main_input, only: read_main_input
   use m_global, only: t2p
   implicit none
@@ -29,8 +29,8 @@ program Texture2Par
   write(*,'(4x,a)')   'Copyright S.S. Papadopulos & Associates Inc.'
     
   ! Pre-read initializations
+  call io_initialize()
   call t2p%initialize()
-  call file_reader_module_initialize()
   
   ! Read Main Input
   call read_main_input(main_input_file)
@@ -54,7 +54,7 @@ program Texture2Par
     
     
   ! Exit
-
+  call t2p%normal_exit()
 
   end program Texture2Par
 !-----------------------------------------------------------------------------!

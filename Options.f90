@@ -65,11 +65,11 @@ module m_options
 !-------------------------------------------------------------------------------------------------!
   
 subroutine read_options(this, reader)
-  use m_file_reader, only: file_reader, item2int, item2char, item2real
+  use m_file_io, only: t_file_reader, item2int, item2char, item2real
   use m_vstringlist, only: t_vstringlist
   implicit none
   class(t_options)           :: this
-  type(file_reader), pointer :: reader
+  type(t_file_reader), pointer :: reader
   integer                    :: status, length
   character(30)              :: id
   type(t_vstringlist)        :: strings
@@ -84,7 +84,7 @@ subroutine read_options(this, reader)
     if (status /= 0) exit  ! exit if end of block or end of file
     select case(trim(id))
       case("MAX_VSTRUCT")
-        ! TODO LENGTH CHECK - SHOULD BE FUNCTION THAT CAN BE USED WITH IF
+        ! TODO LENGTH CHECK
         this%MAX_VSTRUCT          = item2int(strings, 2)
         ! WHAT HAPPENS IF THIS FAILS?
       case("TEXTURE_CLASSES")
