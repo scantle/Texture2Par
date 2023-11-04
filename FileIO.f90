@@ -41,9 +41,11 @@ module m_file_io
 
 !-------------------------------------------------------------------------------------------------!
 
-  integer                     :: max_unit
-  integer                     :: log_unit
-  character(500)              :: line
+  integer                     :: max_unit   ! Maximum unit currently open (starts at 9)
+                                            ! (notably, this is not the maximum units allowed open)
+  integer                     :: log_unit   ! Unit the log file is open on
+                                            ! (so IO errors can be written to it)
+  character(500)              :: line       ! For reading in lines from files
   
   contains
 
@@ -55,9 +57,10 @@ module m_file_io
     implicit none
     
     ! Sets the initial unit number used for opening a file
-    ! (notably, this is not the maximum units allowed open)
+    
     max_unit = 9
-
+    log_unit = 0
+    
   end subroutine io_initialize
 
 !-------------------------------------------------------------------------------------------------!
@@ -101,8 +104,9 @@ module m_file_io
     f%file = trim(file)
     
     open(f%unit, file=f%file, action='READ', STATUS='OLD', iostat=f%ioerr, iomsg=iomsg)
+    write(log_unit,'(3a)') 'Opening file', trim(f%file), ' for reading.'
     call f%iomsg_handler(iomsg)
-    ! TODO RECORD
+    
     
   end function open_file_reader
 
@@ -121,8 +125,8 @@ module m_file_io
     f%file = trim(file)
     
     open(f%unit, file=f%file, action='WRITE', STATUS='REPLACE', iostat=f%ioerr, iomsg=iomsg)
+    if (log_unit > 0) write(log_unit,'(3a)') 'Opening file', trim(f%file), ' for writing.'
     call f%iomsg_handler(iomsg)
-    ! TODO RECORD
     
   end function open_file_writer
 
@@ -175,7 +179,7 @@ module m_file_io
     
     if (this%ioerr /= 0) then
       write(*,'(a)') trim(iomsg)
-      ! TODO handle early exit, perhaps externally
+      write(log_unit,'(3a)') 'IO Error -', trim(iomsg)
       close(this%unit)
       error stop
     end if
@@ -250,8 +254,8 @@ module m_file_io
     this%unit = get_next_iunit()
   
     open(this%unit, file=file, action='READ', STATUS='OLD', iostat=this%ioerr)
+    write(log_unit,'(3a)') 'Opening external file', trim(file), ' for reading.'
     call this%iomsg_handler(iomsg)
-    ! TODO RECORD
     
   end subroutine jump_to_external
   

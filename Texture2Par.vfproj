@@ -51,6 +51,7 @@
 		<File RelativePath=".\T2P.rc"/></Filter>
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
 		<Filter Name="Data Structures">
+		<File RelativePath=".\Grid.f90"/>
 		<File RelativePath=".\Lists.f90"/></Filter>
 		<Filter Name="File Readers">
 		<File RelativePath=".\BlockReader.f90"/>
@@ -58,7 +59,8 @@
 		<File RelativePath=".\fpath.f90"/>
 		<File RelativePath=".\Read_Main_Input.f90"/>
 		<File RelativePath=".\Str_Module.f90"/></Filter>
-		<Filter Name="Flow Models"/>
+		<Filter Name="Flow Models">
+		<File RelativePath=".\FlowModel.f90"/></Filter>
 		<Filter Name="Interpolators"/>
 		<File RelativePath=".\global.f90"/>
 		<File RelativePath=".\kdtree2.f90"/>

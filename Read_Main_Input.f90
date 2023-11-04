@@ -39,7 +39,6 @@ module m_read_main_input
 
     select case(trim(id))
       case("OPTIONS")
-        write(*,*) 'yeahhh'
         call t2p%opt%read_options(reader)
       case("FLOW_MODEL")
         !CALL read_FLOW_MODEL_block(unit)

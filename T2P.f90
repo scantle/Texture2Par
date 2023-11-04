@@ -2,16 +2,22 @@ module m_T2P
   use m_vstringlist, only: t_vstringlist
   use m_options, only: t_options
   use m_file_io, only: t_file_writer
+  use m_flow_model, only: t_flow_model
 !-------------------------------------------------------------------------------------------------!
   type t_T2P
     type(t_file_writer), pointer     :: log   ! Runtime Log
     type(t_options)                  :: opt  ! avoid conflict with Fortran intrinsic 'options'
     type(t_vstringlist)              :: warnings
-    !type(t_FlowModel)                :: fmodel
+    type(t_flow_model)                :: fmodel
     !type(t_Interpolator)             :: interpolator
     !type(t_Dataset),allocatable()    :: datasets
     !type(t_Variogram),allocatable()  :: variograms
     !type(t_PilotPoint),allocatable() :: pilot_points
+    
+    ! Counters
+    integer                          :: nppzones  ! Number of Pilot Point Zones
+    integer                          :: nhsus     ! Number of Hydrostratigraphic Units (HSUs)
+                                                  ! (Formerly "geologic zones")
   
   contains
   
@@ -40,9 +46,14 @@ module m_T2P
     ! Initialize Log
     this%log => open_file_writer("log.t2p")
     log_unit = this%log%unit
+    call this%log_init()
     
     ! Initialize Elements
     call this%opt%initialize()
+    
+    ! Set class defaults
+    this%nppzones = 1
+    this%nhsus    = 1
     
   end subroutine initialize
   
@@ -56,6 +67,7 @@ module m_T2P
     call close_file(this%log)
     
     write(*,'(a)') 'Texture2Par Early Termination.'
+    call this%log%write_line('Texture2Par Early Termination')
     error stop
     
   end subroutine early_exit
@@ -70,6 +82,8 @@ module m_T2P
     call close_file(this%log)
     
     write(*,'(a)') 'Texture2Par Normal Termination.'
+    call this%log%write_line('Texture2Par Normal Termination')
+    ! TODO write total run time
     
   end subroutine normal_exit
   
@@ -111,6 +125,7 @@ module m_T2P
     
     ! Write the error
     write(*,'(a)') err_msg
+    call this%log%write_line(err_msg, blank_start=1)
     
     ! Call early_exit handler
     call this%early_exit()

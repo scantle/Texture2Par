@@ -2,14 +2,16 @@ module m_options
 !-------------------------------------------------------------------------------------------------!
   type t_options
     ! Required Options:
-    integer                  :: MAX_VSTRUCT           !
-    integer                  :: TEXTURE_CLASSES       !
+    integer                  :: MAX_VSTRUCT           ! Maximum variogram structures
+    integer                  :: TEXTURE_CLASSES       ! Number of texture classes
     ! "Optional" Options - Default Value and Settings
     real                     :: NO_DATA_VALUE         !
     character(10)            :: INTERP_DIM            ! 2D, 3D
     character(10)            :: INTERP_METHOD         ! KRIGING, IDW
     character(10)            :: INTERP_ORDER          ! BEFORE, AFTER
     character(50)            :: MAIN_OUTPUT           ! 
+    !character(100)           :: OUTPUT_DIR            ! Directory where output gets written
+    !character(100)           :: INPUT_DIR             ! Direction where input gets read
     logical                  :: SILENT_MODE           !
     logical                  :: DEBUG_MODE            !
     logical                  :: WRITE_MATRIX          !
@@ -47,6 +49,8 @@ module m_options
     this%INTERP_METHOD        = 'KRIGING'
     this%INTERP_ORDER         = 'BEFORE'
     this%MAIN_OUTPUT          = 't2p_log.txt'
+    !this%OUTPUT_DIR           = './'
+    !this%INPUT_DIR            = './'
     this%SILENT_MODE          = .false.
     this%DEBUG_MODE           = .false.
     this%WRITE_MATRIX         = .false.
@@ -97,6 +101,10 @@ subroutine read_options(this, reader)
         call item2char(strings, 2, this%INTERP_ORDER)
       case("MAIN_OUTPUT")
         call item2char(strings, 2, this%MAIN_OUTPUT)
+      !case("OUTPUT_DIR")
+      !  call item2char(strings, 2, this%OUTPUT_DIR)
+      !case("INPUT_DIR")
+      !  call item2char(strings, 2, this%INPUT_DIR)
       case("NO_DATA_VALUE")
         this%NO_DATA_VALUE        = item2real(strings, 2)
       case("SILENT_MODE")
