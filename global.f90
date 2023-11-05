@@ -1,6 +1,6 @@
 module m_global
-  use m_T2P, only: t_T2P
+  use m_file_io, only: t_file_writer
   
-  type(t_T2P),save         :: t2p   ! main Texture2Par storage
+  type(t_file_writer), pointer     :: log   ! Runtime Log
   
 end module m_global

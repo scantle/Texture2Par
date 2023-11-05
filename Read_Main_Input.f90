@@ -1,6 +1,7 @@
 module m_read_main_input
   use m_file_io, only: t_file_reader, open_file_reader, close_file
-  use m_global, only: t2p
+  use m_flow_model, only: read_FLOW_MODEL_block
+  use m_error_handler, only: error_handler
   implicit none
 
   type(t_file_reader), pointer :: reader
@@ -9,8 +10,11 @@ module m_read_main_input
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine read_main_input(file)
+  subroutine read_main_input(t2p, file)
+    use m_T2P, only: t_t2p
     implicit none
+    
+    type(t_t2p),intent(inout)       :: t2p
     character(100), intent(in)  :: file
     integer                     :: eof_check
     character(100)              :: id
@@ -21,7 +25,7 @@ module m_read_main_input
     do
       call reader%next_block_id(eof_check, id)
       if (eof_check == -1) exit
-      call block_redirect(id)
+      call block_redirect(t2p, id)
     end do
     write(*,*) 'DONE READING!'
     
@@ -31,17 +35,18 @@ module m_read_main_input
 
 !-------------------------------------------------------------------------------------------------!
   
-    subroutine block_redirect(id)
-    use m_global, only: t2p
+  subroutine block_redirect(t2p, id)
+    use m_T2P, only: t_t2p
     implicit none
 
+    type(t_t2p),intent(inout)       :: t2p
     character(*), intent(in)        :: id
 
     select case(trim(id))
       case("OPTIONS")
         call t2p%opt%read_options(reader)
       case("FLOW_MODEL")
-        !CALL read_FLOW_MODEL_block(unit)
+        call read_FLOW_MODEL_block(reader)
       case("CLASSES")
         !CALL read_class_block(unit)
       case("DATASET")
@@ -54,7 +59,7 @@ module m_read_main_input
         !CALL read_ppparm_block(unit)
       case DEFAULT
         ! TODO! Raise error!
-        call t2p%error_handler(1,reader%file,"Bad Block Name: " // trim(id))
+        call error_handler(1,reader%file,"Bad Block Name: " // trim(id))
     end select
 
   end subroutine block_redirect
