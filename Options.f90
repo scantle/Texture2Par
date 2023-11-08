@@ -9,7 +9,7 @@ module m_options
     character(10)            :: INTERP_DIM            ! 2D, 3D
     character(10)            :: INTERP_METHOD         ! KRIGING, IDW
     character(10)            :: INTERP_ORDER          ! BEFORE, AFTER
-    character(50)            :: MAIN_OUTPUT           ! 
+    character(60)            :: MAIN_OUTPUT           ! 
     !character(100)           :: OUTPUT_DIR            ! Directory where output gets written
     !character(100)           :: INPUT_DIR             ! Direction where input gets read
     logical                  :: SILENT_MODE           !
@@ -71,6 +71,7 @@ module m_options
 subroutine read_options(this, reader)
   use m_file_io, only: t_file_reader, item2int, item2char, item2real
   use m_vstringlist, only: t_vstringlist
+  use m_error_handler, only: error_handler
   implicit none
   class(t_options)           :: this
   type(t_file_reader), pointer :: reader
@@ -134,9 +135,7 @@ subroutine read_options(this, reader)
       case("LOG_KRIGE_K")
         this%LOG_KRIGE_K          = .true.
       case DEFAULT
-        ! TODO! Raise error!
-        write(*,*) "BAD BLOCK!"
-        stop
+        call error_handler(1,reader%file,"Unknown Option Name: " // trim(id))
     end select
   end do
   

@@ -157,14 +157,48 @@ module m_file_io
 !-------------------------------------------------------------------------------------------------!
   
     ! Should these be here or in a different module??
-  subroutine item2char(strings, i, out_char)
+  subroutine item2char(strings, i, out_char, toupper)
     implicit none
     class(t_vstringlist),intent(in)   :: strings
     integer, intent(in)               :: i
-    character(*),intent(out)             :: out_char
+    logical, optional                 :: toupper
+    character(*),intent(out)          :: out_char
     
-    call vstring_cast(vstrlist_index(strings, i), out_char)
+    if (present(toupper)) then
+      if (toupper) then
+        call vstring_cast(vstring_toupper(vstrlist_index(strings, i)), out_char)
+      end if
+    else
+      call vstring_cast(vstrlist_index(strings, i), out_char)
+    end if
   end subroutine item2char
+  
+!-------------------------------------------------------------------------------------------------!
+  
+    ! Should these be here or in a different module??
+  function find_string_index_in_list(strings, i, list, toupper) result(index)
+    implicit none
+    ! Given input (strings(i)), find the index of it in the comma delimited character list "list"
+    ! Useful when you have an input (e.g., TYPE IWFM) and you want to know which valid entry in
+    ! a character list ("GRID,IWFM,MODFLOW") it is (in this case, IWFM is 2). Then a variable
+    ! can be set using this value. If the input is not in the character list, it returns zero.
+    class(t_vstringlist),intent(in)   :: strings
+    integer, intent(in)               :: i
+    character(*), intent(in)          :: list
+    logical, optional                 :: toupper
+    type(t_vstring)                   :: temp_str
+    integer                           :: index
+    
+    call vstring_new(temp_str, list)
+    if (present(toupper)) then
+      if (toupper) then
+        index = vstrlist_search(vstrlist_split(temp_str, ","), vstring_toupper(vstrlist_index(strings, i)) )
+      end if
+    else
+      index = vstrlist_search(vstrlist_split(temp_str, ","), vstrlist_index(strings, i) )
+    end if
+    
+  end function find_string_index_in_list
   
 !-------------------------------------------------------------------------------------------------!
 

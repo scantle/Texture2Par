@@ -5,9 +5,10 @@ module m_T2P
 !-------------------------------------------------------------------------------------------------!
   type t_T2P
 !    type(t_file_writer), pointer     :: log   ! Runtime Log
-    type(t_options)                  :: opt  ! avoid conflict with Fortran intrinsic 'options'
-    type(t_flow_model), pointer      :: fmodel
-    !type(t_Interpolator)             :: interpolator
+    type(t_options)                   :: opt  ! avoid conflict with Fortran intrinsic 'options'
+    class(t_flow_model),pointer        :: fmodel => null()
+    !type(t_Interpolator),pointer     :: interp_data
+    !type(t_Interpolator),pointer     :: interp_pp
     !type(t_Dataset),allocatable()    :: datasets
     !type(t_Variogram),allocatable()  :: variograms
     !type(t_PilotPoint),allocatable() :: pilot_points
