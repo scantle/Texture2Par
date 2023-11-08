@@ -28,7 +28,7 @@ module m_file_io
       procedure,private      :: read_to_next_line
       procedure,public       :: next_block_id
       procedure,public       :: next_block_item
-      !procedure,public :: get_block_length
+      procedure,public       :: get_block_len
     
   end type t_file_reader
 !-------------------------------------------------------------------------------------------------!
@@ -328,7 +328,6 @@ module m_file_io
       ! Read string, ensure block -> pass to block reader
       read(this%unit, '(a500)', iostat=ierr) line
       ! TODO Error handling
-      ! TODO Log
       call vstring_new(line_string, trim(adjustl(line)))
       strings = vstrlist_split(line_string)
     
@@ -388,10 +387,32 @@ module m_file_io
         length = vstrlist_length(strings)
       end if
     else
-      ! End of file - just return
+      status = -1
     end if
   
   end subroutine next_block_item
+
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_block_len(this) result(block_len)
+    implicit none
+    class(t_file_reader), intent(in) :: this
+    integer                         :: block_len
+    integer                         :: status, length
+    character(30)                   :: id
+    type(t_vstringlist)             :: strings
+
+    status = 0
+    block_len = 0  ! to account for
+          
+    ! Loop through the block items and count non-comment lines
+    call this%next_block_item(status, id, strings, length)
+    do while (status == 0)
+      block_len = block_len + 1
+      call this%next_block_item(status, id, strings, length)
+    end do
+          
+  end function get_block_len
 
 !-------------------------------------------------------------------------------------------------!
   

@@ -3,7 +3,6 @@ module m_read_main_input
   use m_vstring, only: t_vstring, vstring_new
   use m_vstringlist, only: t_vstringlist
   use m_file_io
-  use m_flow_model, only: t_flow_model, create_flow_model_object
   use m_error_handler, only: error_handler
   implicit none
 
@@ -49,7 +48,7 @@ module m_read_main_input
       case("FLOW_MODEL")
         call read_FLOW_MODEL_block(t2p, reader)
       case("CLASSES")
-        !CALL read_class_block(unit)
+        CALL read_class_block(t2p, reader)
       case("DATASET")
         !CALL read_dataset_block(unit)
       case("VARIOGRAMS")
@@ -68,13 +67,10 @@ module m_read_main_input
 !-------------------------------------------------------------------------------------------------!
   
   subroutine read_FLOW_MODEL_block(t2p, reader)
-    use m_error_handler, only: error_handler
-    use m_flow_model, only: t_flow_model, check_id_validity
+    use m_flow_model, only: t_flow_model, create_flow_model_object, check_id_validity
     implicit none
     type(t_t2p),intent(inout)       :: t2p
-    type(t_file_reader), pointer :: reader
-    
-    type(t_flow_model),pointer   :: test
+    type(t_file_reader), pointer    :: reader
     
     ! Standard file reader variables
     integer                    :: status, length
@@ -114,5 +110,44 @@ module m_read_main_input
     end do
   
   end subroutine read_FLOW_MODEL_block
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine read_class_block(t2p, reader)
+    
+    implicit none
+    type(t_t2p),intent(inout)       :: t2p
+    type(t_file_reader), pointer    :: reader
+    
+    ! Standard file reader variables
+    integer                    :: status, length, nclass
+    character(30)              :: id, value
+    type(t_vstringlist)        :: strings
+    
+    nclass = reader%get_block_len()
+    if (nclass < 1) then
+      call error_handler(2,reader%file,"No Texture Classes Listed")
+    end if
+    
+    ! Loop until end of block or end of file
+    !do
+    !  call reader%next_block_item(status, id, strings, length)
+    !  if (status /= 0) exit  ! exit if end of block or end of file
+    !  select case(trim(id))
+    !    case("TYPE")
+    !      call item2char(strings, 2, value, toupper=.true.)
+    !      t2p%fmodel => create_flow_model_object(value)
+    !      !call create_flow_model_object(value, t2p%fmodel)
+    !    case("SIM_FILE")
+    !      call check_id_validity(id, t2p%fmodel, 2) ! Only IWFM
+    !
+    !    case DEFAULT
+    !      call error_handler(1,reader%file,"Unknown Flow Model option: " // trim(id))
+    !  end select
+    !end do
+  
+  end subroutine read_class_block
+  
+!-------------------------------------------------------------------------------------------------!
   
 end module m_read_main_input
