@@ -55,7 +55,6 @@
 		<File RelativePath=".\Lists.f90"/>
 		<File RelativePath=".\Options.f90"/></Filter>
 		<Filter Name="File IO">
-		<File RelativePath=".\BlockReader.f90"/>
 		<File RelativePath=".\FileIO.f90"/>
 		<File RelativePath=".\fpath.f90"/>
 		<File RelativePath=".\Read_Main_Input.f90"/>
