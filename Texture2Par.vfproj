@@ -51,6 +51,7 @@
 		<File RelativePath=".\T2P.rc"/></Filter>
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
 		<Filter Name="Data Structures">
+		<File RelativePath=".\DataSets.f90"/>
 		<File RelativePath=".\Grid.f90"/>
 		<File RelativePath=".\Lists.f90"/>
 		<File RelativePath=".\Options.f90"/></Filter>

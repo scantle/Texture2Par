@@ -1,7 +1,6 @@
 module m_grid
+  use m_global, only: dp
   implicit none
-  
-  INTEGER, PARAMETER :: dp = SELECTED_REAL_KIND(15,307)  ! 64-bit
   
 !-------------------------------------------------------------------------------------------------!
   type t_Grid

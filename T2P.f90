@@ -4,14 +4,13 @@ module m_T2P
   use m_flow_model, only: t_flow_model
 !-------------------------------------------------------------------------------------------------!
   type t_T2P
-!    type(t_file_writer), pointer     :: log   ! Runtime Log
     type(t_options)                   :: opt  ! avoid conflict with Fortran intrinsic 'options'
     class(t_flow_model),pointer       :: fmodel => null()
-    !type(t_Interpolator),pointer     :: interp_data
-    !type(t_Interpolator),pointer     :: interp_pp
-    !type(t_Dataset),allocatable()    :: datasets
-    !type(t_Variogram),allocatable()  :: variograms
-    !type(t_PilotPoint),allocatable() :: pilot_points
+    !type(t_Interpolator),pointer      :: interp_data
+    !type(t_Interpolator),pointer      :: interp_pp
+    !type(t_Dataset),pointer           :: datasets(:)
+    !type(t_Variogram),pointer         :: variograms(:)
+    !type(t_PilotPoint),pointer        :: pilot_points
     
     ! Counters
     integer                          :: nclasses  ! Number of texture classes
