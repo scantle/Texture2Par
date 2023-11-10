@@ -24,11 +24,15 @@ module m_datasets
 ! MODULE PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  function create_dataset_object(class_name) result(object)
+  function create_dataset_object(class_name, npoints) result(object)
     implicit none
     
     character(*),intent(in)          :: class_name
+    integer,intent(inout)            :: npoints
     class(t_dataset),pointer         :: object
+    
+    call object%initialize(npoints)
+    object%name = class_name
   
   end function
   
@@ -38,9 +42,16 @@ module m_datasets
 ! TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine initialize(this)
+  subroutine initialize(this, npoints)
     implicit none
-    class(t_dataset),intent(inout)    :: this
+    class(t_dataset),intent(inout)  :: this
+    integer,intent(in)              :: npoints
+    
+    allocate(this%hsus         (npoints), &
+             this%nearest_node (npoints), &
+             this%values       (npoints)  )
+
+    !this%grid => create_grid_object(3, npoints)  ! X,Y,Z coords by n 
   
   end subroutine initialize
   

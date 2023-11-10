@@ -13,15 +13,20 @@ module m_T2P
     !type(t_PilotPoint),pointer        :: pilot_points
     
     ! Counters
-    integer                          :: nclasses  ! Number of texture classes
+    integer                          :: nclasses  ! Number of data classes
     integer                          :: nppzones  ! Number of Pilot Point Zones
     integer                          :: nhsus     ! Number of Hydrostratigraphic Units (HSUs)
                                                   ! (Formerly "geologic zones")
+    
+    ! Trackers
+    type(t_vstringlist),pointer      :: class_names
+    integer,pointer                  :: class_connections(:)
   
   contains
   
     procedure :: initialize
-    procedure :: allocate_datasets
+    procedure :: setup_data_classes
+    !procedure :: allocate_data_classes
     !procedure :: allocate
   
   end type t_T2P
@@ -45,14 +50,17 @@ module m_T2P
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine allocate_datasets(this, nclasses)
+  subroutine setup_data_classes(this, class_names, class_connections)
     implicit none
     class(t_T2P), intent(inout)   :: this
-    integer, intent(in)           :: nclasses
+    type(t_vstringlist),pointer   :: class_names
+    integer,pointer               :: class_connections(:)
     
-    this%nclasses = nclasses
+    this%nclasses = this%opt%DATA_CLASSES
+    this%class_names => class_names
+    this%class_connections => class_connections
   
-  end subroutine allocate_datasets
+  end subroutine setup_data_classes
 
 !-------------------------------------------------------------------------------------------------!
   

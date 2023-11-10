@@ -239,17 +239,19 @@ module m_file_io
 ! READER TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine read_to_next_line(this, eof)
+  subroutine read_to_next_line(this, eof, skipped)
     implicit none
-    class(t_file_reader)  :: this
-    type(t_file_reader),pointer   :: next_file
-    integer             :: ierr
-    integer,intent(out) :: eof
+    class(t_file_reader)              :: this
+    type(t_file_reader),pointer       :: next_file
+    integer                           :: i, ierr
+    integer,intent(out)               :: eof
+    integer,intent(inout),optional    :: skipped
     
     ! For line splitting
     integer             :: left(2), right(2)
 
     eof = 0
+    i = 0
     do while (eof == 0)
       read(this%unit, '(a500)', iostat=ierr) line
       line = adjustl(line)
@@ -258,11 +260,13 @@ module m_file_io
         call this%handle_eof(eof)
       else if ((line(1:1) == '#').or.(line(1:1) == '*').or.(line(1:1) == '')) then
         ! Comment line, blank line
+        i = i + 1
         continue
       else if (index(line, 'EXTERNAL')>0) then
         ! External command, continue reading in new file
         call multisplit(ierr,2,left,right,line)
         call this%jump_to_external(line(left(2):right(2)))
+        i = 0  ! No lines skipped if it's a new file
         !call this%read_to_next_line(eof)
       else
         ! Data
@@ -270,6 +274,8 @@ module m_file_io
         exit
       end if
     end do
+    
+    if (present(skipped)) skipped = i
   
   end subroutine
   
@@ -315,7 +321,7 @@ module m_file_io
 !-------------------------------------------------------------------------------------------------!
     subroutine next_item(this, eof, strings)
     implicit none
-    class(t_file_reader)                :: this
+    class(t_file_reader)              :: this
     integer,intent(out)               :: eof
     type(t_vstringlist), intent(out)  :: strings
     type(t_vstring)                   :: line_string
@@ -368,7 +374,7 @@ module m_file_io
   
   subroutine next_block_item(this, status, id, strings, length)
     implicit none
-    class(t_file_reader)        :: this
+    class(t_file_reader)      :: this
     integer,intent(out)       :: status   ! 0 = Fine. -1 = EOF. +1 = End of Block
     integer,intent(out)       :: length
     character(*),intent(out)  :: id
@@ -397,19 +403,31 @@ module m_file_io
   function get_block_len(this) result(block_len)
     implicit none
     class(t_file_reader), intent(in) :: this
-    integer                         :: block_len
-    integer                         :: status, length
+    integer                         :: i, block_len, eof, ierr
+    integer                         :: status, skipped, total_skipped, length
     character(30)                   :: id
     type(t_vstringlist)             :: strings
+    
+    ! TODO what if file changes in block? (backspace may fail)
 
     status = 0
-    block_len = 0  ! to account for
+    block_len = -1  ! To account for reading END line
           
     ! Loop through the block items and count non-comment lines
-    call this%next_block_item(status, id, strings, length)
+    call this%read_to_next_line(eof, skipped=total_skipped)
+    !read(this%unit, '(a500)', iostat=ierr) line
+    if (index(line, "END") > 0.or.eof < 0) status = 1
     do while (status == 0)
       block_len = block_len + 1
-      call this%next_block_item(status, id, strings, length)
+      call this%read_to_next_line(eof, skipped=skipped)
+      read(this%unit, '(a500)', iostat=ierr) line
+      total_skipped = total_skipped + skipped + 1
+      if (index(line, "END") > 0.or.eof < 0) status = 1
+    end do
+    
+    ! Rewind!
+    do i=1, total_skipped
+      backspace(this%unit)
     end do
           
   end function get_block_len

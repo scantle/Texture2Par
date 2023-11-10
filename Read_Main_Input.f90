@@ -120,32 +120,45 @@ module m_read_main_input
     type(t_file_reader), pointer    :: reader
     
     ! Standard file reader variables
-    integer                    :: status, length, nclass
+    integer                    :: status, length
     character(30)              :: id, value
     type(t_vstringlist)        :: strings
+    ! sub variables
+    integer                       :: i, j
+    type(t_vstringlist),pointer   :: class_names
+    integer,pointer               :: class_connections(:)
     
-    nclass = reader%get_block_len()
-    if (nclass < 1) then
-      call error_handler(2,reader%file,"No Texture Classes Listed")
-    end if
+    allocate(class_names)
+    call vstrlist_new ( class_names )
+    allocate(class_connections(t2p%opt%DATA_CLASSES))
+    i = 0  ! counts primary datasets
+    j = 1  ! tracks place in class_connections
     
     ! Loop until end of block or end of file
-    !do
-    !  call reader%next_block_item(status, id, strings, length)
-    !  if (status /= 0) exit  ! exit if end of block or end of file
-    !  select case(trim(id))
-    !    case("TYPE")
-    !      call item2char(strings, 2, value, toupper=.true.)
-    !      t2p%fmodel => create_flow_model_object(value)
-    !      !call create_flow_model_object(value, t2p%fmodel)
-    !    case("SIM_FILE")
-    !      call check_id_validity(id, t2p%fmodel, 2) ! Only IWFM
-    !
-    !    case DEFAULT
-    !      call error_handler(1,reader%file,"Unknown Flow Model option: " // trim(id))
-    !  end select
-    !end do
-  
+    do
+      i = i + 1
+      call reader%next_block_item(status, id, strings, length)
+      if (status /= 0) exit  ! exit if end of block or end of file
+       if (j > t2p%opt%DATA_CLASSES) then
+        call error_handler(1,reader%file,"Too many data classes listed in CLASSES block. Increase DATA_CLASSES")
+      end if
+      ! Add items to arrays
+      call vstrlist_append(class_names, strings)
+      class_connections(j) = i
+      if (length > 1) class_connections(j+1:j+length-1) = j
+      j = j + length
+    end do
+    
+    ! Some early validation
+    if (j < 1) then
+      call error_handler(2,reader%file,"No Data Classes Listed")
+    else if (j < t2p%opt%DATA_CLASSES) then
+      call error_handler(2,reader%file,"Too Few Data Classes Listed")
+    end if
+    
+    ! Pass to T2P
+    call t2p%setup_data_classes(class_names, class_connections)
+    
   end subroutine read_class_block
   
 !-------------------------------------------------------------------------------------------------!
