@@ -39,15 +39,15 @@ program Texture2Par
 !    open(6, carriagecontrol='fortran')  ! Uses removed by VB
 
     ! Write Flag
-    write(*,'(/,4x,a)') '             Texture2Par v1.0.0             '
-    write(*,'(3x,a)') '----------------------------------------------'
+    write(*,'(/,4x,a)') '       Texture2Par v1.0.0_VoronoiWC'
+    write(*,'(3x,a)')  '----------------------------------------------'
     write(*,'(4x,a)')   'Copyright S.S. Papadopulos & Associates Inc.'
 
     ! Read input file
     ierr = 0
     writeNodeFiles = .false.
     write(*,'(/,2x,a)') 'Reading input file'
-    open(10, file='Texture2Par.in', status='old', action='read', &
+    open(10, file='Texture2Par_wc.in', status='old', action='read', &
          iostat = ierr,  iomsg=cerr)
     call iomsghandler(ierr, cerr)
 
