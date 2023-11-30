@@ -62,7 +62,7 @@ module MFSupport
 ! Get Top & Bot arrays into node format
     ncbd = 0
     Elevation(1:nnodes) = top(1:nnodes)
-    do k=1, nlay
+    do k=1, nlayers
       topelev(1:nnodes,k) = top((k-1)*nnodes+1 : k*nnodes)
       botelev(1:nnodes,k) = bot((k-1)*nnodes+1 : k*nnodes)
       ! Quasi-3d confining beds == Aquitards
@@ -79,6 +79,62 @@ module MFSupport
     end do
 
   end subroutine read_modflow
+!-----------------------------------------------------------------------------!
+  
+!-----------------------------------------------------------------------------!
+  subroutine read_ugrid(gridfile)
+    use MakePar
+    use errorhandle
+
+    implicit none
+
+! Local variables
+    character(200)         :: gridfile
+    character(256)         :: cerr
+    integer                :: i, k, ierr, jnk
+
+! Open Grid file, pre-read for length
+    open(10, file=trim(gridfile), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
+    read(10,*)                                    ! Header
+    ierr = 0
+    nnodes = 0
+    nwell = 0
+    maxWPoints = 0
+    do while (ierr == 0)
+      read(10,*, iostat = ierr)
+      nnodes = nnodes + 1
+    end do
+    nnodes = nnodes - 1
+    close(10)
+    
+    ! Allocate
+    call allocate_modflow()
+    
+    ! Reopen & Read
+    open(10, file=trim(gridfile), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
+    read(10,*)                                    ! Header
+    ! Loop over nodes
+    do i=1, nnodes
+      read(10,*) jnk, nodex(i), nodey(i), topelev(i,1), (botelev(i,k), k=1, nlayers)
+    end do
+    close(10)
+
+! Set MakePar module values
+    natlayers = 0
+
+! Fill Elevation arrays 
+    ncbd = 0
+    Elevation(1:nnodes) = topelev(1:nnodes,1)
+    do k=1, nlayers-1
+      topelev(1:nnodes,k+1) = botelev(1:nnodes,k)
+    end do
+    ! Fill with no data value
+    aqtardtopelev(1:nnodes,k) = NODATA
+    aqtardbotelev(1:nnodes,k) = NODATA
+
+  end subroutine read_ugrid
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
@@ -224,8 +280,125 @@ end subroutine inputwells_modflow
 !-----------------------------------------------------------------------------!
 
 !-----------------------------------------------------------------------------!
+SUBROUTINE inputwells_ugrid(readzones)
+    use MakePar
+    use kd_tree
+    use str_utls
+    use errorhandle
+    implicit none
+
+!-----------------------------------------------------------------------------!
+! Inputs well information.
+! Uses NodeTree to locate closest nodes and pass this information to
+! subroutine that locates cell/element of well.
+!
+! Well GeoZones added 7/3/2019 -LS
+!   Argument "readzones" is a flag for whether GeoZones exist (1 = yes, 0 = no)
+!-----------------------------------------------------------------------------!
+
+    integer, parameter       :: nnear=4
+    integer                  :: i, iwell, izone, igeo, ilay, readzones, &
+                                currwellelem, node, ierr, nwellgeozones
+    integer                  :: closenodes(nnear)
+    real                     :: depth, tx, ty, tz, td, tpc
+    real                     :: nodedists(nnear), queryxy(2)
+    character(30)            :: wellname, geobylayer(nlayers), &
+                                wellgeonames(max_zones)
+    character(265)           :: cerr
+    logical                  :: newzone
+
+    ! Initialize (to prevent issues where compiler does not initilize to 0)
+    nwellgeozones = 0
+
+    ! Read well file
+    write(*,'(2x,2a)') 'Reading Well File ', trim(wellfile)
+    open(10, file =trim(wellfile), status='old', action='read', iostat=ierr, iomsg=cerr)
+    call iomsghandler(ierr, cerr)
+    read(10,*)                        ! Header
+
+    if (readzones == 0) then
+      ! No GeoZones
+      nwellgeozones = 1
+      wellgeozones(1:nwell,1:nlayers) = '[NONE]'
+      do i=1, wfilelen
+        read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td
+        ! Well "zone" is discrete depth interval and should not be confused with
+        ! other uses of zone (e.g. pilot points)
+        PcWellZone(iwell, izone) = tpc
+        numZone(iwell) = izone
+        if (izone == 1) then
+          Xwell(iwell) = tx
+          Ywell(iwell) = ty
+          Zland(iwell) = tz
+          ! Use node tree to find closest node
+          queryxy(1) = tx
+          queryxy(2) = ty
+          call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
+          node = closenodes(1)
+          wellelem(iwell) = node
+          ! While looping over wells, might as well assign modflow
+          ! elevations to wells, as no interpolation is required
+          wellelevtop(iwell,1:nlayers) = topelev(node,1:nlayers)
+          wellelevbot(iwell,1:nlayers) = botelev(node,1:nlayers)
+          if (ncbd > 0) then
+            wellaqtardelevtop(iwell,1:nlayers) = aqtardtopelev(node,1:nlayers)
+            wellaqtardelevbot(iwell,1:nlayers) = aqtardbotelev(node,1:nlayers)
+          end if
+
+        end if
+        Zwell(iwell, izone) = tz - td
+      end do
+
+    else
+      ! GeoZones
+      do i=1, wfilelen
+        read(10,*) wellname, iwell, izone, tpc, tx, ty, tz, td, geobylayer(:)
+        ! Well "zone" is discrete depth interval and should not be confused with
+        ! other uses of zone (e.g. pilot points, geologic)
+        PcWellZone(iwell, izone) = tpc
+        numZone(iwell) = izone
+        if (izone == 1) then
+          Xwell(iwell) = tx
+          Ywell(iwell) = ty
+          Zland(iwell) = tz
+
+          ! Well geologic zones
+          wellgeozones(iwell,:) = geobylayer(:)
+          ! Counts geozones for reporting and comparing
+          do ilay=1, nlayers
+            call strtracker(nwellgeozones, geobylayer(ilay), &
+                  wellgeonames, newzone)
+          end do
+
+          ! Use node tree to find closest node
+          queryxy(1) = tx
+          queryxy(2) = ty
+          call n_nearest_to(nodetree, queryxy, nnear, closenodes, nodedists)
+          node = closenodes(1)
+          wellelem(iwell) = node
+          ! While looping over wells, might as well assign modflow
+          ! elevations to wells, as no interpolation is required
+          wellelevtop(iwell,1:nlayers) = topelev(node,1:nlayers)
+          wellelevbot(iwell,1:nlayers) = botelev(node,1:nlayers)
+          if (ncbd > 0) then
+            wellaqtardelevtop(iwell,1:nlayers) = aqtardtopelev(node,1:nlayers)
+            wellaqtardelevbot(iwell,1:nlayers) = aqtardbotelev(node,1:nlayers)
+          end if
+
+        end if
+        Zwell(iwell, izone) = tz - td
+      end do
+    end if
+    close(10)
+
+    !write(*,'(4x,a)') 'Well file read successfully.'
+
+end subroutine inputwells_ugrid
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
 subroutine readNodeGeoZones_modflow()
-  use GLOBAL, ONLY : IUNSTR, NLAY, NROW, NCOL
+  use GLOBAL, ONLY : IUNSTR, NROW, NCOL
   use MakePar
   use str_utls
   use errorhandle
@@ -280,7 +453,6 @@ end subroutine readNodeGeoZones_modflow
 
 !-----------------------------------------------------------------------------!
   subroutine inputZones_modflow()
-    use GLOBAL, ONLY : NLAY
     use PilotPoints
     use errorhandle
     use MakePar, ONLY : nlayers,natlayers,nnodes,max_zones
@@ -474,7 +646,7 @@ end function get_well_cell
 
 !-----------------------------------------------------------------------------!
   subroutine allocate_modflow()
-    use GLOBAL, ONLY : IUNSTR, NLAY, NROW, NCOL, DELR, DELC, TOP, BOT, NODES
+    use GLOBAL, ONLY : IUNSTR, NROW, NCOL, DELR, DELC, TOP, BOT, NODES
     use MakePar
     implicit none
 
@@ -487,10 +659,10 @@ end function get_well_cell
              nodey(nnodes),              &
              nodexy(nnodes,2),           &
              Elevation(nnodes),          &
-             topelev(nnodes,nlay),       &
-             botelev(nnodes,nlay),       &
-             aqtardtopelev(nnodes,nlay), &
-             aqtardbotelev(nnodes,nlay)  )
+             topelev(nnodes,nlayers),       &
+             botelev(nnodes,nlayers),       &
+             aqtardtopelev(nnodes,nlayers), &
+             aqtardbotelev(nnodes,nlayers)  )
 
   end subroutine allocate_modflow
 !-----------------------------------------------------------------------------!
@@ -590,6 +762,66 @@ end subroutine writeCellFile
     close(IUNIT(layfile))
 
   end subroutine readwriteFlowPackage
+!-----------------------------------------------------------------------------!
+  
+!-----------------------------------------------------------------------------!
+subroutine writeWellFile_ugrid(v, filename)
+  use MakePar
+  implicit none
+
+  real,intent(in)          :: v(nwell,nlayers)
+  character(*),intent(in)  :: filename
+  integer                  :: iwell, ilay
+  character(60)            :: fmt(2)
+
+  write(*,'(4x,a,a35)') 'Writing:', filename
+
+  write(fmt(1),'("(2a10,",i5,"i14)")') nlayers
+  write(fmt(2),'("(2i10,",i5,"es14.5)")') nlayers
+
+  open(20, file=trim(filename), status='replace', action='write', buffered='YES')
+  ! Header
+  write(20,fmt(1)) 'Well', 'Node', (ilay, ilay=1, nlayers)
+  ! Values
+  do iwell = 1, nwell
+    if (wellelem(iwell) > 0) then  ! Make sure well exists
+      write(20,fmt(2)) iwell, wellelem(iwell), (v(iwell,ilay), ilay=1, nlayers)
+    end if
+  end do
+
+  close(20)
+
+end subroutine writeWellFile_ugrid
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
+subroutine writeNodeFile_ugrid(v, base_filename)
+  use PilotPoints
+  use MakePar
+  implicit none
+
+  real,intent(in)          :: v(nnodes, nlayers)
+  character(*),intent(in)  :: base_filename
+  character(100)           :: fmt, filename
+  integer                  :: ilay, inode
+  character(60)            :: zonetxt
+
+  do ilay=1, nlayers
+  ! Build filename
+    if (ilay < 10) then
+      fmt = "(2A,I1,A)"
+    else
+      fmt = "(2A,I2,A)"
+    endif
+    write(filename,fmt) trim(base_filename), "_", ilay, ".dat"
+    ! Write file for layer
+    write(*,'(4x,a,a)') 'Writing:', trim(filename)
+    open(20, file=trim(filename), status='replace', action='write', buffered='YES')
+    write(20,'(10es12.4)') v(1:nnodes,ilay)
+    close(20)
+  end do
+
+end subroutine writeNodeFile_ugrid
 !-----------------------------------------------------------------------------!
 
 end module MFSupport

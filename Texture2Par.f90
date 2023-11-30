@@ -28,7 +28,7 @@ program Texture2Par
 
     integer                    :: ioerr, ilay, ifail, ipp, &
                                   i, ierr, iarr, twell, wpoint, zone, &
-                                  modflowflag, zoneflag, geoflag
+                                  modelflag, zoneflag, geoflag
     real                       :: a_hmin
     character(150)             :: jnk,fpath_line
     character(256)             :: cerr
@@ -60,9 +60,11 @@ program Texture2Par
 
     ! Check if MODFLOW or IWFM
     if (index(to_upper(trim(line)),'IWFM')>0) then
-      modflowflag = 0
+      modelflag = 1
     else if (index(to_upper(trim(line)), 'MODFLOW')>0) then
-      modflowflag = 1
+      modelflag = 2
+    else if (index(to_upper(trim(line)), 'VORONOI')>0) then
+      modelflag = 3
     else
       write(*,'(a)') 'Error - Invalid Model Type. Stopping.'
       write(*,'(a)') 'Valid Model Types: IWFM, MODFLOW'
@@ -70,7 +72,7 @@ program Texture2Par
     end if
 
     ! Different order/different files for each model
-    if (modflowflag==0) then
+    if (modelflag==1) then
       ! IWFM
       read(10,*) simFile
       read(10,*) fpath_line    !preSimFile
@@ -79,7 +81,7 @@ program Texture2Par
       read(10,*) zonefile
       ! MODFLOW Confining flag, set to 0 when IWFM
       ncbd = 0
-    else if (modflowflag==1) then
+    else if (modelflag==2) then
       ! MODFLOW
       read(10,*) simFile
       read(10,*) layfiletemp
@@ -87,6 +89,11 @@ program Texture2Par
       read(10,*) xoff
       read(10,*) yoff
       read(10,*) mfrot
+    else if (modelflag==3) then
+      ! VORONOI
+      read(10,*) nlayers
+      read(10,*) simFile
+      read(10,*) zonefile
     end if
 
     ! Node output setting
@@ -139,14 +146,18 @@ program Texture2Par
     close(10)
 
     ! MODEL SPECIFIC
-    if (modflowflag == 0) then
+    if (modelflag == 1) then
       write(*,'(2x,a)') 'Reading IWFM Input Files'
       call readIWFM()
       call create_nodetree()
-    else if (modflowflag == 1) then
+    else if (modelflag == 2) then
       write(*,'(2x,a)') 'Reading MODFLOW Input Files'
       call read_modflow(simfile)
       call calcCellCenters_global()
+      call create_nodetree()
+    else if (modelflag == 3) then
+      write(*,'(2x,a)') 'Reading VORONOI Input Files'
+      call read_ugrid(simfile)
       call create_nodetree()
     end if
 
@@ -174,9 +185,9 @@ program Texture2Par
     else
       ! External file
       zoneflag = 1
-      if (modflowflag == 0) then
+      if (modelflag==1) then
         call inputZones_IWFM()
-      else
+      else if (modelflag==2.or.modelflag==3) then
         call inputZones_modflow()
       end if
     end if
@@ -201,10 +212,14 @@ program Texture2Par
       geonames_lay(1,1:nlayers) = '[NONE]'
     else
       geoflag = 1
-      if (modflowflag == 0) then
+      if (modelflag == 1) then
         call readNodeGeoZones_IWFM()
-      else if (modflowflag == 1) then
+      else if (modelflag==2) then
         call readNodeGeoZones_modflow()
+      else if (modelflag == 3) then
+        ! UNIMPLEMENTED
+        cerr = 'GEOZONES UNIMPLEMENTED FOR VORONOI'
+        call iomsghandler(1, cerr)
       end if
     end if
 
@@ -213,13 +228,15 @@ program Texture2Par
     write(*,'(4x,1a36,i8)') 'Number of aquifer pilot points: ', ppn
     write(*,'(4x,1a36,i8)') 'Number of aquitard pilot points: ', atppn
     write(*, '(4x,1a36,i8)') 'Number of Layers: ', nlayers
-    if (modflowflag == 0) then
+    if (modelflag == 1) then
       write(*, '(4x,1a36,i8)') 'Number of Nodes: ', nnodes
       write(*, '(4x,1a36,i8)') 'Number of Elements: ', nelements
-    else if (modflowflag == 1) then
+    else if (modelflag == 2) then
       ! Perhaps "cells per layer"
       write(*, '(4x,1a36,i8)') 'Number of Cells: ', nnodes
       write(*, '(4x,1a36,i8)') 'Quasi-3D Confining Beds: ', ncbd
+    else if (modelflag == 3) then
+      write(*, '(4x,1a36,i8)') 'Number of Nodes: ', nnodes
     end if
     !write(*,'(4x,1a36,i)') 'Well File Length: ', wfilelen
     write(*,'(4x,1a36,i8)') 'Number of Well Logs: ', nwell
@@ -231,15 +248,17 @@ program Texture2Par
     call setrot()
 ! MODEL SPECIFIC
 ! Call input wells subroutine
-    if (modflowflag==0) then
+    if (modelflag==1) then
       call inputwells_IWFM(geoflag)
-    else if (modflowflag==1) then
+    else if (modelflag==2) then
       call inputwells_modflow(geoflag)
+    else if (modelflag==3) then
+      call inputwells_ugrid(geoflag)
     end if
 
 ! Call Layer Elevation subroutine
     write(*,'(2x,a)') 'Calculating Layer Elevations at Wells'
-    if (modflowflag == 0) then
+    if (modelflag == 1) then
       call layerelevation(TopElev, BotElev, wellelevtop, wellelevbot)
       ! For aquitard
       call layerelevation(AqTardTopElev, AqTardBotElev, &
@@ -255,7 +274,7 @@ program Texture2Par
     outfile = 'PcWellElem.out'
     call layertexture(wellelevtop, wellelevbot, PcWellElem)
     ! If IWFM or if there are MODFLOW confining beds
-    if ((modflowflag == 0).or.(ncbd > 0 )) then
+    if ((modelflag == 1).or.(ncbd > 0 )) then
       outfile = 'PcWellAqTardElem.out'
       call layertexture(wellaqtardelevtop, wellaqtardelevbot, PcWellAqtardElem)
     end if
@@ -275,7 +294,7 @@ program Texture2Par
     call ppaq_parkrige_arr(nnodes, nodex, nodey, ppAnisoF, nAnisoF)
 
     ! Krige Aquitard parameters from pilot points to nodes
-    if ((modflowflag == 0).or.(ncbd > 0 )) then
+    if ((modelflag == 1).or.(ncbd > 0 )) then
       if (atppn > 0) then
         ! Aquitard Parameters - KCMin, DeltaKC, KFMin, DeltaKF, Aniso
         write(*,'(2x,a,i3)') 'Kriging Aquitard Pilot Point Parameters'
@@ -297,12 +316,12 @@ program Texture2Par
 ! Call interpolate subroutines (Well PC to Node Aquifer parameter)
     write(*,'(2x,a)') 'Calculating Node Aquifer Parameters           '
     call interpolate()
-    if ((modflowflag == 0).or.(ncbd > 0 )) then
+    if ((modelflag == 1).or.(ncbd > 0 )) then
       call interpolate_aqtard()
     end if
 
 ! Write Output files, routines called depend on model type
-    if (modflowflag == 0) then
+    if (modelflag == 1) then
       if (writeNodeFiles) then
         ! Only calculate if writing the file
         call calc_interbed_thickness()
@@ -322,7 +341,7 @@ program Texture2Par
       end if
         call writeIWFMgwfile()
 
-    else if (modflowflag == 1) then
+    else if (modelflag == 2) then
       if (writeNodeFiles) then
         ! Only calculate if writing the file
         call calc_interbed_thickness()
@@ -344,6 +363,26 @@ program Texture2Par
       end if
       call readwriteFlowPackage()
       !call clear_modflow_memory()  ! Unnecessary, crashes due to unallocated MF arrays
+    
+    else if (modelflag == 3) then
+      ! Automatically write out files since there's no flow model to write to
+      !call calc_interbed_thickness()
+      write(*,'(2x,a)') 'Writing Node Parameter Files'
+      call writeWellFile_ugrid(PcWellElem,       't2p_WellPC.out')
+      call writeNodeFile_ugrid(PcNode, 't2p_NodePC')
+      call writeNodeFile_ugrid(KhB,    't2p_KhB'   )
+      call writeNodeFile_ugrid(KvB,    't2p_KvB'   )
+      call writeNodeFile_ugrid(SsB,    't2p_SSB'   )
+      call writeNodeFile_ugrid(SyB,    't2p_SyB'   )
+      !call writeCellFile(interbed_thick,'t2p_InterbedThickness.out')
+      if (ncbd > 0 ) then
+        call writeWellFile_ugrid(PcWellAqtardElem, 't2p_WellAqTardPC.out')
+        call writeNodeFile_ugrid(PcNode_aqtard, 't2p_AqTardNodePC.out')
+        call writeNodeFile_ugrid(KvB_aqtard,    't2p_AqTardKvB.out'   )
+      end if
+      !call readwriteFlowPackage()
+      !call clear_modflow_memory()  ! Unnecessary, crashes due to unallocated MF arrays
+
     end if
 
     write(*,'(/,2x,a)') 'Program finished!'
