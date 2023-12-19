@@ -50,13 +50,13 @@ module m_read_main_input
       case("CLASSES")
         CALL read_class_block(t2p, reader)
       case("DATASET")
-        !CALL read_dataset_block(unit)
+        CALL read_dataset_block(t2p, reader)
       case("VARIOGRAMS")
-        !CALL read_variogram_block(unit)
+        !CALL read_variogram_block(t2p, reader)
       case("PP_LOCS")
-        !CALL read_pploc_block(unit)
+        !CALL read_pploc_block(t2p, reader)
       case("PP_PARAMETERS")
-        !CALL read_ppparm_block(unit)
+        !CALL read_ppparm_block(t2p, reader)
       case DEFAULT
         ! TODO! Raise error!
         call error_handler(1,reader%file,"Unknown Block Name: " // trim(id))
@@ -162,5 +162,47 @@ module m_read_main_input
   end subroutine read_class_block
   
 !-------------------------------------------------------------------------------------------------!
+  
+subroutine read_dataset_block(t2p, reader)
+  implicit none
+  type(t_t2p),intent(inout)       :: t2p
+  type(t_file_reader), pointer    :: reader
+  
+  ! Standard file reader variables
+  integer                    :: status, length
+  character(30)              :: id, value
+  type(t_vstringlist)        :: strings
+  
+  ! Local variables
+  logical                    :: fname_set
+  type(t_vstring)            :: fname, ftrans
+  
+  ! Default values
+  call vstring_new (ftrans , "NONE" )
+    
+  ! Loop until end of block or end of file
+  do
+    call reader%next_block_item(status, id, strings, length)
+    if (status /= 0) exit  ! exit if end of block or end of file
+    select case(trim(id))
+      case("FILE")
+        fname = vstrlist_index(strings , 2)
+      case("TRANSFORM")
+        ftrans = vstring_toupper(vstrlist_index(strings , 2))
+      case DEFAULT
+        call error_handler(1,reader%file,"Unknown Dataset option: " // trim(id))
+    end select
+  end do
+  
+  ! Did at least filename get set??
+  if (fname_set == .false.) then
+    call error_handler(2,reader%file,"Dataset Block must include a FILE")
+  end if
+  
+  ! Add to T2P
+  call vstrlist_append(t2p%dataset_files, fname)
+  call vstrlist_append(t2p%dataset_trans, ftrans)
+      
+end subroutine read_dataset_block
   
 end module m_read_main_input

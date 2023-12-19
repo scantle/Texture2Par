@@ -21,6 +21,8 @@ module m_T2P
     ! Trackers
     type(t_vstringlist),pointer      :: class_names
     integer,pointer                  :: class_connections(:)
+    type(t_vstringlist)              :: dataset_files    ! dataset filenames
+    type(t_vstringlist)              :: dataset_trans    ! dataset transformations
   
   contains
   
@@ -36,11 +38,14 @@ module m_T2P
   
   subroutine initialize(this)
     use m_file_io, only: open_file_writer, log_unit
+    use m_vstringlist, only: vstrlist_new
     implicit none
     class(t_T2P), intent(inout)      :: this
     
     ! Initialize Elements
     call this%opt%initialize()
+    call vstrlist_new (this%dataset_files)
+    call vstrlist_new (this%dataset_trans)
     
     ! Set class defaults
     this%nppzones = 1
