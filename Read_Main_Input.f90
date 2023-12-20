@@ -52,6 +52,7 @@ module m_read_main_input
       case("DATASET")
         CALL read_dataset_block(t2p, reader)
       case("VARIOGRAMS")
+        ! Ensure CLASSES have been set
         !CALL read_variogram_block(t2p, reader)
       case("PP_LOCS")
         !CALL read_pploc_block(t2p, reader)
@@ -124,29 +125,45 @@ module m_read_main_input
     character(30)              :: id, value
     type(t_vstringlist)        :: strings
     ! sub variables
-    integer                       :: i, j
+    integer                       :: i, j, k, n, prime_id, class_id
     type(t_vstringlist),pointer   :: class_names
-    integer,pointer               :: class_connections(:)
+    integer,pointer               :: class_connections(:,:), class_type(:)
     
     allocate(class_names)
-    call vstrlist_new ( class_names )
-    allocate(class_connections(t2p%opt%DATA_CLASSES))
-    i = 0  ! counts primary datasets
-    j = 1  ! tracks place in class_connections
+    call vstrlist_new (class_names)
+    n = t2p%opt%DATA_CLASSES
+    allocate(class_connections(n, n)) ! symmetric n x n
+    allocate(class_type(n))
+    
+    ! Setup matrix, values indicate variogram ID. Can start off assuming each class has a variogram (fill diagonal)
+    class_connections = 0
+    do i = 1, n
+      class_connections(i, i) = i
+    end do
+    
+    i = 0   ! counts primary datasets
+    j = n+1 ! tracks relationship id
     
     ! Loop until end of block or end of file
     do
       i = i + 1
       call reader%next_block_item(status, id, strings, length)
       if (status /= 0) exit  ! exit if end of block or end of file
-       if (j > t2p%opt%DATA_CLASSES) then
+      if (i+(j-n-1) > t2p%opt%DATA_CLASSES) then
         call error_handler(1,reader%file,"Too many data classes listed in CLASSES block. Increase DATA_CLASSES")
       end if
       ! Add items to arrays
       call vstrlist_append(class_names, strings)
-      class_connections(j) = i
-      if (length > 1) class_connections(j+1:j+length-1) = j
-      j = j + length
+      prime_id = vstrlist_search(class_names, vstrlist_index(strings, 1))
+      class_type(prime_id) = 1
+      ! Loop over specifying the cross relationships
+      do k=2, length
+        class_id = vstrlist_search(class_names, vstrlist_index(strings, k))
+        class_connections(prime_id,class_id) = j
+        class_connections(class_id,prime_id) = j ! symmetric
+        class_type(class_id) = 2
+        j = j + 1
+      end do
     end do
     
     ! Some early validation
@@ -157,7 +174,7 @@ module m_read_main_input
     end if
     
     ! Pass to T2P
-    call t2p%setup_data_classes(class_names, class_connections)
+    call t2p%setup_data_classes(i - 1, class_names, class_connections, class_type)
     
   end subroutine read_class_block
   
