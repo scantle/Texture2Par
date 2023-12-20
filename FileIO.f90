@@ -29,6 +29,7 @@ module m_file_io
       procedure,public       :: next_block_id
       procedure,public       :: next_block_item
       procedure,public       :: get_block_len
+      procedure,public       :: back
     
   end type t_file_reader
 !-------------------------------------------------------------------------------------------------!
@@ -433,6 +434,18 @@ module m_file_io
   end function get_block_len
 
 !-------------------------------------------------------------------------------------------------!
+  
+  subroutine back(this, nlines)
+    implicit none
+    class(t_file_reader), intent(in) :: this
+    integer,intent(in)               :: nlines
+    integer                          :: i
+    
+    do i=1, nlines
+      backspace(this%unit)
+    end do
+    
+  end subroutine back
   
 !-------------------------------------------------------------------------------------------------!
 ! WRITER TYPE-BOUND PROCEDURES

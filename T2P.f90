@@ -5,13 +5,13 @@ module m_T2P
   use m_vario, only: t_vgm
 !-------------------------------------------------------------------------------------------------!
   type t_T2P
-    type(t_options)                   :: opt  ! avoid conflict with Fortran intrinsic 'options'
-    class(t_flow_model),pointer       :: fmodel => null()
-    !type(t_Interpolator),pointer      :: interp_data
-    !type(t_Interpolator),pointer      :: interp_pp
-    !type(t_Dataset),pointer           :: datasets(:)
-    type(t_vgm),pointer               :: variograms(:,:)  ! (stuctures, variogram)
-    !type(t_PilotPoint),pointer        :: pilot_points
+    type(t_options)                  :: opt  ! avoid conflict with Fortran intrinsic 'options'
+    class(t_flow_model),pointer      :: fmodel => null()
+    !type(t_Interpolator),pointer     :: interp_data
+    !type(t_Interpolator),pointer     :: interp_pp
+    !type(t_Dataset),pointer          :: datasets(:)
+    type(t_vgm),pointer              :: variograms(:,:)  ! (stuctures, variogram)
+    !type(t_PilotPoint),pointer       :: pilot_points
     
     ! Counters
     integer                          :: nclasses   ! Number of data classes
@@ -28,11 +28,13 @@ module m_T2P
     integer,pointer                  :: class_type(:)    ! Primary (1) or Secondary (2) for each class
     type(t_vstringlist)              :: dataset_files    ! dataset filenames
     type(t_vstringlist)              :: dataset_trans    ! dataset transformations
+    integer,pointer                  :: nnear(:)         ! Number of nearest points used for interpolation
   
   contains
   
-    procedure :: initialize
-    procedure :: setup_data_classes
+    procedure,public :: initialize
+    procedure,public :: setup_data_classes
+    procedure,public :: setup_variograms
     !procedure :: allocate_data_classes
     !procedure :: allocate
   
@@ -77,14 +79,24 @@ module m_T2P
     this%class_names => class_names
     this%class_connections => class_connections
     this%class_type => class_type
+    
+    ! TODO Maybe this belongs somewhere else, but this is when find out
+    this%nvario = maxval(this%class_connections) + 1  ! +1 for pilot points
   
   end subroutine setup_data_classes
 
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine setup_variograms(this)
+  subroutine setup_variograms(this, variograms, nnear)
     implicit none
     class(t_T2P), intent(inout)   :: this
+    integer, pointer              :: nnear(:)
+    type(t_vgm),pointer           :: variograms(:,:)
+    
+    this%variograms => variograms
+    this%nnear      => nnear
+    
+    ! Hook for when we have all variogram information loaded
   
   end subroutine setup_variograms
 !-------------------------------------------------------------------------------------------------!

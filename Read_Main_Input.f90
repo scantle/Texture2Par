@@ -1,7 +1,7 @@
 module m_read_main_input
   use m_T2P, only: t_t2p
   use m_vstring, only: t_vstring, vstring_new
-  use m_vstringlist, only: t_vstringlist
+  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_split
   use m_file_io
   use m_error_handler, only: error_handler
   implicit none
@@ -48,12 +48,13 @@ module m_read_main_input
       case("FLOW_MODEL")
         call read_FLOW_MODEL_block(t2p, reader)
       case("CLASSES")
+        !TODO Ensure OPTIONS have been set
         CALL read_class_block(t2p, reader)
       case("DATASET")
         CALL read_dataset_block(t2p, reader)
       case("VARIOGRAMS")
-        ! Ensure CLASSES have been set
-        !CALL read_variogram_block(t2p, reader)
+        !TODO Ensure CLASSES have been set
+        CALL read_variogram_block(t2p, reader)
       case("PP_LOCS")
         !CALL read_pploc_block(t2p, reader)
       case("PP_PARAMETERS")
@@ -190,7 +191,7 @@ subroutine read_dataset_block(t2p, reader)
   character(30)              :: id, value
   type(t_vstringlist)        :: strings
   
-  ! Local variables
+  ! Sub variables
   logical                    :: fname_set
   type(t_vstring)            :: fname, ftrans
   
@@ -221,5 +222,103 @@ subroutine read_dataset_block(t2p, reader)
   call vstrlist_append(t2p%dataset_trans, ftrans)
       
 end subroutine read_dataset_block
+
+!-------------------------------------------------------------------------------------------------!
   
+subroutine read_variogram_block(t2p, reader)
+  use m_vario, only: t_vgm, get_vgm_from_line
+  implicit none
+  type(t_t2p),intent(inout)       :: t2p
+  type(t_file_reader), pointer    :: reader
+  
+  ! Standard file reader variables
+  integer                    :: status, length
+  character(30)              :: id, value
+  type(t_vstringlist)        :: strings
+  
+  ! Sub variables
+  type(t_vgm),pointer        :: vgms(:,:)
+  integer,pointer            :: nnear(:)
+  integer                    :: class_id, cross_id, vario_id, struct_id, vcount
+  logical                    :: iscross
+  type(t_vstring)            :: class_name, cross_name
+  type(t_vstringlist)        :: class_temp
+  character(100)             :: msg
+  
+  ! Allocate variograms
+  ! nvario is currently set during the class block read, max structures in settings
+  allocate(vgms(t2p%opt%max_vstruct,t2p%nvario), nnear(t2p%nvario))
+  vcount = 0
+  nnear = 0
+  
+  ! Loop until end of block or end of file
+  do
+    call reader%next_block_item(status, id, strings, length)
+    if (status /= 0) exit  ! exit if end of block or end of file
+    select case(trim(id))
+      case("CLASS")
+        ! Now we need to figure out what variogram we have, and read all the structures for it
+        iscross = .false.
+        class_name = vstrlist_index(strings , 2)
+        
+        ! Is this a single class covariogram or is this a cross covariogram?
+        if (length > 3 .and. vstrlist_search(strings,":")) then
+          !Covar case 1 class_name : cross_name
+          cross_name = vstrlist_index(strings,4)
+          ! TODO if the cross name doesn't exist
+          iscross = .true.
+        else if (vstring_match(class_name,"*:*")) then
+          !Covar case 2 No space class_name:cross_name
+          class_temp = vstrlist_split(class_name, ":")
+          class_name = vstrlist_index(class_temp, 1)
+          cross_name = vstrlist_index(class_temp, 2)
+          ! TODO if the cross name doesn't exist
+          iscross = .true.
+        !else if (vstring_match(class_name  ! WHAT ABOUT PPs?
+        end if
+        class_id = vstrlist_search(t2p%class_names, class_name)
+        ! TODO if the class name doesn't exist
+        if (iscross) then
+          cross_id = vstrlist_search(t2p%class_names, cross_name)
+        else
+          cross_id = class_id
+        end if
+        vario_id = t2p%class_connections(class_id, cross_id)
+        
+        !TODO Validate vario_id
+        
+        ! Now we know what variogram, loop and read in structures
+        do
+          call reader%next_block_item(status, id, strings, length)
+          if (status /= 0) exit       ! exit if end of block or end of file
+          if (trim(id)=="CLASS") then ! move back one line & exit if it's the next class
+            call reader%back(1)
+            exit 
+          end if
+          ! Read structure
+          struct_id = item2int(strings, 1)
+          !TODO validate struct_id
+          ! Get full variogram item from the rest of the line
+          vgms(struct_id,vario_id) = get_vgm_from_line(strings, struct_id)
+          ! NNear on first struct read, advance vcount
+          if (struct_id == 1) then
+            nnear(vario_id) = item2int(strings, 11)
+            vcount = vcount + 1
+          end if
+        end do
+        ! End of variogram structure reading, moves to next class variogram or end of block
+      case DEFAULT
+        call error_handler(1,reader%file,"Unknown Variogram option: " // trim(id))
+    end select
+  end do ! end of variogram reading loop
+  
+  ! Check we have all variograms, send to t2p object
+  if (vcount < t2p%nvario) then
+    write(msg, '(2(a,i3))') "Missing Variograms, expected ", t2p%nvario, ", found: ", vcount
+    call error_handler(2,reader%file,msg)
+  end if
+  call t2p%setup_variograms(vgms, nnear)
+
+end subroutine read_variogram_block
+
 end module m_read_main_input

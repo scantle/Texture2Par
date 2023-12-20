@@ -61,8 +61,8 @@ module m_flow_model
   function create_flow_model_object(model_type_char) result(object)
     implicit none
     
-    character(*),intent(in)          :: model_type_char
-    class(t_flow_model),pointer  :: object
+    character(*),intent(in)        :: model_type_char
+    class(t_flow_model),pointer    :: object
     
     select case(model_type_char)
       case ("GRID")
