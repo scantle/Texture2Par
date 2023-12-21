@@ -238,18 +238,19 @@ subroutine read_variogram_block(t2p, reader)
   
   ! Sub variables
   type(t_vgm),pointer        :: vgms(:,:)
-  integer,pointer            :: nnear(:)
+  integer,pointer            :: nnear(:), nstruct(:)
   integer                    :: class_id, cross_id, vario_id, struct_id, vcount
-  logical                    :: iscross
+  logical                    :: iscross, ispp
   type(t_vstring)            :: class_name, cross_name
   type(t_vstringlist)        :: class_temp
   character(100)             :: msg
   
   ! Allocate variograms
   ! nvario is currently set during the class block read, max structures in settings
-  allocate(vgms(t2p%opt%max_vstruct,t2p%nvario), nnear(t2p%nvario))
+  allocate(vgms(t2p%opt%max_vstruct,t2p%nvario), nnear(t2p%nvario), nstruct(t2p%nvario))
   vcount = 0
   nnear = 0
+  nstruct = 0
   
   ! Loop until end of block or end of file
   do
@@ -259,6 +260,7 @@ subroutine read_variogram_block(t2p, reader)
       case("CLASS")
         ! Now we need to figure out what variogram we have, and read all the structures for it
         iscross = .false.
+        ispp    = .false.
         class_name = vstrlist_index(strings , 2)
         
         ! Is this a single class covariogram or is this a cross covariogram?
@@ -276,16 +278,23 @@ subroutine read_variogram_block(t2p, reader)
           iscross = .true.
         !else if (vstring_match(class_name  ! WHAT ABOUT PPs?
         end if
-        class_id = vstrlist_search(t2p%class_names, class_name)
-        ! TODO if the class name doesn't exist
-        if (iscross) then
-          cross_id = vstrlist_search(t2p%class_names, cross_name)
-        else
-          cross_id = class_id
-        end if
-        vario_id = t2p%class_connections(class_id, cross_id)
         
-        !TODO Validate vario_id
+        ! Check for pilot point class
+        if (vstring_match(class_name,"PilotPoints",nocase=.true.)) then
+          ispp = .true.
+          vario_id = t2p%nvario  ! PP vario is max
+        else
+        ! Not PP
+          class_id = vstrlist_search(t2p%class_names, class_name)
+          ! TODO if the class name doesn't exist
+          if (iscross) then
+            cross_id = vstrlist_search(t2p%class_names, cross_name)
+          else
+            cross_id = class_id
+          end if
+          vario_id = t2p%class_connections(class_id, cross_id)
+          !TODO Validate vario_id
+        end if
         
         ! Now we know what variogram, loop and read in structures
         do
@@ -297,6 +306,7 @@ subroutine read_variogram_block(t2p, reader)
           end if
           ! Read structure
           struct_id = item2int(strings, 1)
+          nstruct(vario_id) = struct_id
           !TODO validate struct_id
           ! Get full variogram item from the rest of the line
           vgms(struct_id,vario_id) = get_vgm_from_line(strings, struct_id)
@@ -317,7 +327,7 @@ subroutine read_variogram_block(t2p, reader)
     write(msg, '(2(a,i3))') "Missing Variograms, expected ", t2p%nvario, ", found: ", vcount
     call error_handler(2,reader%file,msg)
   end if
-  call t2p%setup_variograms(vgms, nnear)
+  call t2p%setup_variograms(vgms, nnear, nstruct)
 
 end subroutine read_variogram_block
 

@@ -20,7 +20,7 @@ module m_T2P
     integer                          :: nhsus      ! Number of Hydrostratigraphic Units (HSUs)
                                                    ! (Formerly "geologic zones")
     integer                          :: nvario     ! Number of variograms
-    integer,allocatable              :: nstruct(:) ! Number of structures for each variogram
+    integer,pointer                  :: nstruct(:) ! Number of structures for each variogram
     
     ! Trackers
     type(t_vstringlist),pointer      :: class_names
@@ -87,14 +87,15 @@ module m_T2P
 
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine setup_variograms(this, variograms, nnear)
+  subroutine setup_variograms(this, variograms, nnear, nstruct)
     implicit none
     class(t_T2P), intent(inout)   :: this
-    integer, pointer              :: nnear(:)
+    integer, pointer              :: nnear(:), nstruct(:)
     type(t_vgm),pointer           :: variograms(:,:)
     
     this%variograms => variograms
     this%nnear      => nnear
+    this%nstruct    => nstruct
     
     ! Hook for when we have all variogram information loaded
   
