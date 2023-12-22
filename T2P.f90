@@ -29,6 +29,15 @@ module m_T2P
     type(t_vstringlist)              :: dataset_files    ! dataset filenames
     type(t_vstringlist)              :: dataset_trans    ! dataset transformations
     integer,pointer                  :: nnear(:)         ! Number of nearest points used for interpolation
+    
+    ! Read trackers - used to check if a block has been read (and make sure it exists)
+    logical                          :: has_opt
+    logical                          :: has_classes
+    logical                          :: has_interp
+    logical                          :: has_fmodel
+    logical                          :: has_pplocs
+    logical                          :: has_pp
+    logical                          :: has_datafiles
   
   contains
   
@@ -48,6 +57,15 @@ module m_T2P
     use m_vstringlist, only: vstrlist_new
     implicit none
     class(t_T2P), intent(inout)      :: this
+    
+    ! Initialize Read Trackers
+    this%has_opt       = .false.
+    this%has_classes   = .false.
+    this%has_interp    = .false.
+    this%has_fmodel    = .false.
+    this%has_pplocs    = .false.
+    this%has_pp        = .false.
+    this%has_datafiles = .false.
     
     ! Initialize Elements
     call this%opt%initialize()
@@ -74,6 +92,8 @@ module m_T2P
     integer,pointer               :: class_connections(:,:), class_type(:)
     integer                       :: i,j
     
+    ! TODO needs to store different when INTERP_ORDER: AFTER is passed
+    
     this%nprimary = num_primary
     this%nclasses = this%opt%DATA_CLASSES
     this%class_names => class_names
@@ -81,7 +101,10 @@ module m_T2P
     this%class_type => class_type
     
     ! TODO Maybe this belongs somewhere else, but this is when find out
+    ! TODO handle INTERP_ORDER: AFTER
     this%nvario = maxval(this%class_connections) + 1  ! +1 for pilot points
+    
+    this%has_classes = .true.
   
   end subroutine setup_data_classes
 
@@ -97,7 +120,7 @@ module m_T2P
     this%nnear      => nnear
     this%nstruct    => nstruct
     
-    ! Hook for when we have all variogram information loaded
+    this%has_interp = .true.
   
   end subroutine setup_variograms
 !-------------------------------------------------------------------------------------------------!

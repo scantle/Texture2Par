@@ -42,22 +42,28 @@ module m_read_main_input
     type(t_t2p),intent(inout)       :: t2p
     character(*), intent(in)        :: id
 
+    ! Regardless of block
+    call pre_block_read_check(t2p, id)
+    
     select case(trim(id))
       case("OPTIONS")
+        ! This is the only block we let read it's own entries and set it's own read tracker (has_opt)
+        ! In the future we may need a post-read hook to process this info, but for now we keep it simple
         call t2p%opt%read_options(reader)
+        t2p%has_opt = .true.
       case("FLOW_MODEL")
         call read_FLOW_MODEL_block(t2p, reader)
       case("CLASSES")
-        !TODO Ensure OPTIONS have been set
         CALL read_class_block(t2p, reader)
       case("DATASET")
         CALL read_dataset_block(t2p, reader)
       case("VARIOGRAMS")
-        !TODO Ensure CLASSES have been set
         CALL read_variogram_block(t2p, reader)
       case("PP_LOCS")
+        call pre_block_read_check(t2p, id)
         !CALL read_pploc_block(t2p, reader)
       case("PP_PARAMETERS")
+        call pre_block_read_check(t2p, id)
         !CALL read_ppparm_block(t2p, reader)
       case DEFAULT
         ! TODO! Raise error!
@@ -65,6 +71,27 @@ module m_read_main_input
     end select
 
   end subroutine block_redirect
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine pre_block_read_check(t2p, block_id)
+    ! Generic hook for making sure a block has its prerequisite data read in.
+    implicit none
+    type(t_t2p),intent(inout)       :: t2p
+    character(*), intent(in)        :: block_id
+    
+    select case(trim(block_id))
+      case("CLASSES")
+        if (t2p%has_opt==.false.) call error_handler(2,reader%file,"OPTIONS block must be declared before CLASSES")
+      case("VARIOGRAMS")
+        if (t2p%has_classes==.false.) call error_handler(2,reader%file,"CLASSES block must be declared before VARIOGRAMS")
+      case("PP_PARAMETERS")
+        if (t2p%has_pplocs==.false.) call error_handler(2,reader%file,"PP_LOCS block must be declared before PP_PARAMETERS")
+      case DEFAULT
+      ! Do nothing
+    end select
+  
+  end subroutine pre_block_read_check
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -205,6 +232,7 @@ subroutine read_dataset_block(t2p, reader)
     select case(trim(id))
       case("FILE")
         fname = vstrlist_index(strings , 2)
+        fname_set = .true.
       case("TRANSFORM")
         ftrans = vstring_toupper(vstrlist_index(strings , 2))
       case DEFAULT
@@ -279,6 +307,7 @@ subroutine read_variogram_block(t2p, reader)
         !else if (vstring_match(class_name  ! WHAT ABOUT PPs?
         end if
         
+        ! Get variogram ids
         ! Check for pilot point class
         if (vstring_match(class_name,"PilotPoints",nocase=.true.)) then
           ispp = .true.
@@ -324,7 +353,7 @@ subroutine read_variogram_block(t2p, reader)
   
   ! Check we have all variograms, send to t2p object
   if (vcount < t2p%nvario) then
-    write(msg, '(2(a,i3))') "Missing Variograms, expected ", t2p%nvario, ", found: ", vcount
+    write(msg, '(2(a,i3))') "Too Few Variograms, expected ", t2p%nvario, ", found: ", vcount
     call error_handler(2,reader%file,msg)
   end if
   call t2p%setup_variograms(vgms, nnear, nstruct)
