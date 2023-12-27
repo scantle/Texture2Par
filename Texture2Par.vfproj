@@ -75,6 +75,7 @@
 		<File RelativePath=".\DataSets.f90"/>
 		<File RelativePath=".\FlowModel.f90"/>
 		<File RelativePath=".\Options.f90"/>
+		<File RelativePath=".\PilotPoints.f90"/>
 		<File RelativePath=".\T2P.f90"/></Filter>
 		<File RelativePath=".\global.f90"/>
 		<File RelativePath=".\Texture2Par.f90"/></Filter>

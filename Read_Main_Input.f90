@@ -360,4 +360,20 @@ subroutine read_variogram_block(t2p, reader)
 
 end subroutine read_variogram_block
 
+
+
+subroutine read_pploc_block(t2p, reader)
+  implicit none
+  type(t_t2p),intent(inout)       :: t2p
+  type(t_file_reader), pointer    :: reader
+  
+  ! Standard file reader variables
+  integer                    :: status, length
+  character(30)              :: id, value
+  type(t_vstringlist)        :: strings
+  
+  
+
+end subroutine read_pploc_block
+
 end module m_read_main_input
