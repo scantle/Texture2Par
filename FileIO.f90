@@ -412,6 +412,7 @@ module m_file_io
     ! TODO what if file changes in block? (backspace may fail)
 
     status = 0
+    total_skipped = 0
     block_len = -1  ! To account for reading END line
           
     ! Loop through the block items and count non-comment lines

@@ -29,6 +29,7 @@ module m_T2P
     type(t_vstringlist)              :: dataset_files    ! dataset filenames
     type(t_vstringlist)              :: dataset_trans    ! dataset transformations
     integer,pointer                  :: nnear(:)         ! Number of nearest points used for interpolation
+    integer,pointer                  :: pp_id(:)
     
     ! Read trackers - used to check if a block has been read (and make sure it exists)
     logical                          :: has_opt

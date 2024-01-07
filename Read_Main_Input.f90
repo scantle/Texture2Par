@@ -61,7 +61,7 @@ module m_read_main_input
         CALL read_variogram_block(t2p, reader)
       case("PP_LOCS")
         call pre_block_read_check(t2p, id)
-        !CALL read_pploc_block(t2p, reader)
+        CALL read_pploc_block(t2p, reader)
       case("PP_PARAMETERS")
         call pre_block_read_check(t2p, id)
         !CALL read_ppparm_block(t2p, reader)
@@ -281,7 +281,9 @@ subroutine read_variogram_block(t2p, reader)
   nstruct = 0
   
   ! Loop until end of block or end of file
+  status = 0
   do
+    if (status /= 0) exit  ! Exit if inner loop variogram read loop found the end
     call reader%next_block_item(status, id, strings, length)
     if (status /= 0) exit  ! exit if end of block or end of file
     select case(trim(id))
@@ -360,7 +362,7 @@ subroutine read_variogram_block(t2p, reader)
 
 end subroutine read_variogram_block
 
-
+!-------------------------------------------------------------------------------------------------!
 
 subroutine read_pploc_block(t2p, reader)
   implicit none
@@ -372,6 +374,11 @@ subroutine read_pploc_block(t2p, reader)
   character(30)              :: id, value
   type(t_vstringlist)        :: strings
   
+  ! Sub variables
+  integer                    :: i, npp
+  
+  ! Assume block rows = # of pilot points
+  npp = reader%get_block_len()
   
 
 end subroutine read_pploc_block

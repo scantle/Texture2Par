@@ -55,6 +55,7 @@ module m_datasets
     integer,intent(inout)            :: npoints
     class(t_dataset),pointer         :: object
     
+    allocate(object)
     call object%initialize(npoints)
   
   end function

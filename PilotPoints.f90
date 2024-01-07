@@ -1,11 +1,11 @@
 module m_pilotpoints
   use m_datasets, only: t_dataset
   use m_global, only: dp
-  use m_grid, only: t_grid
+  use m_grid, only: t_grid, create_grid_object
   implicit none
   
   ! Module Variables
-  integer,parameter           :: nproperties = 10  ! Kmin, Kmax, Ss, Sy, Aniso, Kd, Sd, KHp, KVp, STp
+  integer,parameter           :: nproperties = 9  ! Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, STp
   
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_dataset) :: t_pilotpoints
@@ -14,6 +14,7 @@ module m_pilotpoints
     !type(t_grid),pointer          :: grid             ! Grid
   
     integer                        :: class_id         ! Class ID
+    integer,allocatable            :: lay_type(:)      ! Aquifer (1), Aquitard (-1), Unused (0)
     real(dp),allocatable           :: values(:,:)      ! Data values associated with each point
     
     contains
@@ -36,6 +37,8 @@ module m_pilotpoints
     integer,intent(inout)            :: npoints
     class(t_pilotpoints),pointer     :: object
     
+    allocate(object)
+    
     call object%initialize(npoints)
   
   end function
@@ -52,10 +55,15 @@ module m_pilotpoints
     integer,intent(in)                 :: npoints
     
     allocate(this%category  (npoints), &
+             this%lay_type  (npoints), &
              this%values    (nproperties, npoints))
     allocate(this%grid)
 
-    !this%grid => create_grid_object(3, npoints)  ! X,Y,Z coords by n 
+    ! Intialize with default values
+    this%category = 1
+    this%lay_type = 0
+    
+    this%grid => create_grid_object(2, npoints)  ! X,Y coords by n 
   
   end subroutine init_pilotpoint
   

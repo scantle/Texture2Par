@@ -27,6 +27,7 @@ module m_grid
     integer,intent(in)            :: dim, n
     class(t_Grid),pointer         :: object
     
+    allocate(object)
     call object%initialize(dim, n)
   
   end function
