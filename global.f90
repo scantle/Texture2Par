@@ -3,5 +3,6 @@ module m_global
   
   INTEGER, PARAMETER               :: dp = SELECTED_REAL_KIND(15,307)  ! 64-bit
   type(t_file_writer), pointer     :: log   ! Runtime Log
+  real                             :: NODATA = -999
   
 end module m_global

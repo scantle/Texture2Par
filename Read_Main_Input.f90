@@ -65,6 +65,8 @@ module m_read_main_input
       case("PP_PARAMETERS")
         call pre_block_read_check(t2p, id)
         !CALL read_ppparm_block(t2p, reader)
+      case ("END")
+        ! Do nothing - errant line? Block reader ended early?
       case DEFAULT
         ! TODO! Raise error!
         call error_handler(1,reader%file,"Unknown Block Name: " // trim(id))
@@ -365,6 +367,7 @@ end subroutine read_variogram_block
 !-------------------------------------------------------------------------------------------------!
 
 subroutine read_pploc_block(t2p, reader)
+  use m_pilotpoints, only: t_pilotpoints, create_pilotpoint_object
   implicit none
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
@@ -375,12 +378,74 @@ subroutine read_pploc_block(t2p, reader)
   type(t_vstringlist)        :: strings
   
   ! Sub variables
-  integer                    :: i, npp
+  integer,pointer            :: pp_id(:)
+  integer,allocatable        :: zone_tracker(:)
+  integer                    :: i, j, npp, pid, nzones
+  logical                    :: zone_counted
   
   ! Assume block rows = # of pilot points
   npp = reader%get_block_len()
   
+  ! Allocate & setup PP object
+  allocate(pp_id       (npp), &
+           zone_tracker(npp)  )
+  t2p%pilot_points => create_pilotpoint_object(npp, t2p%nclasses)
+  nzones = 0
+  
+  ! Now read the pilot point locations
+  do i=1, npp
+    call reader%next_block_item(status, id, strings, length)
+    if (status /= 0) exit  ! exit if end of block or end of file
+    ! Should this be read with it's own function?
+    pp_id(i)                       = item2int(strings, 1)
+    t2p%pilot_points%grid%xyz(1,i) = item2dp (strings, 2)
+    t2p%pilot_points%grid%xyz(2,i) = item2dp (strings, 3)
+    t2p%pilot_points%category(i)   = item2int(strings, 4)
+    t2p%pilot_points%lay_type(i)   = find_string_index_in_list(strings, 5, "A,T", .true.)
+    
+    ! Early input checking & handling
+    do j=1, i-1
+      if (pp_id(j) == pp_id(i)) call error_handler(1,reader%file,"All pilot point IDs must be unique")
+    end do
+    if (i == 1) then  ! Make sure first pilot point wasn't aquitard
+      if(t2p%pilot_points%lay_type(i)==2) then
+        call error_handler(1,reader%file,"Must list all aquifer pilot points (A) before aquitard pilot points (T)")
+      end if
+    else  ! Check to make sure all aquifer pps listed before aquitard & store max aquifer pp
+      if (t2p%pilot_points%lay_type(i)==1 .and. t2p%pilot_points%lay_type(i-1)==2) then
+        call error_handler(1,reader%file,"Must list all aquifer pilot points (A) before aquitard pilot points (T)")
+      else if (t2p%pilot_points%lay_type(i)==2 .and. t2p%pilot_points%lay_type(i-1)==1) then
+        ! First aquitard pilot point
+        t2p%pilot_points%lay_type_split = i
+      end if
+      
+      ! Adjust aquitard zone id for internal use
+      if (t2p%pilot_points%lay_type(i)==2) then
+        t2p%pilot_points%category(i) = t2p%pilot_points%category(i) + t2p%pilot_points%lay_type_split
+      end if
 
+    end if
+    ! Zone tracking
+    zone_counted = .false.
+    do j=1, nzones
+      if (zone_tracker(j) == t2p%pilot_points%category(j)) zone_counted = .true.
+    end do
+    if (zone_counted == .false.) then
+      nzones = nzones + 1
+      zone_tracker(nzones) = t2p%pilot_points%category(i)
+    end if
+  end do
+  
+  ! Should be at block end, check to be sure!
+  call reader%next_block_item(status, id, strings, length)
+  if (trim(id)/="END") then
+    ! Assumption is the input file is formatted incorrectly... hopefully that's why
+    call error_handler(1,reader%file,"PP_LOCS section improperly formatted.")
+  end if
+
+  ! Run pplocs setup hook
+  call t2p%setup_pplocs(pp_id)
+  
 end subroutine read_pploc_block
 
 end module m_read_main_input

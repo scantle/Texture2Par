@@ -1,6 +1,6 @@
 module m_pilotpoints
   use m_datasets, only: t_dataset
-  use m_global, only: dp
+  use m_global, only: dp, NODATA
   use m_grid, only: t_grid, create_grid_object
   implicit none
   
@@ -13,9 +13,11 @@ module m_pilotpoints
     !integer,allocatable           :: category(:)      ! Zones, Hydrostratigraphic Units (HSUs)
     !type(t_grid),pointer          :: grid             ! Grid
   
-    integer                        :: class_id         ! Class ID
-    integer,allocatable            :: lay_type(:)      ! Aquifer (1), Aquitard (-1), Unused (0)
-    real(dp),allocatable           :: values(:,:)      ! Data values associated with each point
+    integer,allocatable            :: lay_type(:)      ! Aquifer (1), Aquitard (2), Unused (0)
+    real(dp),allocatable           :: values(:,:,:)    ! Data values by parameter (point, parameter, class_id)
+    
+    ! Counters
+    integer                        :: lay_type_split   ! The first aquitard pilot point index
     
     contains
     
@@ -30,20 +32,20 @@ module m_pilotpoints
 ! MODULE PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
-  function create_pilotpoint_object(class_id, npoints) result(object)
+  function create_pilotpoint_object(npoints, nclasses) result(object)
     implicit none
     
-    integer,intent(in)               :: class_id
-    integer,intent(inout)            :: npoints
+    integer,intent(inout)            :: npoints,nclasses
     class(t_pilotpoints),pointer     :: object
     
     allocate(object)
     
     call object%initialize(npoints)
+    
+    ! Have to allocate this seperately, since init cannot take more than npoints (inheritance)
+    allocate(object%values(npoints, nproperties, nclasses))
   
   end function
-  
-!-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!
 ! LAYER CLASS TYPE-BOUND PROCEDURES
@@ -55,13 +57,14 @@ module m_pilotpoints
     integer,intent(in)                 :: npoints
     
     allocate(this%category  (npoints), &
-             this%lay_type  (npoints), &
-             this%values    (nproperties, npoints))
+             this%lay_type  (npoints)  )
     allocate(this%grid)
 
     ! Intialize with default values
     this%category = 1
     this%lay_type = 0
+    this%values   = NODATA
+    this%lay_type_split = 0
     
     this%grid => create_grid_object(2, npoints)  ! X,Y coords by n 
   

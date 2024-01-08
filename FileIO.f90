@@ -47,6 +47,7 @@ module m_file_io
   integer                     :: log_unit   ! Unit the log file is open on
                                             ! (so IO errors can be written to it)
   character(500)              :: line       ! For reading in lines from files
+  INTEGER, PARAMETER          :: dp = SELECTED_REAL_KIND(15,307)  ! 64-bit real
   
   contains
 
@@ -154,6 +155,18 @@ module m_file_io
     
     call vstring_cast(vstrlist_index(strings, i), out_real)
   end function item2real
+  
+!-------------------------------------------------------------------------------------------------!
+  
+    ! Should these be here or in a different module??
+  function item2dp(strings, i) result(out_dp)
+    implicit none
+    class(t_vstringlist),intent(in)   :: strings
+    integer, intent(in)               :: i
+    real(dp)                          :: out_dp
+    
+    call vstring_cast(vstrlist_index(strings, i), out_dp)
+  end function item2dp
   
 !-------------------------------------------------------------------------------------------------!
   

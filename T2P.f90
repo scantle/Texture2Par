@@ -2,6 +2,7 @@ module m_T2P
   use m_vstringlist, only: t_vstringlist
   use m_options, only: t_options
   use m_flow_model, only: t_flow_model
+  use m_pilotpoints, only: t_pilotpoints
   use m_vario, only: t_vgm
 !-------------------------------------------------------------------------------------------------!
   type t_T2P
@@ -11,7 +12,7 @@ module m_T2P
     !type(t_Interpolator),pointer     :: interp_pp
     !type(t_Dataset),pointer          :: datasets(:)
     type(t_vgm),pointer              :: variograms(:,:)  ! (stuctures, variogram)
-    !type(t_PilotPoint),pointer       :: pilot_points
+    type(t_pilotpoints),pointer      :: pilot_points
     
     ! Counters
     integer                          :: nclasses   ! Number of data classes
@@ -45,6 +46,7 @@ module m_T2P
     procedure,public :: initialize
     procedure,public :: setup_data_classes
     procedure,public :: setup_variograms
+    procedure,public :: setup_pplocs
     !procedure :: allocate_data_classes
     !procedure :: allocate
   
@@ -124,6 +126,16 @@ module m_T2P
     this%has_interp = .true.
   
   end subroutine setup_variograms
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine setup_pplocs(this, pp_id)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    integer, pointer              :: pp_id(:)
+    
+    this%pp_id => pp_id
+  
+  end subroutine setup_pplocs
 !-------------------------------------------------------------------------------------------------!
   
 end module m_T2P
