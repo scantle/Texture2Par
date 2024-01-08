@@ -337,9 +337,10 @@ module m_file_io
     implicit none
     class(t_file_reader)              :: this
     integer,intent(out)               :: eof
+    type(t_vstringlist)               :: temp
     type(t_vstringlist), intent(out)  :: strings
     type(t_vstring)                   :: line_string
-    integer                           :: ierr
+    integer                           :: ierr, i
 
     ! Get to the next line
     call this%read_to_next_line(eof)
@@ -349,8 +350,14 @@ module m_file_io
       read(this%unit, '(a500)', iostat=ierr) line
       ! TODO Error handling
       call vstring_new(line_string, trim(adjustl(line)))
-      strings = vstrlist_split(line_string)
-    
+      temp = vstrlist_split(line_string)
+      ! Add all strings of non-zero length to strings object
+      ! TODO: fix whatever causes vstringlist_split not to catch tabs followed by spaces
+      call vstrlist_new ( strings )
+      do i=1, vstrlist_length(temp)
+        if (vstring_length(vstrlist_index(temp, i))>0) call vstrlist_append(strings, vstrlist_index(temp, i))
+      end do
+      call vstrlist_free(temp)
     else
       ! End of file - just return
     end if

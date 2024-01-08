@@ -30,7 +30,7 @@ module m_T2P
     type(t_vstringlist)              :: dataset_files    ! dataset filenames
     type(t_vstringlist)              :: dataset_trans    ! dataset transformations
     integer,pointer                  :: nnear(:)         ! Number of nearest points used for interpolation
-    integer,pointer                  :: pp_id(:)
+    integer,pointer                  :: pp_id(:)         ! ID value of each pilot point (index matches pilot_points)
     
     ! Read trackers - used to check if a block has been read (and make sure it exists)
     logical                          :: has_opt
@@ -128,12 +128,21 @@ module m_T2P
   end subroutine setup_variograms
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine setup_pplocs(this, pp_id)
+  subroutine setup_pplocs(this, pp_id, nzones, zone_tracker)
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer, pointer              :: pp_id(:)
+    integer, intent(in)           :: nzones, zone_tracker(:)
+    integer                       :: i
     
     this%pp_id => pp_id
+    allocate(this%pilot_points%zonelist(nzones))
+    
+    do i=1, nzones
+      this%pilot_points%zonelist(i) = zone_tracker(i)
+    end do
+    
+    this%has_pplocs = .true.
   
   end subroutine setup_pplocs
 !-------------------------------------------------------------------------------------------------!

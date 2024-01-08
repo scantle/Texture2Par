@@ -49,6 +49,8 @@ module m_grid
     
     allocate(this%xyz(dim,n))
     
+    this%xyz = 0.0
+    
   end subroutine initialize
   
 !-------------------------------------------------------------------------------------------------!

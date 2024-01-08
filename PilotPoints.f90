@@ -14,10 +14,13 @@ module m_pilotpoints
     !type(t_grid),pointer          :: grid             ! Grid
   
     integer,allocatable            :: lay_type(:)      ! Aquifer (1), Aquitard (2), Unused (0)
+    integer,allocatable            :: zonelist(:)      ! List of all "categories" assigned to a pilot point
     real(dp),allocatable           :: values(:,:,:)    ! Data values by parameter (point, parameter, class_id)
     
     ! Counters
-    integer                        :: lay_type_split   ! The first aquitard pilot point index
+    integer                        :: max_a_cat        ! Max aquifer category id
+    integer                        :: pp_split         ! First aquitard point index
+    integer                        :: zonelist_split   ! The first aquitard zone in zonelist
     
     contains
     
@@ -44,6 +47,7 @@ module m_pilotpoints
     
     ! Have to allocate this seperately, since init cannot take more than npoints (inheritance)
     allocate(object%values(npoints, nproperties, nclasses))
+    object%values   = NODATA
   
   end function
   
@@ -61,10 +65,11 @@ module m_pilotpoints
     allocate(this%grid)
 
     ! Intialize with default values
-    this%category = 1
-    this%lay_type = 0
-    this%values   = NODATA
-    this%lay_type_split = 0
+    this%category       = 1
+    this%lay_type       = 0
+    this%max_a_cat      = 0
+    this%pp_split       = 0
+    this%zonelist_split = 0
     
     this%grid => create_grid_object(2, npoints)  ! X,Y coords by n 
   

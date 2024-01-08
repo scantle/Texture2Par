@@ -87,6 +87,8 @@ module m_read_main_input
         if (t2p%has_opt==.false.) call error_handler(2,reader%file,"OPTIONS block must be declared before CLASSES")
       case("VARIOGRAMS")
         if (t2p%has_classes==.false.) call error_handler(2,reader%file,"CLASSES block must be declared before VARIOGRAMS")
+      case("PP_LOCS")
+        if (t2p%has_classes==.false.) call error_handler(2,reader%file,"CLASSES block must be declared before PP_LOCS")
       case("PP_PARAMETERS")
         if (t2p%has_pplocs==.false.) call error_handler(2,reader%file,"PP_LOCS block must be declared before PP_PARAMETERS")
       case DEFAULT
@@ -391,6 +393,7 @@ subroutine read_pploc_block(t2p, reader)
            zone_tracker(npp)  )
   t2p%pilot_points => create_pilotpoint_object(npp, t2p%nclasses)
   nzones = 0
+  zone_tracker = 0
   
   ! Now read the pilot point locations
   do i=1, npp
@@ -415,20 +418,22 @@ subroutine read_pploc_block(t2p, reader)
       if (t2p%pilot_points%lay_type(i)==1 .and. t2p%pilot_points%lay_type(i-1)==2) then
         call error_handler(1,reader%file,"Must list all aquifer pilot points (A) before aquitard pilot points (T)")
       else if (t2p%pilot_points%lay_type(i)==2 .and. t2p%pilot_points%lay_type(i-1)==1) then
-        ! First aquitard pilot point
-        t2p%pilot_points%lay_type_split = i
+        ! First aquitard pilot point - record (TODO: All Necessary?)
+        t2p%pilot_points%max_a_cat = maxval(t2p%pilot_points%category(:))
+        t2p%pilot_points%pp_split = i
+        t2p%pilot_points%zonelist_split = nzones + 1
       end if
       
-      ! Adjust aquitard zone id for internal use
+      ! Adjust aquitard zone id for internal use - offset by maximum aquifer category
       if (t2p%pilot_points%lay_type(i)==2) then
-        t2p%pilot_points%category(i) = t2p%pilot_points%category(i) + t2p%pilot_points%lay_type_split
+        t2p%pilot_points%category(i) = t2p%pilot_points%max_a_cat + t2p%pilot_points%category(i)
       end if
 
     end if
     ! Zone tracking
     zone_counted = .false.
     do j=1, nzones
-      if (zone_tracker(j) == t2p%pilot_points%category(j)) zone_counted = .true.
+      if (zone_tracker(j) == t2p%pilot_points%category(i)) zone_counted = .true.
     end do
     if (zone_counted == .false.) then
       nzones = nzones + 1
@@ -444,7 +449,7 @@ subroutine read_pploc_block(t2p, reader)
   end if
 
   ! Run pplocs setup hook
-  call t2p%setup_pplocs(pp_id)
+  call t2p%setup_pplocs(pp_id, nzones, zone_tracker)
   
 end subroutine read_pploc_block
 
