@@ -64,7 +64,7 @@ module m_read_main_input
         CALL read_pploc_block(t2p, reader)
       case("PP_PARAMETERS")
         call pre_block_read_check(t2p, id)
-        !CALL read_ppparm_block(t2p, reader)
+        CALL read_ppparm_block(t2p, reader)
       case ("END")
         ! Do nothing - errant line? Block reader ended early?
       case DEFAULT
@@ -391,6 +391,7 @@ subroutine read_pploc_block(t2p, reader)
   ! Allocate & setup PP object
   allocate(pp_id       (npp), &
            zone_tracker(npp)  )
+  t2p%npp = npp
   t2p%pilot_points => create_pilotpoint_object(npp, t2p%nclasses)
   nzones = 0
   zone_tracker = 0
@@ -453,4 +454,57 @@ subroutine read_pploc_block(t2p, reader)
   
 end subroutine read_pploc_block
 
+!-------------------------------------------------------------------------------------------------!
+  
+subroutine read_ppparm_block(t2p, reader)
+  implicit none
+  type(t_t2p),intent(inout)       :: t2p
+  type(t_file_reader), pointer    :: reader
+  
+  ! Standard file reader variables
+  integer                    :: status, length
+  character(30)              :: id, value
+  type(t_vstringlist)        :: strings
+  
+  ! Subroutine variables
+  integer                    :: pp_index
+  
+  ! Loop until end of block or end of file
+  status = 0
+  do
+    if (status /= 0) exit  ! Exit if inner loop pp read loop found the end
+    call reader%next_block_item(status, id, strings, length)
+    if (status /= 0) exit  ! exit if end of block or end of file
+    select case(trim(id))
+      case("TYPE")  ! Only valid id (for now)
+      call item2char(strings, 2, value, toupper=.true.)  ! Get type
+
+      ! Internal Loop over pilot points, whatever type they are (global or class)
+      do
+        call reader%next_block_item(status, id, strings, length)
+        if (status /= 0) exit  ! exit if end of block or end of file
+        if (trim(id)=="TYPE") then ! move back one line & exit if it's the next class
+          call reader%back(1)
+          exit
+        end if
+        ! Read line for pp_id and get internal pilot point index
+        pp_index = t2p%get_pp_index(item2int(strings, 1))
+        ! Now we react to type
+        select case(value)
+          case("GLOBAL")
+          case("CLASS")
+          case DEFAULT
+            call error_handler(1,reader%file,"Unknown Pilot Point Type: " // trim(value))
+        end select
+      end do ! End of pp reading loop
+      
+      case DEFAULT
+        call error_handler(1,reader%file,"Unknown Pilot Point Parameter option: " // trim(id))
+    end select
+  end do
+  
+end subroutine read_ppparm_block
+
+!-------------------------------------------------------------------------------------------------!
+  
 end module m_read_main_input
