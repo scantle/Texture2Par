@@ -17,8 +17,6 @@ module m_T2P
     ! Counters
     integer                          :: nclasses   ! Number of data classes
     integer                          :: nprimary   ! Number of *primary* datasets (for which hydraulic properties exist)
-    integer                          :: npp        ! Number of pilot points
-    integer                          :: nppzones   ! Number of Pilot Point Zones
     integer                          :: nhsus      ! Number of Hydrostratigraphic Units (HSUs)
                                                    ! (Formerly "geologic zones")
     integer                          :: nvario     ! Number of variograms
@@ -31,7 +29,6 @@ module m_T2P
     type(t_vstringlist)              :: dataset_files    ! dataset filenames
     type(t_vstringlist)              :: dataset_trans    ! dataset transformations
     integer,pointer                  :: nnear(:)         ! Number of nearest points used for interpolation
-    integer,pointer                  :: pp_id(:)         ! ID value of each pilot point (index matches pilot_points)
     
     ! Read trackers - used to check if a block has been read (and make sure it exists)
     logical                          :: has_opt
@@ -48,7 +45,6 @@ module m_T2P
     procedure,public :: setup_data_classes
     procedure,public :: setup_variograms
     procedure,public :: setup_pplocs
-    procedure,public :: get_pp_index
     !procedure :: allocate_data_classes
     !procedure :: allocate
   
@@ -82,7 +78,6 @@ module m_T2P
     this%nvario   = 0
     
     ! Set class defaults
-    this%nppzones = 1
     this%nhsus    = 1
     
   end subroutine initialize
@@ -137,7 +132,7 @@ module m_T2P
     integer, intent(in)           :: nzones, zone_tracker(:)
     integer                       :: i
     
-    this%pp_id => pp_id
+    this%pilot_points%pp_id => pp_id
     allocate(this%pilot_points%zonelist(nzones))
     
     do i=1, nzones
@@ -148,18 +143,5 @@ module m_T2P
   
   end subroutine setup_pplocs
 !-------------------------------------------------------------------------------------------------!
-  
-  function get_pp_index(this, pp_id) result(index)  ! TODO seems like this (and pp_id) should be PilotPoints
-    implicit none
-    class(t_T2P), intent(inout)   :: this
-    integer,intent(in)            :: pp_id
-    integer                       :: index
 
-    do index=1, this%npp
-      if (this%pp_id(index)==pp_id) exit
-    end do
-  
-  end function get_pp_index
-  
-!-------------------------------------------------------------------------------------------------!
 end module m_T2P
