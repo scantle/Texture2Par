@@ -1,7 +1,7 @@
 program Texture2Par
   use m_global, only: log
   use m_T2P, only: t_t2p
-  use m_file_io, only: io_initialize
+  use m_file_io, only: io_initialize, get_command_args
   use m_read_main_input, only: read_main_input
   use m_log, only: log_init
   use m_error_handler, only: normal_exit
@@ -21,7 +21,7 @@ program Texture2Par
 !
 ! Requires Input File: Texture2Par.in
 !
-! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
+! Copyright 2024 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
   character(100)      :: main_input_file = 'Texture2Par.in'
@@ -33,6 +33,7 @@ program Texture2Par
   write(*,'(4x,a)')   'Copyright S.S. Papadopulos & Associates Inc.'
     
   ! Pre-read initializations
+  call get_command_args(main_input_file)
   call io_initialize()
   call log_init(log)
   call t2p%initialize()
@@ -41,19 +42,21 @@ program Texture2Par
   call read_main_input(t2p, main_input_file)
     
   ! Check Major Inputs
-  
-    
-  ! Allocate
-    
-    
-  ! Read Sub-Input Files
-    
-    
-  ! Check Sub Inputs
     
     
   ! Main
-    
+  
+    ! Assign PPTO_grid (data or fmodel)
+
+    ! Krige PP to PPTO_grid
+  
+    ! INTERP_ORDER: BEFORE
+    ! Krige textures to fmodel grid
+    ! Calc parameters at fmodel grid locations
+  
+    ! INTERP_ORDER: AFTER
+    ! Calc parameters at data locations
+    ! Krige parameters to fmodel grid
     
   ! Output
     

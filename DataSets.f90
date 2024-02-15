@@ -14,7 +14,7 @@ module m_datasets
   
   end type t_dataset
 !-------------------------------------------------------------------------------------------------!
-!  type, extends(t_dataset) :: t_intervaldata   ! UNSURE IF NEEDED
+!  type, extends(t_dataset) :: t_intervaldata
 !    
 !    character(30)                  :: name             ! Texture class
 !    integer                        :: class_id         ! Class ID
@@ -25,7 +25,7 @@ module m_datasets
 !    
 !      procedure,public             :: initialize => init_interval
 !  
-!  end type t_dataset
+!  end type t_intervaldata
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_dataset) :: t_layerdata
     

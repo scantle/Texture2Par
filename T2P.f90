@@ -16,6 +16,7 @@ module m_T2P
     
     ! Counters
     integer                          :: nclasses   ! Number of data classes
+    integer                          :: ndatafiles
     integer                          :: nprimary   ! Number of *primary* datasets (for which hydraulic properties exist)
     integer                          :: nhsus      ! Number of Hydrostratigraphic Units (HSUs)
                                                    ! (Formerly "geologic zones")

@@ -62,21 +62,22 @@
 		<Filter Name="File IO">
 		<File RelativePath=".\FileIO.f90"/>
 		<File RelativePath=".\fpath.f90"/>
+		<File RelativePath=".\Read_Datasets.f90"/>
 		<File RelativePath=".\Read_Main_Input.f90"/>
 		<File RelativePath=".\t2p_log.f90"/></Filter>
 		<Filter Name="Interpolators">
 		<File RelativePath=".\variogram.f90"/></Filter>
-		<Filter Name="Tools">
-		<File RelativePath=".\ErrorHandler.f90"/>
-		<File RelativePath=".\kdtree2.f90"/>
-		<File RelativePath=".\Str_Module.f90"/>
-		<File RelativePath=".\Tools.f90"/></Filter>
 		<Filter Name="Objects">
 		<File RelativePath=".\DataSets.f90"/>
 		<File RelativePath=".\FlowModel.f90"/>
 		<File RelativePath=".\Options.f90"/>
 		<File RelativePath=".\PilotPoints.f90"/>
 		<File RelativePath=".\T2P.f90"/></Filter>
+		<Filter Name="Tools">
+		<File RelativePath=".\ErrorHandler.f90"/>
+		<File RelativePath=".\kdtree2.f90"/>
+		<File RelativePath=".\Str_Module.f90"/>
+		<File RelativePath=".\Tools.f90"/></Filter>
 		<File RelativePath=".\global.f90"/>
 		<File RelativePath=".\Texture2Par.f90"/></Filter>
 	</Files>

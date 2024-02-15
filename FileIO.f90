@@ -26,9 +26,11 @@ module m_file_io
       procedure,private      :: jump_to_external
       procedure,private      :: handle_eof
       procedure,private      :: read_to_next_line
+      procedure,public       :: next_item
       procedure,public       :: next_block_id
       procedure,public       :: next_block_item
       procedure,public       :: get_block_len
+      procedure,public       :: get_data_len
       procedure,public       :: back
     
   end type t_file_reader
@@ -64,6 +66,20 @@ module m_file_io
     log_unit = 0
     
   end subroutine io_initialize
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine get_command_args(main_fname)
+    implicit none
+    
+    character(*),intent(inout)    :: main_fname
+    
+    ! For now, no flags or anything fancy - just if they pass a new main t2p input file
+    if (COMMAND_ARGUMENT_COUNT() > 0) then
+      call GET_COMMAND_ARGUMENT(1, main_fname)
+    end if
+  
+  end subroutine get_command_args
 
 !-------------------------------------------------------------------------------------------------!
   
@@ -106,7 +122,7 @@ module m_file_io
     f%file = trim(file)
     
     open(f%unit, file=f%file, action='READ', STATUS='OLD', iostat=f%ioerr, iomsg=iomsg)
-    write(log_unit,'(3a)') 'Opening file', trim(f%file), ' for reading.'
+    write(log_unit,'(3a)') 'Opening file ', trim(f%file), ' for reading.'
     call f%iomsg_handler(iomsg)
     
     
@@ -227,7 +243,7 @@ module m_file_io
     
     if (this%ioerr /= 0) then
       write(*,'(a)') trim(iomsg)
-      write(log_unit,'(3a)') 'IO Error -', trim(iomsg)
+      write(log_unit,'(3a)') 'IO Error - ', trim(iomsg)
       close(this%unit)
       error stop
     end if
@@ -346,7 +362,7 @@ module m_file_io
     call this%read_to_next_line(eof)
     if (eof == 0) then
     
-      ! Read string, ensure block -> pass to block reader
+      ! Read string
       read(this%unit, '(a500)', iostat=ierr) line
       ! TODO Error handling
       call vstring_new(line_string, trim(adjustl(line)))
@@ -453,6 +469,29 @@ module m_file_io
     end do
           
   end function get_block_len
+
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_data_len(this) result(data_len)
+    implicit none
+    class(t_file_reader), intent(in) :: this
+    integer                         :: i, data_len, eof, ierr
+    integer                         :: length
+    character(30)                   :: id
+    type(t_vstringlist)             :: strings
+
+    data_len = 0
+          
+    ! Loop through and count non-comment lines
+    call this%read_to_next_line(eof)
+    do while (eof == 0)
+      data_len = data_len + 1
+      call this%read_to_next_line(eof)
+      read(this%unit, '', iostat=ierr)
+      if (IS_IOSTAT_END(ierr)) eof = 1
+    end do
+          
+  end function get_data_len
 
 !-------------------------------------------------------------------------------------------------!
   
