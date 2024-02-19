@@ -12,8 +12,8 @@ module fpath
 subroutine fpath_strip(path, cfolder, cfile)
   implicit none
 
-  character(maxlen), intent(in)     :: path
-  character(maxlen), intent(out)    :: cfolder, cfile
+  character(*), intent(in)     :: path
+  character(*), intent(out)    :: cfolder, cfile
 
   integer                  :: lastslash
 
@@ -28,8 +28,8 @@ end subroutine fpath_strip
 subroutine fpath_join(path1, path2, pathcombo)
   implicit none
 
-  character(maxlen), intent(in)  :: path1, path2
-  character(maxlen), intent(out) :: pathcombo
+  character(*), intent(in)  :: path1, path2
+  character(*), intent(out) :: pathcombo
 
   character(maxlen)              :: c1, c2
   integer                        :: len1, len2

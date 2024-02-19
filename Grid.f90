@@ -10,7 +10,7 @@ module m_grid
     real(dp), allocatable     :: xyz(:,:)  ! xyz by n points
     
     contains
-      procedure,public        :: initialize
+      procedure,private        :: initialize
       !procedure,public        :: build_tree
   end type t_Grid
 !-------------------------------------------------------------------------------------------------!

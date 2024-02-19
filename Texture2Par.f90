@@ -40,6 +40,7 @@ program Texture2Par
   
   ! Read Main Input
   call read_main_input(t2p, main_input_file)
+  call t2p%fmodel%read_model()
     
   ! Check Major Inputs
     

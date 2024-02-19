@@ -26,7 +26,9 @@ module m_file_io
       procedure,private      :: jump_to_external
       procedure,private      :: handle_eof
       procedure,private      :: read_to_next_line
+      procedure,public       :: read_to_next_iwfm_line
       procedure,public       :: next_item
+      procedure,public       :: skip
       procedure,public       :: next_block_id
       procedure,public       :: next_block_item
       procedure,public       :: get_block_len
@@ -311,6 +313,43 @@ module m_file_io
   
 !-------------------------------------------------------------------------------------------------!
   
+  subroutine read_to_next_iwfm_line(this, eof, skipped)
+    implicit none
+    class(t_file_reader)              :: this
+    type(t_file_reader),pointer       :: next_file
+    integer                           :: i, ierr
+    integer,intent(out)               :: eof
+    integer,intent(inout),optional    :: skipped
+    
+    ! For line splitting
+    integer             :: left(2), right(2)
+
+    eof = 0
+    i = 0
+    do while (eof == 0)
+      read(this%unit, '(a500)', iostat=ierr) line
+      line = adjustl(line)
+      ! Handle EOF
+      if (IS_IOSTAT_END(ierr)) then
+        call this%handle_eof(eof)
+      else if ((line(1:1) == 'C').or.(line(1:1) == 'c').or.(line(1:1) == '*')&
+           .or.(line(1:1) == '')) then
+        ! Comment line, blank line
+        i = i + 1
+        continue
+      else
+        ! Data
+        backspace(this%unit)
+        exit
+      end if
+    end do
+    
+    if (present(skipped)) skipped = i
+  
+  end subroutine
+  
+!-------------------------------------------------------------------------------------------------!
+  
   subroutine jump_to_external(this, file)
     implicit none
     class(t_file_reader)  :: this
@@ -349,6 +388,7 @@ module m_file_io
   end subroutine handle_eof
   
 !-------------------------------------------------------------------------------------------------!
+  
     subroutine next_item(this, eof, strings)
     implicit none
     class(t_file_reader)              :: this
@@ -379,6 +419,29 @@ module m_file_io
     end if
   
   end subroutine next_item
+  
+!-------------------------------------------------------------------------------------------------!
+  
+    subroutine skip(this, nlines, eof)
+    implicit none
+    class(t_file_reader)              :: this
+    integer,intent(in)                :: nlines
+    integer,intent(out)               :: eof
+    integer                           :: ierr, i
+
+    ! Get to the next line
+    call this%read_to_next_line(eof)
+    if (eof == 0) then
+      do i=1, nlines    
+        ! Read empty
+        read(this%unit, '(a500)', iostat=ierr)
+        ! TODO Error handling
+      end do
+    else
+      ! End of file - just return
+    end if
+  
+  end subroutine skip
   
 !-------------------------------------------------------------------------------------------------!
   
