@@ -14,23 +14,25 @@ module m_flow_model
   ! The alternative was to write a lot of get/set-type methods that would have to be overwritten
   ! by each derived class.
   
-    integer                       :: model_type    ! 1 - grid, 2 - IWFM, 3 - MODFLOW 2000
-    integer                       :: nlayers       ! Number of model layers
-    integer,allocatable           :: nnodes(:)     ! Number of nodes (points at which flow is solved) by layer
-    character(100)                :: preproc_file  ! IWFM main discretization file (empty for others)
-    character(100)                :: sim_file      ! Simulation File or MODFLOW name file
-    character(100)                :: ppzone_file   ! File of pilot point zones defined for each node
-    character(100)                :: hsu_file      ! File of Hydrostratigraphic Units (HSUs) defined for each node
-    character(100)                :: template_file ! File copied for output_file
-    character(100)                :: output_file   ! File where aquifer parameters are written
-    type(t_Grid), pointer         :: layer(:)      ! Grid for ground surface (0) + each layer bottom
-    logical                       :: laysamexy     ! Flag for when X,Y coords can be assumed same for each layer
+    integer                       :: model_type     ! 1 - grid, 2 - IWFM, 3 - MODFLOW 2000
+    integer                       :: nlayers        ! Number of model layers
+    integer                       :: ngrids         ! Number of unique model grid (xy) layers
+    integer,allocatable           :: nnodes(:)      ! Number of nodes (points at which flow is solved) by layer
+    integer,pointer               :: lay2grid(:)    ! Which grid each layer uses (e.g., same xy between layers)
+    character(100)                :: preproc_file   ! IWFM main discretization file (empty for others)
+    character(100)                :: sim_file       ! Simulation File or MODFLOW name file
+    character(100)                :: ppzone_file    ! File of pilot point zones defined for each node
+    character(100)                :: hsu_file       ! File of Hydrostratigraphic Units (HSUs) defined for each node
+    character(100)                :: template_file  ! File copied for output_file
+    character(100)                :: output_file    ! File where aquifer parameters are written
+    real(dp), allocatable         :: elev(:,:)      ! Elevations for each layer (node, layer)
+    type(t_grid),allocatable :: grid(:)        ! xy grids for layers
   
     contains
       procedure,public            :: initialize
       procedure,public            :: read_model
       procedure,private           :: alloc_layers
-      procedure,private           :: init_layers
+      procedure,private           :: alloc_nodes
       !procedure,private     :: write_model_input
   
   end type t_flow_model
@@ -47,12 +49,18 @@ module m_flow_model
     character(100)            :: elem_file
     character(100)            :: node_file
     character(100)            :: strt_file
+    integer,allocatable       :: nodeid(:)      ! IWFM Node ID for each node
+    integer,allocatable       :: nodebyid(:)    ! Given an IWFM node ID, contains internal t2p node index
+    integer,allocatable       :: node2elem(:)   
+    integer,allocatable       :: elem2nnodes(:)
     logical,allocatable       :: lay_exist(:)   ! Tracks whether layer has thickness > 0.00
   
   contains
     procedure,public          :: initialize => init_iwfm
     procedure,public          :: read_model => read_iwfm
     procedure,private         :: alloc_layers => alloc_layers_iwfm
+    procedure,private         :: alloc_nodes  => alloc_nodes_iwfm
+    procedure,private         :: init_nodebyid
   
   end type 
 !-------------------------------------------------------------------------------------------------!
@@ -137,7 +145,6 @@ module m_flow_model
     class(t_flow_model)       :: this
     
     this%model_type    = 0
-    this%laysamexy     = .false.
     this%preproc_file  = ''
     this%sim_file      = ''
     this%ppzone_file   = ''
@@ -159,27 +166,37 @@ module m_flow_model
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine alloc_layers(this)
+  subroutine alloc_layers(this, lay2grid)
     implicit none
     class(t_flow_model)       :: this
+    integer                   :: lay2grid(this%nlayers)
+    integer                   :: i
+
+    ! Allocate grid based on unique grids
+    this%lay2grid = lay2grid
+    this%ngrids   = maxval(this%lay2grid)
     
-    allocate(this%nnodes(this%nlayers), &
-             this%layer (0:this%nlayers))  ! +1 for GSE (layer(0))
+    allocate(this%nnodes  (0:this%nlayers), &
+             this%lay2grid(  this%nlayers), &  
+             this%grid    (  this%ngrids )  )
     
   end subroutine alloc_layers
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine init_layers(this)
+  subroutine alloc_nodes(this)
     implicit none
     class(t_flow_model)       :: this
     integer                   :: i
     
-    do i=1, this%nlayers
-      this%layer(i) = create_grid_object(3, this%nnodes(i))
+    allocate(this%elev(maxval(this%nnodes(:)), 0:this%nlayers))
+    
+    ! Loop over layers creating grid object
+    do i=1, this%ngrids
+      this%grid(i) = create_grid_object(2, this%nnodes(this%lay2grid(i)))
     end do
     
-  end subroutine init_layers
+  end subroutine alloc_nodes
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -192,7 +209,6 @@ module m_flow_model
     class(t_mgrid)       :: this
     
     call initialize(this)
-    this%laysamexy   = .false.  ! Todo
     this%model_type  = 1
     
   end subroutine init_mgrid  
@@ -208,23 +224,62 @@ module m_flow_model
     class(t_iwfm_model)       :: this
     
     call initialize(this)
-    this%laysamexy   = .true.
     this%model_type  = 2
     
   end subroutine init_iwfm  
 
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine alloc_layers_iwfm(this)
+  subroutine alloc_layers_iwfm(this, lay2grid)
     implicit none
     class(t_iwfm_model)       :: this
+    integer                   :: lay2grid(this%nlayers)
     
     allocate(this%lay_exist(this%nlayers))
     
     ! Call super
-    call alloc_layers(this)
+    call alloc_layers(this, lay2grid)
     
   end subroutine alloc_layers_iwfm
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine alloc_nodes_iwfm(this)
+    ! Additional arrays required for IWFM due to Finite-element
+    implicit none
+    class(t_iwfm_model)       :: this
+  
+    allocate(this%node2elem(this%nnodes(1)), &
+             this%nodeid   (this%nnodes(1))  )
+    
+    ! Call super
+    call alloc_nodes(this)
+    
+    ! Initialize
+    this%node2elem(:) = 0
+    
+  end subroutine alloc_nodes_iwfm
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine init_nodebyid(this, maxnodeid)
+    implicit none
+    class(t_iwfm_model)       :: this
+    integer,intent(in)        :: maxnodeid
+    integer                   :: i
+    
+    allocate(this%nodebyid(maxnodeid))
+
+    ! Initialize all values to a negative number so we can easily check whether
+    ! a nodeid is valid
+    this%nodebyid = -1
+
+    ! Fill array
+    do i=1, this%nnodes(i)
+      this%nodebyid(this%nodeid(i)) = i
+    end do
+  
+  end subroutine init_nodebyid
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -236,8 +291,8 @@ module m_flow_model
     type(t_file_reader), pointer :: reader2
     class(t_iwfm_model)          :: this
     character(200)               :: path
-    real(dp)                     :: factor
-    integer                      :: itemp
+    real(dp)                     :: factor, rtemp1, rtemp2
+    integer                      :: i, j, itemp, maxnodeid
     
     ! Standard file reader variables
     integer                    :: status, length, eof
@@ -271,7 +326,7 @@ module m_flow_model
     this%nlayers = item2int(strings, 1) * 2   ! Each layer has overlying aquitard (to be treated as layer)
     
     ! Allocate layers
-    call this%alloc_layers()
+    !call this%alloc_layers()
     
     ! Node file
     reader => open_file_reader(this%node_file)
@@ -282,10 +337,21 @@ module m_flow_model
     factor = item2dp(strings, 1)
     
     ! Allocate nodes
-    call this%init_layers()
+    call this%alloc_nodes()
     
     ! Continue Node file read
+    call reader%read_to_next_iwfm_line(eof)
+    maxnodeid = 0
+    do i=1,this%nnodes(1)
+      call reader%next_item(eof, strings)
+      this%nodeid(i) = item2int(strings, 1)
+      if (this%nodeid(i) > maxnodeid) maxnodeid = this%nodeid(i)
+      ! IWFM all layers share one grid
+      this%grid(1)%coords(1,i) = item2dp(strings, 2) * factor
+      this%grid(1)%coords(2,i) = item2dp(strings, 3) * factor
+    end do
     
+    call this%init_nodebyid(maxnodeid)
     
   end subroutine read_iwfm
   
@@ -302,7 +368,6 @@ module m_flow_model
     call initialize(this)
     this%model_type  = 3
     this%structured  = .true.
-    this%laysamexy   = .true.
     
   end subroutine init_modflow2000
   

@@ -402,11 +402,11 @@ subroutine read_pploc_block(t2p, reader)
     call reader%next_block_item(status, id, strings, length)
     if (status /= 0) exit  ! exit if end of block or end of file
     ! Should this be read with it's own function?
-    pp_id(i)                       = item2int(strings, 1)
-    t2p%pilot_points%grid%xyz(1,i) = item2dp (strings, 2)
-    t2p%pilot_points%grid%xyz(2,i) = item2dp (strings, 3)
-    t2p%pilot_points%category(i)   = item2int(strings, 4)
-    t2p%pilot_points%lay_type(i)   = find_string_index_in_list(strings, 5, "A,T", .true.)
+    pp_id(i)                           = item2int(strings, 1)
+    t2p%pilot_points%grid%coords(1,i)  = item2dp (strings, 2)
+    t2p%pilot_points%grid%coords(2,i)  = item2dp (strings, 3)
+    t2p%pilot_points%category(i)       = item2int(strings, 4)
+    t2p%pilot_points%lay_type(i)       = find_string_index_in_list(strings, 5, "A,T", .true.)
     
     ! Early input checking & handling
     do j=1, i-1

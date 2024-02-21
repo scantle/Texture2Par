@@ -7,16 +7,14 @@ module m_grid
   
     integer                   :: n
     integer                   :: dim
-    real(dp), allocatable     :: xyz(:,:)  ! xyz by n points
+    real(dp), allocatable     :: coords(:,:)  ! xy by n points
     
     contains
       procedure,private        :: initialize
       !procedure,public        :: build_tree
   end type t_Grid
 !-------------------------------------------------------------------------------------------------!
-  
   contains
-  
 !-------------------------------------------------------------------------------------------------!
 ! MODULE PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -47,9 +45,9 @@ module m_grid
     this%n   = n
     this%dim = dim
     
-    allocate(this%xyz(dim,n))
+    allocate(this%coords(dim,n))
     
-    this%xyz = 0.0
+    this%coords = 0.0
     
   end subroutine initialize
   
