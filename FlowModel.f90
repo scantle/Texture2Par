@@ -49,10 +49,13 @@ module m_flow_model
     character(100)            :: elem_file
     character(100)            :: node_file
     character(100)            :: strt_file
+    integer                   :: nelements
     integer,allocatable       :: nodeid(:)      ! IWFM Node ID for each node
     integer,allocatable       :: nodebyid(:)    ! Given an IWFM node ID, contains internal t2p node index
+    integer,allocatable       :: elements(:,:)  ! Comprised of 3-4 nodes (inode, nelem)
+    integer,allocatable       :: elemid(:)      ! IWFM Elem ID for each element
+    integer,allocatable       :: elemnnodes(:)
     integer,allocatable       :: node2elem(:)   
-    integer,allocatable       :: elem2nnodes(:)
     logical,allocatable       :: lay_exist(:)   ! Tracks whether layer has thickness > 0.00
   
   contains
@@ -60,6 +63,7 @@ module m_flow_model
     procedure,public          :: read_model => read_iwfm
     procedure,private         :: alloc_layers => alloc_layers_iwfm
     procedure,private         :: alloc_nodes  => alloc_nodes_iwfm
+    procedure,private         :: alloc_elems
     procedure,private         :: init_nodebyid
   
   end type 
@@ -173,12 +177,13 @@ module m_flow_model
     integer                   :: i
 
     ! Allocate grid based on unique grids
-    this%lay2grid = lay2grid
-    this%ngrids   = maxval(this%lay2grid)
+    this%ngrids   = maxval(lay2grid)
     
     allocate(this%nnodes  (0:this%nlayers), &
              this%lay2grid(  this%nlayers), &  
              this%grid    (  this%ngrids )  )
+             
+    this%lay2grid = lay2grid
     
   end subroutine alloc_layers
   
@@ -236,6 +241,7 @@ module m_flow_model
     integer                   :: lay2grid(this%nlayers)
     
     allocate(this%lay_exist(this%nlayers))
+    this%lay_exist = .true.
     
     ! Call super
     call alloc_layers(this, lay2grid)
@@ -259,6 +265,21 @@ module m_flow_model
     this%node2elem(:) = 0
     
   end subroutine alloc_nodes_iwfm
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine alloc_elems(this)
+    implicit none
+    class(t_iwfm_model)       :: this
+    integer                   :: i
+    
+    allocate(this%elements(4,this%nelements), & 
+             this%elemnnodes(this%nelements), &
+             this%elemid    (this%nelements)  )
+
+    this%elements(4,this%nelements) = -1  ! initialize to obvious non-node value
+  
+  end subroutine alloc_elems
 
 !-------------------------------------------------------------------------------------------------!
   
@@ -290,9 +311,10 @@ module m_flow_model
     implicit none
     type(t_file_reader), pointer :: reader2
     class(t_iwfm_model)          :: this
-    character(200)               :: path
+    character(200)               :: path, ctemp
     real(dp)                     :: factor, rtemp1, rtemp2
-    integer                      :: i, j, itemp, maxnodeid
+    integer                      :: i, j, itemp, inode, maxnodeid
+    integer, allocatable         :: lay2grid(:)
     
     ! Standard file reader variables
     integer                    :: status, length, eof
@@ -326,7 +348,9 @@ module m_flow_model
     this%nlayers = item2int(strings, 1) * 2   ! Each layer has overlying aquitard (to be treated as layer)
     
     ! Allocate layers
-    !call this%alloc_layers()
+    allocate(lay2grid(this%nlayers))
+    lay2grid(:) = 1                           ! all layers use the same xy grid in IWFM
+    call this%alloc_layers(lay2grid)
     
     ! Node file
     reader => open_file_reader(this%node_file)
@@ -350,8 +374,72 @@ module m_flow_model
       this%grid(1)%coords(1,i) = item2dp(strings, 2) * factor
       this%grid(1)%coords(2,i) = item2dp(strings, 3) * factor
     end do
+    call this%init_nodebyid(maxnodeid)         ! Setup mapping from nodeid->array index
+    call reader%close_file()                   ! Close Node file 
     
-    call this%init_nodebyid(maxnodeid)
+    ! Continue stratigraphy file read
+    call reader2%next_item(eof, strings)       ! elev, thickness mult factor
+    factor = item2dp(strings, 1)
+    call reader2%read_to_next_iwfm_line(eof)
+    do i=1,this%nnodes(1)
+      call reader2%next_item(eof, strings)
+      inode = this%nodebyid(item2int(strings,1))
+      this%elev(inode,:) = item2dp(strings, 2) * factor
+      do j=1, this%nlayers                    ! Loop over layers subtracting thicknesses
+        this%elev(inode,j:this%nlayers) = this%elev(inode,j:this%nlayers) - (item2dp(strings, 2+j) * factor)
+      end do
+    end do
+    call reader2%close_file()                   ! Close Stratigraphy file
+    ! TODO Setup active/inactive layers & aquitard layers
+    
+    ! Elements file
+    reader => open_file_reader(this%elem_file)
+    call reader%read_to_next_iwfm_line(eof)
+    call reader2%next_item(eof, strings)       ! Number of elements
+    this%nelements = item2int(strings, 1)
+    call reader%read_to_next_iwfm_line(eof)
+    call reader2%next_item(eof, strings)       ! Number of regions
+    itemp = item2int(strings, 1)
+    call reader%read_to_next_iwfm_line(eof)
+    call reader%skip(itemp, eof)               ! Skip region descriptions
+    
+    ! Allocate element arrays
+    call this%alloc_elems()
+    
+    ! Read elements
+    call reader%read_to_next_iwfm_line(eof)
+    do i=1, this%nelements
+      call reader2%next_item(eof, strings)
+      this%elemid(i) = item2int(strings, 1)
+      this%elements(1,i) = item2int(strings, 2)
+      this%elements(2,i) = item2int(strings, 3)
+      this%elements(3,i) = item2int(strings, 4)
+      this%elements(4,i) = item2int(strings, 5)
+      ! Translate/Validate nodeid to node index for each connection
+      do j=1,4
+        if (this%elements(j,i) > 0) then
+          if (this%nodebyid(this%elements(j,i)) < 1) then
+            write(ctemp,'(i)') this%elemid(i)
+            call error_handler(2,opt_msg='Invalid node ID in Element File. Element Number = ' // trim(ctemp))
+          end if
+          this%elements(j,i) = this%nodebyid(this%elements(j,i))
+        end if
+      end do
+    end do
+    call reader%close_file()                   ! Close Element file
+    
+    ! Simulation file
+    reader => open_file_reader(this%sim_file)
+    call fpath_strip(this%sim_file, path, value)
+    
+    call reader%read_to_next_iwfm_line(eof)
+    call reader%skip(3, eof)                   ! Title
+    call reader%read_to_next_iwfm_line(eof)
+    call reader%skip(1, eof)                   ! Binary file
+    call reader%next_item(eof, strings)        ! GW File
+    call item2char(strings, 1, value)
+    call fpath_join(path, value, this%output_file)
+    call reader%close_file()                   ! Close Simulation file
     
   end subroutine read_iwfm
   
