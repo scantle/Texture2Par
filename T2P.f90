@@ -105,6 +105,9 @@ module m_T2P
     ! TODO handle INTERP_ORDER: AFTER
     this%nvario = maxval(this%class_connections) + 1  ! +1 for pilot points
     
+    ! Subtract one if INFER because we don't krige - it's the remainder of the other class(es)
+    if (this%opt%INFER_LAST_CLASS) this%nvario = this%nvario - 1  
+    
     this%has_classes = .true.
   
   end subroutine setup_data_classes

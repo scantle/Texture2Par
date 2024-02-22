@@ -1,4 +1,9 @@
 module m_options
+!-------------------------------------------------------------------------------------------------!  
+! HOW TO ADD AN OPTION
+!  1. Add it as a variable in the type t_options
+!  2. Add it to the initialize routine and give it a default value
+!  3. Create a new case for it in the read_options routine. Write code to handle assignment.
 !-------------------------------------------------------------------------------------------------!
   type t_options
     ! Required Options:
@@ -25,6 +30,7 @@ module m_options
     logical                  :: OUTPUT_GRID           !
     logical                  :: OUTPUT_ARRAY          !
     logical                  :: LOG_KRIGE_K           !
+    logical                  :: INFER_LAST_CLASS      ! For classic T2P, where the data is only percent coarse
     
     contains
       procedure, public :: initialize
@@ -64,6 +70,7 @@ module m_options
     this%OUTPUT_GRID          = .false.
     this%OUTPUT_ARRAY         = .false.
     this%LOG_KRIGE_K          = .false.
+    this%INFER_LAST_CLASS     = .false.
   end subroutine initialize
 
 !-------------------------------------------------------------------------------------------------!
@@ -134,6 +141,8 @@ subroutine read_options(this, reader)
         this%OUTPUT_ARRAY         = .true.
       case("LOG_KRIGE_K")
         this%LOG_KRIGE_K          = .true.
+      case("INFER_LAST_CLASS")
+        this%INFER_LAST_CLASS     = .true.
       case DEFAULT
         call error_handler(1,reader%file,"Unknown Option Name: " // trim(id))
     end select
