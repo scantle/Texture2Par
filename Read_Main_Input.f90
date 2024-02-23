@@ -118,14 +118,13 @@ module m_read_main_input
         case("TYPE")
           call item2char(strings, 2, value, toupper=.true.)
           t2p%fmodel => create_flow_model_object(value)
-          !call create_flow_model_object(value, t2p%fmodel)
         case("SIM_FILE")
           call check_id_validity(id, t2p%fmodel, 2) ! Only IWFM
           call item2char(strings, 2, t2p%fmodel%sim_file)
         case("PREPROC_FILE")
           call check_id_validity(id, t2p%fmodel, 2) ! Only IWFM
           call item2char(strings, 2, t2p%fmodel%preproc_file)
-        case("NAME_FILE")
+        case("NAME_FILE", "NAM_FILE")
           call check_id_validity(id, t2p%fmodel, 3) ! only MODFLOW2000
           call item2char(strings, 2, t2p%fmodel%sim_file)
         case("TEMPLATE_FILE")
@@ -137,6 +136,15 @@ module m_read_main_input
         case("HSU_FILE")
           call check_id_validity(id, t2p%fmodel)
           call item2char(strings, 2, t2p%fmodel%hsu_file)
+        case("XOFF","XOFFSET")
+          call check_id_validity(id, t2p%fmodel, 3) ! only MODFLOW2000
+          t2p%fmodel%xoff = item2dp(strings, 2)
+        case("YOFF","YOFFSET")
+          call check_id_validity(id, t2p%fmodel, 3) ! only MODFLOW2000
+          t2p%fmodel%yoff = item2dp(strings, 2)
+        case("ROT","ROTATION")
+          call check_id_validity(id, t2p%fmodel, 3) ! only MODFLOW2000
+          t2p%fmodel%rot= item2dp(strings, 2)
         case DEFAULT
           call error_handler(1,reader%file,"Unknown Flow Model option: " // trim(id))
       end select
@@ -449,7 +457,7 @@ subroutine read_pploc_block(t2p, reader)
     ! Assumption is the input file is formatted incorrectly... hopefully that's why
     call error_handler(1,reader%file,"PP_LOCS section improperly formatted.")
   end if
-
+  
   ! Run pplocs setup hook
   call t2p%setup_pplocs(pp_id, nzones, zone_tracker)
   

@@ -16,6 +16,7 @@ module m_flow_model
   ! by each derived class.
   
     integer                       :: model_type     ! 1 - grid, 2 - IWFM, 3 - MODFLOW 2000
+    real(dp)                      :: xoff,yoff,rot  ! Conversion from/to global coordinates
     integer                       :: nlayers        ! Number of model layers
     integer                       :: ngrids         ! Number of unique model grid (xy) layers
     integer,allocatable           :: nnodes(:)      ! Number of nodes (points at which flow is solved) by layer
@@ -27,7 +28,7 @@ module m_flow_model
     character(100)                :: template_file  ! File copied for output_file
     character(100)                :: output_file    ! File where aquifer parameters are written
     real(dp), allocatable         :: elev(:,:)      ! Elevations for each layer (node, layer)
-    type(t_grid),allocatable :: grid(:)        ! xy grids for layers
+    type(t_grid),allocatable      :: grid(:)        ! xy grids for layers
   
     contains
       procedure,public            :: initialize
@@ -76,9 +77,13 @@ module m_flow_model
   type, extends(t_flow_model) :: t_modflow_model
   
   logical                     :: structured    ! T/F Structured (row/col) model
+  integer                     :: layfile       ! LPF/UPW IUNIT number
+  character(3)                :: gwftyp        ! LPF or UPW, for printing
   
   contains
     procedure,public          :: initialize => init_modflow2000
+    procedure,public          :: read_model => read_modflow2000
+    procedure,private         :: calc_mfcell_centers_global
   
   end type 
 !-------------------------------------------------------------------------------------------------!  
@@ -507,6 +512,126 @@ module m_flow_model
     this%structured  = .true.
     
   end subroutine init_modflow2000
+  
+!-----------------------------------------------------------------------------!
+  subroutine calc_mfcell_centers_global(this)
+    use tools, only: loc2glo
+    use GLOBAL, ONLY : NROW, NCOL, DELR, DELC
+    implicit none
+    ! Calculates cell centers in global coordinates  
+    class(t_modflow_model)       :: this
+    integer                :: i, j, n
+    real(dp)               :: xbase, ybase, locx(this%nnodes(1)), locy(this%nnodes(1))
+  
+    ybase = sum(delc)
+    do i=1, nrow
+      xbase = 0.0
+      do j=1, ncol
+        n = (i-1)*ncol+j
+        locx(n) = xbase + 0.5 * delr(j)
+        locy(n) = ybase - 0.5 * delc(i)
+        call loc2glo(locx(n), locy(n), this%xoff, this%yoff, this%rot, this%grid(1)%coords(1,n), this%grid(1)%coords(2,n))
+        xbase = xbase + delr(j)
+      end do
+      ybase = ybase - delc(i)
+    end do
+  
+  end subroutine calc_mfcell_centers_global
+!-----------------------------------------------------------------------------!
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine read_modflow2000(this)
+    use m_file_io, only: log_unit
+    ! MODFLOW globals to import
+    use GLOBAL, ONLY : IUNSTR,NLAY,NROW,NCOL,DELR,DELC,TOP,BOT,LAYCBD,IUNIT,NODLAY
+    use PARAMMODULE, ONLY: NMLTAR, NZONAR
+    use GWFBCFMODULE, ONLY: VKA, SC1, SC2
+    implicit none
+    class(t_modflow_model)       :: this
+    integer                      :: ierr, ngrids, i, j, k, n, mfmaxunit
+    integer,allocatable          :: grid_count(:), lay2grid(:)
+    character(256)               :: iomsg
+    logical                      :: found
+    
+    ! MODFLOW-USG does the heavy lifting
+    call init_modflow_usg(this%sim_file,ierr,iomsg,mfmaxunit)
+    
+    ! Error handling for external reader...
+    if (ierr /= 0) then
+      ! Todo replace with actual log writing function
+      write(*,'(a)') trim(iomsg)
+      write(log_unit,'(3a)') 'IO Error - ', trim(iomsg)
+      error stop
+    end if
+    
+    ! Handle MODFLOW settings
+    ! UPW or LPF (or none)
+    this%layfile = 0
+    if (IUNIT(23) > 0) then
+      this%layfile = 23
+      this%gwftyp = 'LPF'
+    end if
+    if (IUNIT(45) > 0) then
+      this%layfile = 45
+      this%gwftyp = 'UPW'
+    end if
+    if (this%layfile==0) call error_handler(2,'MODFLOW NAM file must have LPF or UPW package present',this%sim_file)
+    
+    allocate(lay2grid(nlay))
+    lay2grid = 1
+    
+    ! Check out if/how unstructured the model is
+    ngrids = 1
+    if (IUNSTR) then
+      this%structured = .false.
+      ! Equal nodes each layer?
+      allocate(grid_count(nlay))
+      grid_count(1) = nodlay(1)
+      do i=2, nlay
+        found = .false.
+        n = nodlay(i)-nodlay(i-1)
+        do j=1, ngrids
+          if (n == grid_count(j)) then
+            found = .true.
+            lay2grid(i) = j
+            exit
+          end if
+        end do
+        if (found == .false.) then
+          ngrids = ngrids + 1
+          grid_count(ngrids) = n
+          lay2grid(i) = ngrids
+        end if
+      end do
+    end if
+    
+    ! Set Layers
+    this%nlayers = nlay
+    this%ngrids  = ngrids
+    call this%alloc_layers(lay2grid)
+    
+    ! Count nodes
+    this%nnodes = (/ (nodlay(i) - nodlay(i-1), i=1, nlay) /)
+    call this%alloc_nodes()
+    
+    ! Move elevation arrays
+    this%elev(:,0) = top(1:this%nnodes(1))
+    do k=1, nlay
+      this%elev(1:this%nnodes(k),k) = bot(nodlay(k-1)+1: nodlay(k))
+    end do
+    
+    ! Get cell/node centers
+    if (IUNSTR) then
+    
+    else
+      call this%calc_mfcell_centers_global()
+    end if
+    
+    ! Clean up
+    if (allocated(grid_count)) deallocate(grid_count)
+    
+  end subroutine read_modflow2000
   
 !-------------------------------------------------------------------------------------------------!
 end module m_flow_model

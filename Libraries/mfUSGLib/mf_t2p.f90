@@ -1,5 +1,5 @@
 !     ******************************************************************
-      subroutine init_modflow_usgs(namfname,ierr,cmaxunit)
+      subroutine init_modflow_usg(namfname,ierr,iomsg,cmaxunit)
       use mf_fpath, only: relpath, fpath_strip
 
       ! Initializes the dis/bas packages of MODFLOW
@@ -15,10 +15,12 @@
       !                             cnper,cmaxunit,civsd,ifail
       !integer                   :: cnodlay(0:999),ciunit(100)
       integer,intent(inout)     :: ierr, cmaxunit
+      character(256),intent(inout)  :: iomsg
 
       ! variables used in routine
       integer                   :: n
-      character*200             :: namfname, namfname_nopath
+      character(*)            :: namfname
+      character(200)            :: namfname_nopath
       integer,parameter         :: mf_iin=141,  &
                                    niunit=100,  &
                                    maxunit=1000
@@ -50,7 +52,7 @@
       ierr=0
 
       ! prep the modflow name file for reading
-      open(mf_iin,file=namfname,status='OLD',iostat=ierr)
+      open(mf_iin,file=namfname,status='OLD',iostat=ierr,iomsg=iomsg)
       if(ierr.ne.0) then
         write(*,*) 'MODFLOW name file does not exist. Terminating.'
         return
@@ -72,7 +74,7 @@
       ! save maxunit for when closing files opened during MODFLOW initialization
       cmaxunit=maxunit
 
-      end subroutine init_modflow_usgs
+      end subroutine init_modflow_usg
 
 
 
