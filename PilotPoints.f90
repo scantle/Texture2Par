@@ -76,7 +76,7 @@ module m_pilotpoints
     this%category       = 1
     this%lay_type       = 0
     this%max_a_cat      = 0
-    this%pp_split       = 0
+    this%pp_split       = npoints
     this%zonelist_split = 0
     
     this%grid => create_grid_object(2, npoints)  ! X,Y coords by n 
