@@ -44,7 +44,7 @@ module m_flow_model
   type,extends(t_flow_model) :: t_flow_fdmodel    ! Finite Difference Model
     ! Ineligant solution to both MF-USG and Grid using the GSF
     integer                   :: nvert
-    integer,allocatable       :: nodenvert(:)   ! Number of nodes that include each vertex
+    integer,allocatable       :: vertnnode(:)   ! Number of nodes that include each vertex
     integer,allocatable       :: vert2node(:,:) ! Nodes that include each vertex
     type(t_grid),pointer      :: vertgrid       ! xyz grid for vertices
     
@@ -233,15 +233,15 @@ module m_flow_model
     
     do j=1, nvert
       ! Increment node-element membership array
-      this%nodenvert(node_vert(j)) = this%nodenvert(node_vert(j)) + 1
+      this%vertnnode(node_vert(j)) = this%vertnnode(node_vert(j)) + 1
       ! Ensure we're not going over our max
-      if (this%nodenvert(node_vert(j)) > max_node_elem_members) then
+      if (this%vertnnode(node_vert(j)) > max_node_elem_members) then
         write(*,*) 'ERROR - max_vert_node_members exceeded!'     ! a slight lie in variable name
         write(*,'(a,i7,a,i3)') 'vert ', node_vert(j), 'is in >', max_node_elem_members
         stop
       end if
       ! Otherwise, add to the array
-      this%vert2node(this%nodenvert(node_vert(j)),node_vert(j)) = node
+      this%vert2node(this%vertnnode(node_vert(j)),node_vert(j)) = node
     end do
 
   end subroutine add_node2vert2node
@@ -252,8 +252,9 @@ module m_flow_model
     implicit none
     class(t_flow_fdmodel)     :: this
     type(t_vstring)           :: strtemp
-    integer                   :: i, j, total_nodes, unodes, ngrids, nvert, node, lay, grid, gridcount, nodevert
-    integer,allocatable       :: nnodes(:), grid_count(:), lay2grid(:), node_nvert(:,:), node_vert(:)
+    integer                   :: i, j, total_nodes, ngrids, nvert, node, lay, grid, itemp, &
+                                 gridcount, nodevert
+    integer,allocatable       :: nnodes(:), grid_count(:), lay2grid(:), node_nvert(:), node_vert(:)
     real(dp)                  :: rtemp(3)
     character(200)            :: ctemp
     logical                   :: found
@@ -323,55 +324,51 @@ module m_flow_model
     end do
     
     ! Read to get number of verticies associated with each node
-    ! Need use unique grids to figure out which layers need to be read
-    allocate(node_nvert(maxval(this%nnodes),ngrids))
+    allocate(node_nvert(total_nodes))
     grid = 1
     gridcount = 0
     do i=1, total_nodes
       read(reader%unit, *) node, rtemp(1:3), lay, nodevert
-      if (lay2grid(lay) < grid) continue    ! Skip this grid if it's not the current one we're looking for
-      node_nvert(i, grid) = nodevert        ! Otherwise, store values
-      if (i==this%nnodes(lay)) then         ! If we're at the last node in the layer, see if we're done reading grids
-        if (grid == ngrids) exit
-        grid = grid+1                       ! exit or advance to next grid
-      end if
+      node_nvert(i) = nodevert
     end do
     
     ! Allocate vertex lists...
-    allocate(this%nodenvert(sum(this%grid%n)), &
-             this%vert2node(max_node_elem_members,sum(this%grid%n)), &
-             node_vert(maxval(node_nvert(:,:))))
-    this%nodenvert = 0
+    allocate(this%vertnnode(nvert), &
+             this%vert2node(max_node_elem_members,nvert), &
+             node_vert(maxval(node_nvert(:))))
+    this%vertnnode = 0
+    this%vert2node = 0
     
     ! Now we backup... and read for vert2node, node x, y, [and a calculated z if grid, not MF-USG]
-    call reader%back(i)
+    call reader%back(total_nodes)
     grid = 1
     gridcount = 0
     do i=1, total_nodes
-      read(reader%unit, *) node, rtemp(1:3), lay, nodevert, node_vert(1:node_nvert(i,grid))
-      if (lay2grid(lay) < grid) then
-        continue    ! Skip this grid if it's not the current one we're looking for
-      else
+      read(reader%unit, *) itemp, rtemp(1:3), lay, nodevert, node_vert(1:node_nvert(i))
+      node = merge(itemp - sum(this%nnodes(2:lay)), itemp, lay > 1)
+      call this%add_node2vert2node(i, nodevert/2, node_vert)  ! Only connecting to top vertices
+      if (lay2grid(lay) == grid) then
         ! Process node
         this%grid(grid)%coords(1:2,i) = rtemp(1:2)
-        call this%add_node2vert2node(i, nodevert, node_vert)
       end if
-      
       ! Get mean top/bot if grid
       select type (this)
         type is (t_mgrid)
+          if (node==1) write(*,*) 'REAL NODE FOUND LAYER', lay, itemp, node
           if (lay==1) then  ! top
-            this%elev(i, lay-1) = sum(this%vertgrid%coords(3,node_vert(         1:nodevert/2))) / (nodevert/2)
-          else              ! just bot
-            this%elev(i, lay)   = sum(this%vertgrid%coords(3,node_vert(nodevert/2:nodevert  ))) / (nodevert/2)
-          end if
+            this%elev(node, lay-1) = sum(this%vertgrid%coords(3,node_vert(1:nodevert/2))) / (nodevert/2)
+          end if            ! bot
+            this%elev(node, lay)   = sum(this%vertgrid%coords(3,node_vert(nodevert/2+1:nodevert  ))) / (nodevert/2)
           ! Make sure top/bot make sense
-          if (this%elev(i,lay) > this%elev(i,lay-1)) then
-            write(ctemp,*) node
+          if (this%elev(node,lay) > this%elev(node,lay-1)) then
+            write(ctemp,*) itemp
             call error_handler(2,opt_msg='Bad vertex elevation or sorting: Layer elevation calc error for node' // ctemp)
           end if
       end select
-      if (i==this%nnodes(lay)) grid = grid+1                       ! just advance to next grid
+      if (node==this%nnodes(lay))then
+      grid = grid+1                       ! just advance to next grid
+      write(*,*) 'GRID FOUND LAYER', lay, grid
+      end if
     end do
     
     call reader%close_file()
