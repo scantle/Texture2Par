@@ -11,7 +11,7 @@ module m_flow_model
   
   type :: t_flow_model  ! Abstract Base Class
   ! Base class contains some derived type variables (e.g., the IWFM preproc file) since otherwise
-  ! the compiler gets confused when you try to set them on the polymorphic t2p%fmodel type
+  ! the compiler gets upset when you try to set them on the polymorphic t2p%fmodel type
   ! The alternative was to write a lot of get/set-type methods that would have to be overwritten
   ! by each derived class.
   
@@ -26,9 +26,11 @@ module m_flow_model
     character(100)                :: ppzone_file    ! File of pilot point zones defined for each node
     character(100)                :: hsu_file       ! File of Hydrostratigraphic Units (HSUs) defined for each node
     character(100)                :: template_file  ! File copied for output_file
+    character(3)                  :: grd_file_type  ! Character string of grid file type (GSF, ...)
+    character(100)                :: grd_file       ! Grid specification file for grid type or MODFLOW-USG
     character(100)                :: output_file    ! File where aquifer parameters are written
     real(dp), allocatable         :: elev(:,:)      ! Elevations for each layer (node, layer)
-    type(t_grid),allocatable      :: grid(:)        ! xy grids for layers
+    type(t_grid),pointer          :: grid(:)        ! xy grids for layers
   
     contains
       procedure,public            :: initialize
@@ -39,10 +41,23 @@ module m_flow_model
   
   end type t_flow_model
 !-------------------------------------------------------------------------------------------------!
-  type, extends(t_flow_model) :: t_mgrid
+  type,extends(t_flow_model) :: t_flow_fdmodel    ! Finite Difference Model
+    ! Ineligant solution to both MF-USG and Grid using the GSF
+    integer                   :: nvert
+    integer,allocatable       :: nodenvert(:)   ! Number of nodes that include each vertex
+    integer,allocatable       :: vert2node(:,:) ! Nodes that include each vertex
+    type(t_grid),pointer      :: vertgrid       ! xyz grid for vertices
+    
+    contains
+      procedure,private       :: read_gsf
+      procedure,private       :: add_node2vert2node
+  end type t_flow_fdmodel
+!-------------------------------------------------------------------------------------------------!
+  type, extends(t_flow_fdmodel) :: t_mgrid
   
   contains
     procedure,public          :: initialize => init_mgrid
+    procedure,public          :: read_model => read_mgrid
   
   end type 
 !-------------------------------------------------------------------------------------------------!
@@ -74,7 +89,7 @@ module m_flow_model
   
   end type 
 !-------------------------------------------------------------------------------------------------!
-  type, extends(t_flow_model) :: t_modflow_model
+  type, extends(t_flow_fdmodel) :: t_modflow_model
   
   logical                     :: structured    ! T/F Structured (row/col) model
   integer                     :: layfile       ! LPF/UPW IUNIT number
@@ -116,7 +131,6 @@ module m_flow_model
   
   end function create_flow_model_object
   
-  
 !-------------------------------------------------------------------------------------------------!
   
   subroutine check_id_validity(id, fmodel, valid_type)
@@ -127,13 +141,6 @@ module m_flow_model
     class(t_flow_model),pointer  :: fmodel
     character(30)                :: id
     integer,optional             :: valid_type
-    
-    !select type (fmodel)
-    !  type is (t_iwfm_model)
-    !    write(*,*) 'IWFM MODEL'
-    !  type is (t_flow_model)
-    !    write(*,*) 'GENERIC!'
-    !end select
     
     ! Is type set?
     if (ASSOCIATED(fmodel)==.false.) then
@@ -159,12 +166,14 @@ module m_flow_model
     class(t_flow_model)       :: this
     
     this%model_type    = 0
+    this%nlayers       = 0
     this%preproc_file  = ''
     this%sim_file      = ''
     this%ppzone_file   = ''
     this%hsu_file      = ''
     this%template_file = ''
     this%output_file   = ''
+    this%grd_file      = ''
     
   end subroutine initialize
   
@@ -215,6 +224,162 @@ module m_flow_model
   
 !-------------------------------------------------------------------------------------------------!
   
+  subroutine add_node2vert2node(this, node, nvert, node_vert)
+    implicit none
+    class(t_flow_fdmodel)     :: this
+    integer                   :: i, j, k
+    integer, intent(in)       :: node, nvert
+    integer, intent(in)       :: node_vert(nvert)
+    
+    do j=1, nvert
+      ! Increment node-element membership array
+      this%nodenvert(node_vert(j)) = this%nodenvert(node_vert(j)) + 1
+      ! Ensure we're not going over our max
+      if (this%nodenvert(node_vert(j)) > max_node_elem_members) then
+        write(*,*) 'ERROR - max_vert_node_members exceeded!'     ! a slight lie in variable name
+        write(*,'(a,i7,a,i3)') 'vert ', node_vert(j), 'is in >', max_node_elem_members
+        stop
+      end if
+      ! Otherwise, add to the array
+      this%vert2node(this%nodenvert(node_vert(j)),node_vert(j)) = node
+    end do
+
+  end subroutine add_node2vert2node
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine read_gsf(this)
+    implicit none
+    class(t_flow_fdmodel)     :: this
+    type(t_vstring)           :: strtemp
+    integer                   :: i, j, total_nodes, unodes, ngrids, nvert, node, lay, grid, gridcount, nodevert
+    integer,allocatable       :: nnodes(:), grid_count(:), lay2grid(:), node_nvert(:,:), node_vert(:)
+    real(dp)                  :: rtemp(3)
+    character(200)            :: ctemp
+    logical                   :: found
+    
+    ! Standard file reader variables
+    integer                    :: eof
+    type(t_vstringlist)        :: strings
+  
+    reader => open_file_reader(this%grd_file)
+    
+    call reader%next_item(eof, strings) ! Line 1 structured or unstructured (unused)
+    ! Next couple lines are read if t_mgrid, but not if MODFLOW
+    ! Additionally, arrays SHOULD already be allocated for MODFLOW
+    select type (this)
+      type is (t_mgrid)
+        ! Line 2 Nodes for all layers, nlay, iz, ic (used if mgrid, not MF-USG)
+        read(reader%unit, *) total_nodes, this%nlayers
+        allocate(nnodes(this%nlayers))
+        ! Line 3 (Custom T2P) nodes per layer (NODELAY in USG)
+        call reader%next_item(eof, strings)
+        ngrids = 1
+        allocate(grid_count(this%nlayers), lay2grid(this%nlayers))
+        if (vstring_match(vstrlist_index(strings,1),'CONSTANT')) then
+          nnodes(:) = item2int(strings, 2)              ! same nnodes each layer
+          lay2grid = 1
+        else                                                 ! The hard way
+          do i=1, this%nlayers
+            nnodes(i) = item2int(strings, i)
+          end do
+          grid_count(1) = nnodes(1)
+          do i=2, this%nlayers
+            found = .false.
+            do j=1, ngrids
+              if (nnodes(i) == grid_count(j)) then
+                found = .true.
+                lay2grid(i) = j
+                exit
+              end if
+            end do
+            if (found == .false.) then
+              ngrids = ngrids + 1
+              grid_count(ngrids) = nnodes(i)
+              lay2grid(i) = ngrids
+            end if
+          end do
+        end if
+      type is (t_modflow_model)
+        call reader%skip(2, eof)
+    end select  ! Back to the easy stuff
+    
+    ! Allocate layers, nodes
+    this%ngrids  = ngrids
+    call this%alloc_layers(lay2grid)
+    this%nnodes = nnodes
+    call this%alloc_nodes()
+    
+    ! Line 4 Number of vertices
+    read(reader%unit, *) nvert
+    this%nvert = nvert
+    allocate(this%vertgrid)
+    this%vertgrid = create_grid_object(3, this%nvert)
+    write(*,*) this%nnodes
+        
+    ! Read vertices
+    do i=1, nvert
+      read(reader%unit, *) this%vertgrid%coords(1:3,i)  ! xyz
+    end do
+    
+    ! Read to get number of verticies associated with each node
+    ! Need use unique grids to figure out which layers need to be read
+    allocate(node_nvert(maxval(this%nnodes),ngrids))
+    grid = 1
+    gridcount = 0
+    do i=1, total_nodes
+      read(reader%unit, *) node, rtemp(1:3), lay, nodevert
+      if (lay2grid(lay) < grid) continue    ! Skip this grid if it's not the current one we're looking for
+      node_nvert(i, grid) = nodevert        ! Otherwise, store values
+      if (i==this%nnodes(lay)) then         ! If we're at the last node in the layer, see if we're done reading grids
+        if (grid == ngrids) exit
+        grid = grid+1                       ! exit or advance to next grid
+      end if
+    end do
+    
+    ! Allocate vertex lists...
+    allocate(this%nodenvert(sum(this%grid%n)), &
+             this%vert2node(max_node_elem_members,sum(this%grid%n)), &
+             node_vert(maxval(node_nvert(:,:))))
+    this%nodenvert = 0
+    
+    ! Now we backup... and read for vert2node, node x, y, [and a calculated z if grid, not MF-USG]
+    call reader%back(i)
+    grid = 1
+    gridcount = 0
+    do i=1, total_nodes
+      read(reader%unit, *) node, rtemp(1:3), lay, nodevert, node_vert(1:node_nvert(i,grid))
+      if (lay2grid(lay) < grid) then
+        continue    ! Skip this grid if it's not the current one we're looking for
+      else
+        ! Process node
+        this%grid(grid)%coords(1:2,i) = rtemp(1:2)
+        call this%add_node2vert2node(i, nodevert, node_vert)
+      end if
+      
+      ! Get mean top/bot if grid
+      select type (this)
+        type is (t_mgrid)
+          if (lay==1) then  ! top
+            this%elev(i, lay-1) = sum(this%vertgrid%coords(3,node_vert(         1:nodevert/2))) / (nodevert/2)
+          else              ! just bot
+            this%elev(i, lay)   = sum(this%vertgrid%coords(3,node_vert(nodevert/2:nodevert  ))) / (nodevert/2)
+          end if
+          ! Make sure top/bot make sense
+          if (this%elev(i,lay) > this%elev(i,lay-1)) then
+            write(ctemp,*) node
+            call error_handler(2,opt_msg='Bad vertex elevation or sorting: Layer elevation calc error for node' // ctemp)
+          end if
+      end select
+      if (i==this%nnodes(lay)) grid = grid+1                       ! just advance to next grid
+    end do
+    
+    call reader%close_file()
+    
+  end subroutine
+  
+!-------------------------------------------------------------------------------------------------!
+  
 !-------------------------------------------------------------------------------------------------!
 ! GRID CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -227,6 +392,22 @@ module m_flow_model
     this%model_type  = 1
     
   end subroutine init_mgrid  
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine read_mgrid(this)
+    implicit none
+    class(t_mgrid)       :: this
+    
+    ! Potentially multiple types of grid files (although unimplemented so far)
+    select case (this%grd_file_type)
+      case('gsf')
+        call this%read_gsf()
+      case DEFAULT
+        call error_handler(2,opt_msg='Unknown Grid Type for file: ' // this%grd_file)
+    end select
+  
+  end subroutine read_mgrid
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -623,7 +804,7 @@ module m_flow_model
     
     ! Get cell/node centers
     if (IUNSTR) then
-    
+      ! TODO
     else
       call this%calc_mfcell_centers_global()
     end if

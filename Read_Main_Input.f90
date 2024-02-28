@@ -127,6 +127,10 @@ module m_read_main_input
         case("NAME_FILE", "NAM_FILE")
           call check_id_validity(id, t2p%fmodel, 3) ! only MODFLOW2000
           call item2char(strings, 2, t2p%fmodel%sim_file)
+        case("GSF_FILE")
+          call check_id_validity(id, t2p%fmodel)    ! Grid or MFUSG
+          call item2char(strings, 2, t2p%fmodel%grd_file)
+          t2p%fmodel%grd_file_type = 'gsf'
         case("TEMPLATE_FILE")
           call check_id_validity(id, t2p%fmodel)
           call item2char(strings, 2, t2p%fmodel%template_file)
