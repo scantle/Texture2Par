@@ -79,7 +79,9 @@
 		<File RelativePath=".\Str_Module.f90"/>
 		<File RelativePath=".\Tools.f90"/></Filter>
 		<File RelativePath=".\global.f90"/>
-		<File RelativePath=".\Texture2Par.f90"/></Filter>
+		<File RelativePath=".\Interpolators.f90"/>
+		<File RelativePath=".\Texture2Par.f90"/>
+		<File RelativePath=".\weights.f90"/></Filter>
 	</Files>
 	<Globals/>
 </VisualStudioProject>

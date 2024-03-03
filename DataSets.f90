@@ -7,6 +7,8 @@ module m_datasets
     
     integer,allocatable            :: category(:)      ! Zones, Hydrostratigraphic Units (HSUs)
     type(t_grid),pointer           :: grid             ! Grid
+    ! Doesn't even have any data! Because array dimensions differ, subclasses are controversially
+    ! allowed to have their own data storage
     
     contains
     
