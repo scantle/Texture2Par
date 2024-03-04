@@ -7,10 +7,12 @@ module m_interpolator
   type, abstract :: Interpolator
   ! Abstract Base Class
   contains
+    procedure,public       :: predict
     procedure              :: calculate_weights
     procedure              :: apply_weights
   end type Interpolator
 !-------------------------------------------------------------------------------------------------!
+  
   type, extends(Interpolator) :: Kriging
     class(t_vgm), allocatable :: variogramModel
     ! Attributes for KD-tree and search parameters could be added here
@@ -18,22 +20,25 @@ module m_interpolator
 
   end type Kriging
 !-------------------------------------------------------------------------------------------------!
+  
   type, extends(Kriging) :: SK
   contains
-    procedure              :: calculate_weights => calculate_weights_sk
-    procedure              :: apply_weights => apply_weights_sk
+    !procedure              :: calculate_weights => calculate_weights_sk
+    !procedure              :: apply_weights => apply_weights_sk
   end type SK
 !-------------------------------------------------------------------------------------------------!
+  
   type, extends(Kriging) :: OK
   contains
-    procedure              :: calculate_weights => calculate_weights_ok
-    procedure              :: apply_weights => apply_weights_ok
+    !procedure              :: calculate_weights => calculate_weights_ok
+    !procedure              :: apply_weights => apply_weights_ok
   end type OK
 !-------------------------------------------------------------------------------------------------!
+  
   type, extends(Interpolator) :: IDW
   contains
-    procedure              :: calculate_weights => calculate_weights_idw
-    procedure              :: apply_weights => apply_weights_idw
+    !procedure              :: calculate_weights => calculate_weights_idw
+    !procedure              :: apply_weights => apply_weights_idw
   end type IDW
 !-------------------------------------------------------------------------------------------------!
 
@@ -46,21 +51,53 @@ module m_interpolator
 !-------------------------------------------------------------------------------------------------!
 ! BASE CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
-  subroutine calculate_weights(this, inputGrids, outputGrid, dataArrays)
-    class(Interpolator), intent(in) :: this
-    type(t_grid), intent(in) :: inputGrids(:)
-    type(t_grid), intent(in) :: outputGrid
-    real(dp), intent(in) :: dataArrays(:)
-    ! Implementation...
-  end subroutine calculate_weights
+  
+  subroutine predict(this, input_grids, output_grid, in_values, out_values, ngroups, groups, weights)
+    implicit none
+    class(Interpolator), intent(in)     :: this
+    type(t_grid), intent(inout)         :: input_grids(:)
+    type(t_grid), intent(inout)         :: output_grid
+    real(dp),intent(inout)              :: in_values(:)       ! placeholder
+    real(dp),intent(out)                :: out_values(:)
+    integer ,intent(in)                 :: ngroups
+    integer ,intent(in)                 :: groups(ngroups)
+    type(t_weights),optional            :: weights
+    
+    ! Get weights
+    if (present(weights)==.false.) then
+      weights = this%calculate_weights(input_grids, output_grid)
+    end if
+    
+    ! Use weights to make prediction
+    out_values = this%apply_weights(in_values, weights)
+  
+  end subroutine predict
+  
 !-------------------------------------------------------------------------------------------------!
-  subroutine apply_weights(this, dataArrays, weightsObject, outputValues)
+  
+  function calculate_weights(this, inputGrids, outputGrid) result(weights)
+    implicit none
     class(Interpolator), intent(in) :: this
-    real(dp), intent(in) :: dataArrays(:)
-    type(t_weights), intent(in) :: weightsObject
-    real, intent(out) :: outputValues(:)
+    type(t_grid), intent(in)        :: inputGrids(:)
+    type(t_grid), intent(in)        :: outputGrid
+    type(t_weights)                 :: weights
+    
     ! Implementation...
-  end subroutine apply_weights
+    
+  end function calculate_weights
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  function apply_weights(this, in_values, weights) result (out_values)
+    implicit none
+    class(Interpolator), intent(in) :: this
+    real(dp), intent(in)            :: in_values(:)
+    type(t_weights), intent(in)     :: weights
+    real(dp)                        :: out_values(weights%nout)
+    
+    ! Implementation...
+    
+  end function apply_weights
   
 !-------------------------------------------------------------------------------------------------!
 ! KRIGING CLASS TYPE-BOUND PROCEDURES
@@ -70,61 +107,31 @@ module m_interpolator
 ! SIMPLE KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine calculate_weights_sk(this, inputGrids, outputGrid, dataArrays)
-    class(SK), intent(in) :: this
-    type(t_grid), intent(in) :: inputGrids(:)
-    type(t_grid), intent(in) :: outputGrid
-    real(dp), intent(in) :: dataArrays(:)
-    ! Implementation...
-  end subroutine calculate_weights_sk
+
+  
 !-------------------------------------------------------------------------------------------------!
-  subroutine apply_weights_sk(this, dataArrays, weightsObject, outputValues)
-    class(SK), intent(in) :: this
-    real(dp), intent(in) :: dataArrays(:)
-    type(t_weights), intent(in) :: weightsObject
-    real, intent(out) :: outputValues(:)
-    ! Implementation...
-  end subroutine apply_weights_sk
+  
+
 
 !-------------------------------------------------------------------------------------------------!
 ! ORDINARY KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine calculate_weights_ok(this, inputGrids, outputGrid, dataArrays)
-    class(OK), intent(in) :: this
-    type(t_grid), intent(in) :: inputGrids(:)
-    type(t_grid), intent(in) :: outputGrid
-    real(dp), intent(in) :: dataArrays(:)
-    ! Implementation...
-  end subroutine calculate_weights_ok
+
+  
 !-------------------------------------------------------------------------------------------------!
-  subroutine apply_weights_ok(this, dataArrays, weightsObject, outputValues)
-    class(OK), intent(in) :: this
-    real(dp), intent(in) :: dataArrays(:)
-    type(t_weights), intent(in) :: weightsObject
-    real, intent(out) :: outputValues(:)
-    ! Implementation...
-  end subroutine apply_weights_ok
+  
+
 
 !-------------------------------------------------------------------------------------------------!
 ! INVERSE DISTANCE WEIGHTING (IDW) CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine calculate_weights_idw(this, inputGrids, outputGrid, dataArrays)
-    class(IDW), intent(in) :: this
-    type(t_grid), intent(in) :: inputGrids(:)
-    type(t_grid), intent(in) :: outputGrid
-    real(dp), intent(in) :: dataArrays(:)
-    ! Implementation...
-  end subroutine calculate_weights_idw
+
+  
 !-------------------------------------------------------------------------------------------------!
-  subroutine apply_weights_idw(this, dataArrays, weightsObject, outputValues)
-    class(IDW), intent(in) :: this
-    real(dp), intent(in) :: dataArrays(:)
-    type(t_weights), intent(in) :: weightsObject
-    real, intent(out) :: outputValues(:)
-    ! Implementation...
-  end subroutine apply_weights_idw
+  
+
 
 !-------------------------------------------------------------------------------------------------!
 end module m_interpolator

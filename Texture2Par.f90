@@ -47,21 +47,10 @@ program Texture2Par
   
     
   ! Main
-  
-    ! Assign PPTO_grid (data or fmodel)
-
-    ! Krige PP to PPTO_grid
-  
-    ! INTERP_ORDER: BEFORE
-    ! Krige textures to fmodel grid
-    ! Calc parameters at fmodel grid locations
-  
-    ! INTERP_ORDER: AFTER
-    ! Calc parameters at data locations
-    ! Krige parameters to fmodel grid
+  call t2p%predict()  
     
   ! Output
-    
+  !call t2p%write_output()
     
   ! Exit
   call normal_exit()

@@ -48,6 +48,7 @@ module m_T2P
     procedure,public :: setup_pplocs
     !procedure :: allocate_data_classes
     !procedure :: allocate
+    procedure,public :: predict
   
   end type t_T2P
 !-------------------------------------------------------------------------------------------------!
@@ -146,6 +147,27 @@ module m_T2P
     this%has_pplocs = .true.
   
   end subroutine setup_pplocs
+!-------------------------------------------------------------------------------------------------!
+
+!-------------------------------------------------------------------------------------------------!
+  subroutine predict(this)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    ! Assign PPTO_grid (data or fmodel)
+    ! Krige PP to PPTO_grid
+    ! Write PP weights (
+  
+    ! INTERP_ORDER: BEFORE
+    ! Krige textures to fmodel grid
+    ! Write weights 
+    ! Calc parameters at fmodel grid locations
+  
+    ! INTERP_ORDER: AFTER
+    ! Calc parameters at data locations
+    ! Krige parameters to fmodel grid
+    ! Write weights
+    
+  end subroutine predict
 !-------------------------------------------------------------------------------------------------!
 
 end module m_T2P
