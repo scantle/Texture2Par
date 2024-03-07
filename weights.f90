@@ -5,7 +5,7 @@ module m_weights
   ! Define a custom type for managing weights
   type :: t_weights
       integer                :: nin, nout     ! grid input point count, grid output point count
-      real, allocatable      :: weights(:,:)  ! The weights (input points, output points)
+      real, allocatable      :: values(:,:)  ! The weights (input points, output points)
       integer, allocatable   :: ids(:,:)      ! index of weights within their dataset
       integer, allocatable   :: group_id(:)   ! Group ID for each weight
       ! Additional metadata can be added here as needed
@@ -44,7 +44,7 @@ end function create_weight_object
     
     self%nin  = input_n
     self%nout = output_n
-    allocate(self%weights (input_n, output_n), &
+    allocate(self%values (input_n, output_n), &
              self%ids     (input_n, output_n), &
              self%group_id(output_n)           )
       
@@ -75,7 +75,7 @@ end function create_weight_object
 !-------------------------------------------------------------------------------------------------!
   subroutine finalize(self)
     class(t_weights), intent(inout) :: self
-    if (allocated(self%weights)) deallocate(self%weights)
+    if (allocated(self%values)) deallocate(self%values)
     if (allocated(self%ids)) deallocate(self%ids)
     if (allocated(self%group_id)) deallocate(self%group_id)
   end subroutine finalize
