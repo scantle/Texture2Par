@@ -66,6 +66,7 @@
 		<File RelativePath=".\Read_Main_Input.f90"/>
 		<File RelativePath=".\t2p_log.f90"/></Filter>
 		<Filter Name="Interpolators">
+		<File RelativePath=".\Interpolators.f90"/>
 		<File RelativePath=".\variogram.f90"/></Filter>
 		<Filter Name="Objects">
 		<File RelativePath=".\DataSets.f90"/>
@@ -79,7 +80,7 @@
 		<File RelativePath=".\Str_Module.f90"/>
 		<File RelativePath=".\Tools.f90"/></Filter>
 		<File RelativePath=".\global.f90"/>
-		<File RelativePath=".\Interpolators.f90"/>
+		<File RelativePath=".\kriging.f90"/>
 		<File RelativePath=".\Texture2Par.f90"/>
 		<File RelativePath=".\weights.f90"/></Filter>
 	</Files>

@@ -11,6 +11,7 @@ module m_grid
     
     contains
       procedure,private        :: initialize
+      procedure,private        :: finalize
       !procedure,public        :: build_tree
   end type t_Grid
 !-------------------------------------------------------------------------------------------------!
@@ -50,6 +51,19 @@ module m_grid
     this%coords = 0.0
     
   end subroutine initialize
+  
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine finalize(this)
+    class(t_Grid), intent(inout) :: this
+  
+    ! Check if 'coords' is allocated and deallocate it
+    if (allocated(this%coords)) then
+      deallocate(this%coords)
+    end if
+  
+    ! Include any other cleanup tasks here
+  end subroutine finalize
   
 !-------------------------------------------------------------------------------------------------!
 end module m_grid

@@ -24,11 +24,11 @@ contains
 
 function create_weight_object(input_n, output_n) result(object)
   implicit none
-  integer,intent(inout)    :: input_n, output_n
+  integer,intent(in)       :: input_n, output_n
   type(t_weights), pointer :: object
   
   allocate(object)
-  call object%initialize(input_n,output_n)
+  call object%initialize(output_n,input_n)
 
 end function create_weight_object
 
@@ -44,9 +44,12 @@ end function create_weight_object
     
     self%nin  = input_n
     self%nout = output_n
-    allocate(self%values (input_n, output_n), &
-             self%ids     (input_n, output_n), &
-             self%group_id(output_n)           )
+    allocate(self%values (output_n, input_n), &
+             self%ids    (output_n, input_n), &
+             self%group_id(output_n)          )
+             
+    ! Set default group
+    self%group_id = 1
       
   end subroutine initialize
   
@@ -73,12 +76,14 @@ end function create_weight_object
   end subroutine load_from_file
 
 !-------------------------------------------------------------------------------------------------!
+  
   subroutine finalize(self)
     class(t_weights), intent(inout) :: self
     if (allocated(self%values)) deallocate(self%values)
     if (allocated(self%ids)) deallocate(self%ids)
     if (allocated(self%group_id)) deallocate(self%group_id)
   end subroutine finalize
+  
 !-------------------------------------------------------------------------------------------------!
   
 end module m_weights

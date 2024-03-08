@@ -11,6 +11,7 @@ module m_options
     integer                  :: DATA_CLASSES          ! Number of texture & covariate classes
     ! "Optional" Options - Default Value and Settings
     real                     :: NO_DATA_VALUE         !
+    real                     :: IDW_POWER             ! Inverse Distance Weighting Power Parameter
     character(10)            :: INTERP_DIM            ! 2D, 3D
     character(10)            :: INTERP_METHOD         ! KRIGING, IDW
     character(10)            :: INTERP_ORDER          ! BEFORE, AFTER
@@ -51,6 +52,7 @@ module m_options
     this%MAX_VSTRUCT          = -1
     this%DATA_CLASSES         = -1
     this%NO_DATA_VALUE        = -999.0
+    this%IDW_POWER            =  2.0
     this%INTERP_DIM           = '2D'
     this%INTERP_METHOD        = 'KRIGING'
     this%INTERP_ORDER         = 'BEFORE'
@@ -115,6 +117,8 @@ subroutine read_options(this, reader)
       !  call item2char(strings, 2, this%INPUT_DIR)
       case("NO_DATA_VALUE")
         this%NO_DATA_VALUE        = item2real(strings, 2)
+      case("IDW_POWER")
+        this%IDW_POWER            = item2real(strings, 2)
       case("SILENT_MODE")
         this%SILENT_MODE          = .true.
       case("DEBUG_MODE")
