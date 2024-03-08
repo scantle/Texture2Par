@@ -7,7 +7,7 @@ module m_interpolator
   use m_options, only: t_options
   implicit none
 !-------------------------------------------------------------------------------------------------!
-  type, abstract :: Interpolator
+  type, abstract :: t_interpolator
   ! Abstract Base Class
   contains
     procedure,pass         :: initialize       ! placeholder
@@ -16,10 +16,10 @@ module m_interpolator
     procedure              :: predict_grouped
     procedure              :: calculate_weights
     procedure              :: apply_weights => apply_weights_t_layerdata, apply_weights_real
-  end type Interpolator
+  end type t_interpolator
 !-------------------------------------------------------------------------------------------------!
   
-  type, extends(Interpolator) :: IDW
+  type, extends(t_interpolator) :: IDW
     integer                 :: p
   contains
     procedure              :: initalize => initialize_idw
@@ -50,7 +50,7 @@ module m_interpolator
   
   subroutine initialize(this)
     implicit none
-    class(Interpolator), intent(in)     :: this
+    class(t_interpolator), intent(in)     :: this
         
   end subroutine initialize
   
@@ -60,7 +60,7 @@ module m_interpolator
   
   subroutine predict(this, input_grids, output_grid, in_values, out_values, weights)
     implicit none
-    class(Interpolator), intent(in)     :: this
+    class(t_interpolator), intent(in)     :: this
     type(t_grid), intent(inout)         :: input_grids(:)
     type(t_grid), intent(inout)         :: output_grid
     type(t_layerdata),intent(inout)     :: in_values(:)
@@ -81,7 +81,7 @@ module m_interpolator
   
   subroutine predict_coords(this, input_grids, coords, in_values, out_values)
     implicit none
-    class(Interpolator), intent(in)     :: this
+    class(t_interpolator), intent(in)     :: this
     type(t_grid), intent(inout)         :: input_grids(:)
     real(dp)                            :: coords(:,:)
     real(dp),intent(inout)              :: in_values(:)
@@ -105,7 +105,7 @@ module m_interpolator
   
   subroutine predict_grouped(this, input_grids, output_grid, in_values, out_values, group_ids, groups, weights)
     implicit none
-    class(Interpolator), intent(in)     :: this
+    class(t_interpolator), intent(in)     :: this
     type(t_grid), intent(inout)         :: input_grids(:)
     type(t_grid), intent(inout)         :: output_grid
     type(t_layerdata),intent(inout)     :: in_values(:)
@@ -128,7 +128,7 @@ module m_interpolator
   function calculate_weights(this, input_grids, output_grid) result(weights)
     ! Abstract base class method - should not be used
     implicit none
-    class(Interpolator)             :: this
+    class(t_interpolator)             :: this
     type(t_grid), intent(in)        :: input_grids(:)
     type(t_grid), intent(in)        :: output_grid
     type(t_weights)                 :: weights
@@ -143,7 +143,7 @@ module m_interpolator
 
   function apply_weights_t_layerdata(this, in_values, weights) result (out_values)
     implicit none
-    class(Interpolator)             :: this
+    class(t_interpolator)             :: this
     type(t_layerdata),intent(inout) :: in_values(:)
     type(t_weights), intent(in)     :: weights
     real(dp)                        :: out_values(weights%nout)
@@ -167,7 +167,7 @@ module m_interpolator
 
   function apply_weights_real(this, in_values, weights) result (out_values)
     implicit none
-    class(Interpolator)             :: this
+    class(t_interpolator)             :: this
     real(dp),intent(inout)          :: in_values(:)
     type(t_weights), intent(in)     :: weights
     real(dp)                        :: out_values(weights%nout)
