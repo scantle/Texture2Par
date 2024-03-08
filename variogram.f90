@@ -1,23 +1,27 @@
 module m_vario
+  use m_global, only: dp
 !-------------------------------------------------------------------------------------------------!
 
 type :: t_vgm
 ! Variogram or cross variogram structure
   integer                  :: itype       ! Variogram model (0-linear, 1-spherical, 2-exponential)
-  real                     :: sill        ! Contribution of each structure, when summed (with nugget) the sill
-  real                     :: a_hmax      ! Range: distance where data are no longer correlated
-  real                     :: a_hmin      ! Range min (equal to amax when anis1/anis2 ==1)
-  real                     :: a_vert      ! Vertical range
-  real                     :: nugget      ! Nugget: sill immediately at distances > 0
-  real                     :: ang1        ! Angle 1 (azimuth correction)
-  real                     :: ang2        ! Angle 2 (dip correction)
-  real                     :: ang3        ! Angle 3 (plunge correction)
-  real                     :: anis1       ! Anisotropy 1 (horizontal)
-  real                     :: anis2       ! Anisotropy 2 (vertical)
+  real(dp)                :: sill        ! Contribution of each structure, when summed (with nugget) the sill
+  real(dp)                :: a_hmax      ! Range: distance where data are no longer correlated
+  real(dp)                :: a_hmin      ! Range min (equal to amax when anis1/anis2 ==1)
+  real(dp)                :: a_vert      ! Vertical range
+  real(dp)                :: nugget      ! Nugget: sill immediately at distances > 0
+  real(dp)                :: ang1        ! Angle 1 (azimuth correction)
+  real(dp)                :: ang2        ! Angle 2 (dip correction)
+  real(dp)                :: ang3        ! Angle 3 (plunge correction)
+  real(dp)                :: anis1       ! Anisotropy 1 (horizontal)
+  real(dp)                :: anis2       ! Anisotropy 2 (vertical)
+  real(dp)                :: rotmat(3,3) ! Rotation Matrix
 
   contains
     procedure,public        :: initialize
-  
+    procedure,public        :: cov
+    procedure,private       :: setrot
+    procedure,private       :: sqdist
 end type t_vgm
 
 !-------------------------------------------------------------------------------------------------!
@@ -62,9 +66,7 @@ end type t_vgm
     call vgm%initialize(struct_id)
     
   end function get_vgm_from_line
-  
-!-------------------------------------------------------------------------------------------------!
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! BASE CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -86,10 +88,175 @@ end type t_vgm
     if (sid > 1) this%nugget = 0.0
     
     ! Now the rotation matrices get initialized
-    !TODO call setrot(i, j)
+    call this%setrot()
     
   end subroutine initialize
+  
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine setrot(this)
+    implicit none
+    class(t_vgm)         :: this
+!
+!              Sets up an Anisotropic Rotation Matrix
+!              **************************************
+!
+! Sets up the matrix to transform cartesian coordinates to coordinates
+! accounting for angles and anisotropy (see manual for a detailed
+! definition):
+!
+!
+! INPUT PARAMETERS: (moved to module definition)
+!
+!   ang1             Azimuth angle for principal direction
+!   ang2             Dip angle for principal direction
+!   ang3             Third rotation angle
+!   anis1            First anisotropy ratio
+!   anis2            Second anisotropy ratio
+!   ind              The matrix indicator to initialize
+!   MAXROT           The maximum number of rotation matrices dimensioned
+!   rotmat           The rotation matrices
+!
+! Author: C. Deutsch                                Date: September 1989
+! Modified for T2P by Leland Scantlebury
+!-------------------------------------------------------------------------------------------------!
+      real*8, parameter         :: DEG2RAD = 3.141592654/180.0, &
+                                   EPSLON = 1.e-10
+      real*8                    :: alpha, beta, theta,&
+                                   sina, sinb, sint, &
+                                   cosa, cosb, cost, &
+                                   afac1, afac2
+!
+! Converts the input angles to three angles which make more
+!  mathematical sense:
+!
+!         alpha   angle between the major axis of anisotropy and the
+!                 E-W axis. Note: Counter clockwise is positive.
+!         beta    angle between major axis and the horizontal plane.
+!                 (The dip of the ellipsoid measured positive down)
+!         theta   Angle of rotation of minor axis about the major axis
+!                 of the ellipsoid.
+!
+
+      if(this%ang1.ge.0.0d0.and.this%ang1.lt.270.0d0) then
+          alpha = (90.0d0   - this%ang1) * DEG2RAD
+      else
+          alpha = (450.0d0  - this%ang1) * DEG2RAD
+      endif
+      beta  = -1.0d0 * this%ang2 * DEG2RAD
+      theta =          this%ang3 * DEG2RAD
+!
+! Get the required sines and cosines:
+!
+      sina = sin(alpha)
+      sinb = sin(beta)
+      sint = sin(theta)
+      cosa = cos(alpha)
+      cosb = cos(beta)
+      cost = cos(theta)
+!
+! Construct the rotation matrix in the required memory:
+!
+      afac1 = 1.0d0 / max(this%anis1,EPSLON)
+      afac2 = 1.0d0 / max(this%anis2,EPSLON)
+      this%rotmat(1,1) =       (cosb * cosa)
+      this%rotmat(1,2) =       (cosb * sina)
+      this%rotmat(1,3) =       (-sinb)
+      this%rotmat(2,1) = afac1*(-cost*sina + sint*sinb*cosa)
+      this%rotmat(2,2) = afac1*(cost*cosa + sint*sinb*sina)
+      this%rotmat(2,3) = afac1*( sint * cosb)
+      this%rotmat(3,1) = afac2*(sint*sina + cost*sinb*cosa)
+      this%rotmat(3,2) = afac2*(-sint*cosa + cost*sinb*sina)
+      this%rotmat(3,3) = afac2*(cost * cosb)
+!
+! Return to calling program:
+!
+      return
+    end subroutine setrot
 
 !-------------------------------------------------------------------------------------------------!
+
+  real function sqdist(this,x1,y1,z1,x2,y2,z2)
+    implicit none
+    class(t_vgm)         :: this
+  !
+  !    Squared Anisotropic Distance Calculation Given Matrix Indicator
+  !    ***************************************************************
+  !
+  ! This routine calculates the anisotropic distance between two points
+  !  given the coordinates of each point and a definition of the
+  !  anisotropy.
+  !
+  ! INPUT VARIABLES:
+  !   x1,y1,z1         Coordinates of first point
+  !   x2,y2,z2         Coordinates of second point
+  !   ind              The matrix indicator to initialize
+  !   MAXROT           The maximum number of rotation matrices dimensioned
+  !   rotmat           The rotation matrices
+  !
+  !
+  ! OUTPUT VARIABLES:
+  !   sqdist           The squared distance accounting for the anisotropy
+  !                      and the rotation of coordinates (if any).
+  !
+  !
+  ! Author: C. Deutsch                                Date: September 1989
+        integer       :: i
+        real(dp)      :: dx,dy,dz,x1,y1,x2,y2,z1,z2,cont
+  !
+  ! Compute component distance vectors and the squared distance:
+  !
+        dx = x1 - x2
+        dy = y1 - y2
+        dz = z1 - z2
+        sqdist = 0.0d0
+        do i=1,3
+          cont   = this%rotmat(i,1) * dx &
+                 + this%rotmat(i,2) * dy &
+                 + this%rotmat(i,3) * dz
+          sqdist = sqdist + cont * cont
+        end do
+        return
+
+  end function sqdist
+    
+!-------------------------------------------------------------------------------------------------!
   
+  function cov(this, x1, y1, z1, x2, y2, z2) result(value)
+    implicit none
+    class(t_vgm)         :: this
+!      common block/vario/slope,sill,a
+    real(dp)                 :: x1,y1,z1,x2,y2,z2,h,tmp
+    real(dp),parameter       :: epsilon=1.e-10
+    real(dp)                 :: value
+
+    h = this%sqdist(x1,y1,z1,x2,y2,z2)
+
+    ! Check for "zero" distance, return with maximum value
+    if (h < epsilon) then
+      value = this%nugget + this%sill
+      return  ! EARLY RETURN
+    ! linear variogram
+    else if(this%itype.eq.1) then
+      h=sqrt(h)*this%sill
+      !write(11,*) 'Linear', h
+    ! spherical variogram
+    else if(this%itype.eq.2) then
+      H=SQRT(h)
+      tmp=h/this%a_hmax
+      if(tmp.ge.1.) then
+        h=this%sill
+      else
+        h=this%sill*(1.5*tmp-0.5*tmp*tmp*tmp)
+      endif
+    ! exponential variogram
+    else if (this%itype.eq.3) then
+      H=SQRT(h)
+      h=this%sill*(1.d0-exp(-3.d0*h/this%a_hmax))
+    endif
+    value=this%sill-h
+  
+  end function cov
+  
+!-------------------------------------------------------------------------------------------------!
 end module m_vario
