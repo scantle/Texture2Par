@@ -177,7 +177,7 @@ module m_read_main_input
     
     allocate(class_names)
     call vstrlist_new (class_names)
-    n = t2p%opt%DATA_CLASSES
+    n = reader%get_block_len()  !t2p%opt%DATA_CLASSES
     allocate(class_connections(n, n)) ! symmetric n x n
     allocate(class_type(n))
     
@@ -187,17 +187,15 @@ module m_read_main_input
       class_connections(i, i) = i
     end do
     
-    i = 0   ! counts primary datasets
     j = n+1 ! tracks relationship id
     
-    ! Loop until end of block or end of file
-    do
-      i = i + 1
+    ! Loop over data class lines
+    do i=1, n
       call reader%next_block_item(status, id, strings, length)
       if (status /= 0) exit  ! exit if end of block or end of file
-      if (i+(j-n-1) > t2p%opt%DATA_CLASSES) then
-        call error_handler(1,reader%file,"Too many data classes listed in CLASSES block. Increase DATA_CLASSES")
-      end if
+      !if (i+(j-n-1) > t2p%opt%DATA_CLASSES) then
+      !  call error_handler(1,reader%file,"Too many data classes listed in CLASSES block. Increase DATA_CLASSES")
+      !end if
       ! Add items to arrays
       call vstrlist_append(class_names, strings)
       prime_id = vstrlist_search(class_names, vstrlist_index(strings, 1))
@@ -215,12 +213,10 @@ module m_read_main_input
     ! Some early validation
     if (j < 1) then
       call error_handler(2,reader%file,"No Data Classes Listed")
-    else if (j < t2p%opt%DATA_CLASSES) then
-      call error_handler(2,reader%file,"Too Few Data Classes Listed")
     end if
     
     ! Pass to T2P
-    call t2p%setup_data_classes(i - 1, class_names, class_connections, class_type)
+    call t2p%setup_data_classes(n, class_names, class_connections, class_type)
     
   end subroutine read_class_block
   

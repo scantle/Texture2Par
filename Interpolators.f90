@@ -10,7 +10,8 @@ module m_interpolator
   type, abstract :: t_interpolator
   ! Abstract Base Class
   contains
-    procedure,pass         :: initialize       ! placeholder
+    procedure,private      :: initialize_abc
+    generic                :: initialize => initialize_abc       ! placeholder
     procedure              :: predict
     procedure              :: predict_coords
     procedure              :: predict_grouped
@@ -20,9 +21,10 @@ module m_interpolator
 !-------------------------------------------------------------------------------------------------!
   
   type, extends(t_interpolator) :: IDW
-    integer                 :: p
+    integer                :: p
   contains
-    procedure              :: initalize => initialize_idw
+    procedure              :: initialize_idw
+    generic                :: initialize => initialize_idw
     procedure              :: calculate_weights => calculate_weights_idw
     !procedure              :: apply_weights => apply_weights_idw
   end type IDW
@@ -48,11 +50,11 @@ module m_interpolator
 ! BASE CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine initialize(this)
+  subroutine initialize_abc(this)
     implicit none
     class(t_interpolator), intent(in)     :: this
         
-  end subroutine initialize
+  end subroutine initialize_abc
   
 !-------------------------------------------------------------------------------------------------!
     
@@ -68,8 +70,8 @@ module m_interpolator
     type(t_weights),pointer             :: weights
     
     ! Get weights
-    if (allocated(weights%values)==.false.) then  ! if this doesn't work, try checking if weights%values is allocated
-      weights = this%calculate_weights(input_grids, output_grid)
+    if (allocated(weights%values)==.false.) then
+      call this%calculate_weights(input_grids, output_grid, weights)
     end if
     
     ! Use weights to make prediction
@@ -86,7 +88,7 @@ module m_interpolator
     real(dp)                            :: coords(:,:)
     real(dp),intent(inout)              :: in_values(:)
     real(dp),intent(out)                :: out_values(:)
-    type(t_weights)                     :: weights
+    type(t_weights),pointer             :: weights
     type(t_grid),pointer                :: temp
     
     ! A little awkward - overloading could be used if this turns out to be SLOW
@@ -94,7 +96,7 @@ module m_interpolator
     temp%coords = coords
     
     ! Get weights
-    weights = this%calculate_weights(input_grids, temp)
+    call this%calculate_weights(input_grids, temp, weights)
     
     ! Use weights to make prediction
     out_values = this%apply_weights_real(in_values, weights)
@@ -125,19 +127,19 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  function calculate_weights(this, input_grids, output_grid) result(weights)
+  subroutine calculate_weights(this, input_grids, output_grid, weights)
     ! Abstract base class method - should not be used
     implicit none
     class(t_interpolator)             :: this
     type(t_grid), intent(in)        :: input_grids(:)
     type(t_grid), intent(in)        :: output_grid
-    type(t_weights)                 :: weights
+    type(t_weights),pointer         :: weights
     
     ! Initialize, Default values
     weights = create_weight_object(sum(input_grids(:)%n), output_grid%n)
     weights%values = 0
     
-  end function calculate_weights
+  end subroutine calculate_weights
   
 !-------------------------------------------------------------------------------------------------!
 
@@ -194,12 +196,12 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  function calculate_weights_idw(this, input_grids, output_grid) result(weights)
+  subroutine calculate_weights_idw(this, input_grids, output_grid, weights)
     implicit none
     class(IDW)                      :: this
     type(t_grid), intent(in)        :: input_grids(:)
     type(t_grid), intent(in)        :: output_grid
-    type(t_weights)                 :: weights
+    type(t_weights),pointer         :: weights
     real(dp)                        :: dist
     integer :: i, j
     
@@ -224,7 +226,7 @@ module m_interpolator
     do i = 1, size(weights%values, 1)
       weights%values(i, :) = weights%values(i, :) / sum(weights%values(i, :))
     end do
-  end function calculate_weights_idw
+  end subroutine calculate_weights_idw
   
 !-------------------------------------------------------------------------------------------------!
 end module m_interpolator

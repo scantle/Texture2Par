@@ -1,22 +1,26 @@
 module m_T2P
-  use m_vstringlist, only: t_vstringlist
+  use m_vstringlist, only: t_vstringlist, vstrlist_search
+  use m_vstring, only: t_vstring
   use m_options, only: t_options
+  use m_datasets, only: t_layerdata
   use m_flow_model, only: t_flow_model
   use m_pilotpoints, only: t_pilotpoints
+  use m_interpolator, only: t_interpolator
   use m_vario, only: t_vgm
 !-------------------------------------------------------------------------------------------------!
   type t_T2P
     type(t_options)                  :: opt  ! avoid conflict with Fortran intrinsic 'options'
-    class(t_flow_model),pointer      :: fmodel => null()
-    !type(t_Interpolator),pointer     :: interp_data
-    !type(t_Interpolator),pointer     :: interp_pp
-    !type(t_Dataset),pointer          :: datasets(:)
-    type(t_vgm),pointer              :: variograms(:,:)  ! (stuctures, variogram)
+    class(t_flow_model),pointer      :: fmodel      => null()
+    class(t_interpolator),pointer    :: interp_data => null()
+    class(t_interpolator),pointer    :: interp_pp   => null()
+    class(t_layerdata),pointer       :: datasets(:)
+    type(t_layerdata)                :: hydraulic_par(10) ! Hydraulic Parameters - KCMin, DeltaKC, KFMin, DeltaKF, SsC, SsF, SyC, Aniso
+    type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)
     type(t_pilotpoints),pointer      :: pilot_points
     
     ! Counters
     integer                          :: nclasses   ! Number of data classes
-    integer                          :: ndatafiles
+    integer                          :: ndatafiles ! Number of data files to read in
     integer                          :: nprimary   ! Number of *primary* datasets (for which hydraulic properties exist)
     integer                          :: nhsus      ! Number of Hydrostratigraphic Units (HSUs)
                                                    ! (Formerly "geologic zones")
@@ -27,6 +31,7 @@ module m_T2P
     type(t_vstringlist),pointer      :: class_names
     integer,pointer                  :: class_connections(:,:)
     integer,pointer                  :: class_type(:)    ! Primary (1) or Secondary (2) for each class
+    integer,allocatable              :: class_dataset(:) ! Which dataset object each class is stored in
     type(t_vstringlist)              :: dataset_files    ! dataset filenames
     type(t_vstringlist)              :: dataset_trans    ! dataset transformations
     integer,pointer                  :: nnear(:)         ! Number of nearest points used for interpolation
@@ -41,14 +46,19 @@ module m_T2P
     logical                          :: has_datafiles
   
   contains
-  
-    procedure,public :: initialize
-    procedure,public :: setup_data_classes
-    procedure,public :: setup_variograms
-    procedure,public :: setup_pplocs
+    ! Setup procedures
+    procedure,public   :: initialize
+    procedure,public   :: setup_data_classes
+    procedure,public   :: setup_variograms
+    procedure,public   :: setup_pplocs
     !procedure :: allocate_data_classes
     !procedure :: allocate
-    procedure,public :: predict
+    
+    ! Main Procedures
+    procedure,public   :: predict
+    
+    ! Access procedures
+    procedure, public  :: get_class_id
   
   end type t_T2P
 !-------------------------------------------------------------------------------------------------!
@@ -97,10 +107,11 @@ module m_T2P
     ! TODO needs to store different when INTERP_ORDER: AFTER is passed
     
     this%nprimary = num_primary
-    this%nclasses = this%opt%DATA_CLASSES
+    this%nclasses = maxval(this%class_connections) !this%opt%DATA_CLASSES
     this%class_names => class_names
     this%class_connections => class_connections
     this%class_type => class_type
+    allocate(this%datasets(this%nclasses))  ! allocate dataset pointers
     
     ! TODO Maybe this belongs somewhere else, but this is when find out
     ! TODO handle INTERP_ORDER: AFTER
@@ -147,6 +158,17 @@ module m_T2P
     this%has_pplocs = .true.
   
   end subroutine setup_pplocs
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_class_id(this, string) result (id)
+    ! Returns zero if not found
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    type(t_vstring),intent(in)    :: string
+    integer                       :: id
+    id = vstrlist_search(this%class_names, string)
+  end function get_class_id
+  
 !-------------------------------------------------------------------------------------------------!
 
 !-------------------------------------------------------------------------------------------------!

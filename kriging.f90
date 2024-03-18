@@ -12,7 +12,6 @@ module m_kriging
 
   type, extends(t_interpolator) :: t_krige
     
-  
     class(t_vgm), allocatable :: vgm
     ! Attributes for KD-tree and search parameters could be added here
   contains

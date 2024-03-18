@@ -6,9 +6,7 @@ module m_weights
   type :: t_weights
       integer                :: nin, nout     ! grid input point count, grid output point count
       real, allocatable      :: values(:,:)  ! The weights (input points, output points)
-      integer, allocatable   :: ids(:,:)      ! index of weights within their dataset
-      integer, allocatable   :: group_id(:)   ! Group ID for each weight
-      ! Additional metadata can be added here as needed
+      
   contains
       procedure,private :: initialize
       procedure,public :: save_to_file
@@ -39,17 +37,15 @@ end function create_weight_object
   ! Initialize the weights object
   subroutine initialize(self, input_n, output_n)
     implicit none
-    integer,intent(in)              :: input_n, output_n
     class(t_weights), intent(inout) :: self
+    integer,intent(in)              :: input_n, output_n
     
     self%nin  = input_n
     self%nout = output_n
-    allocate(self%values (output_n, input_n), &
-             self%ids    (output_n, input_n), &
-             self%group_id(output_n)          )
+    allocate(self%values (output_n, input_n))
              
     ! Set default group
-    self%group_id = 1
+    !self%group_id = 1  ! Trying out no groups - redudant with grids
       
   end subroutine initialize
   
@@ -80,8 +76,6 @@ end function create_weight_object
   subroutine finalize(self)
     class(t_weights), intent(inout) :: self
     if (allocated(self%values)) deallocate(self%values)
-    if (allocated(self%ids)) deallocate(self%ids)
-    if (allocated(self%group_id)) deallocate(self%group_id)
   end subroutine finalize
   
 !-------------------------------------------------------------------------------------------------!

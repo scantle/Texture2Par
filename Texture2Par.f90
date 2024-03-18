@@ -5,6 +5,7 @@ program Texture2Par
   use m_read_main_input, only: read_main_input
   use m_log, only: log_init
   use m_error_handler, only: normal_exit
+  use m_read_datasets, only: read_datasets
   implicit none
 
 !-----------------------------------------------------------------------------!
@@ -42,7 +43,7 @@ program Texture2Par
   call read_main_input(t2p, main_input_file)
   call t2p%fmodel%read_model()
   ! Read datasets
-    
+  call read_datasets(t2p)
   ! Check Major Inputs
   
     

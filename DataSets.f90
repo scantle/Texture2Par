@@ -3,7 +3,7 @@ module m_datasets
   use m_grid, only: t_grid
   implicit none
 !-------------------------------------------------------------------------------------------------!
-  type :: t_dataset  ! Abstract Base Class
+  type, abstract  :: t_dataset  ! Abstract Base Class
     
     integer,allocatable            :: category(:)      ! Zones, Hydrostratigraphic Units (HSUs)
     type(t_grid),pointer           :: grid             ! Grid
@@ -11,8 +11,8 @@ module m_datasets
     ! allowed to have their own data storage
     
     contains
-    
-      procedure,public             :: initialize
+      procedure,private            :: initialize_abc
+      generic                      :: initialize => initialize_abc
   
   end type t_dataset
 !-------------------------------------------------------------------------------------------------!
@@ -33,12 +33,12 @@ module m_datasets
     
     character(30)                  :: name             ! Class Name
     integer                        :: class_id         ! Class ID
-    real(dp),allocatable           :: values(:)        ! Data values associated with each grid point
+    real(dp),allocatable           :: values(:)        ! Data values associated with each grid point, for each data class (point, class)
     !integer,allocatable            :: nearest_node(:)  ! Nearest model node (cell) to data point
     
     contains
-    
-      procedure,public             :: initialize => init_layerdata
+      procedure,public            :: init_layerdata
+      generic                     :: initialize => init_layerdata
   
   end type t_layerdata
 !-------------------------------------------------------------------------------------------------!
@@ -51,11 +51,13 @@ module m_datasets
 ! MODULE PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  function create_dataset_object(npoints) result(object)
+!-------------------------------------------------------------------------------------------------!
+  
+  function create_layerdata_object(npoints) result(object)
     implicit none
     
     integer,intent(inout)            :: npoints
-    class(t_dataset),pointer         :: object
+    class(t_layerdata),pointer       :: object
     
     allocate(object)
     call object%initialize(npoints)
@@ -63,22 +65,14 @@ module m_datasets
   end function
   
 !-------------------------------------------------------------------------------------------------!
-  
-!-------------------------------------------------------------------------------------------------!
 ! BASE CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine initialize(this, npoints)
+  subroutine initialize_abc(this)
     implicit none
     class(t_dataset),intent(inout)  :: this
-    integer,intent(in)              :: npoints
-    
-    allocate(this%category   (npoints))
-    allocate(this%grid)
-
-    !this%grid => create_grid_object(3, npoints)  ! X,Y,Z coords by n 
   
-  end subroutine initialize
+  end subroutine initialize_abc
   
 !-------------------------------------------------------------------------------------------------!
 
@@ -92,7 +86,7 @@ module m_datasets
     integer,intent(in)                :: npoints
     
     allocate(this%category  (npoints), &
-             this%values    (npoints)  )
+             this%values    (npoints))
     allocate(this%grid)
 
     !this%grid => create_grid_object(3, npoints)  ! X,Y,Z coords by n 

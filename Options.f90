@@ -8,7 +8,7 @@ module m_options
   type t_options
     ! Required Options:
     integer                  :: MAX_VSTRUCT           ! Maximum variogram structures
-    integer                  :: DATA_CLASSES          ! Number of texture & covariate classes
+    !integer                  :: DATA_CLASSES          ! Number of texture & covariate classes
     ! "Optional" Options - Default Value and Settings
     real                     :: NO_DATA_VALUE         !
     real                     :: IDW_POWER             ! Inverse Distance Weighting Power Parameter
@@ -50,7 +50,7 @@ module m_options
     class(t_options),intent(inout)         :: this
 
     this%MAX_VSTRUCT          = -1
-    this%DATA_CLASSES         = -1
+    !this%DATA_CLASSES         = -1
     this%NO_DATA_VALUE        = -999.0
     this%IDW_POWER            =  2.0
     this%INTERP_DIM           = '2D'
@@ -101,8 +101,8 @@ subroutine read_options(this, reader)
         ! TODO LENGTH CHECK
         this%MAX_VSTRUCT          = item2int(strings, 2)
         ! WHAT HAPPENS IF THIS FAILS?
-      case("DATA_CLASSES")
-        this%DATA_CLASSES         = item2int(strings, 2)
+      !case("DATA_CLASSES")
+      !  this%DATA_CLASSES         = item2int(strings, 2)
       case("INTERP_DIM")
         call item2char(strings, 2, this%INTERP_DIM)
       case("INTERP_METHOD")

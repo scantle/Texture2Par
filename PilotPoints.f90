@@ -28,7 +28,8 @@ module m_pilotpoints
     contains
     
       procedure,private            :: get_pp_index
-      procedure,public             :: initialize => init_pilotpoint
+      procedure,public             :: init_pilotpoint
+      generic                      :: initialize => init_pilotpoint
       procedure,public             :: read_pp_line
   
   end type t_pilotpoints
