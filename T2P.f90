@@ -2,7 +2,7 @@ module m_T2P
   use m_vstringlist, only: t_vstringlist, vstrlist_search
   use m_vstring, only: t_vstring
   use m_options, only: t_options
-  use m_datasets, only: t_layerdata
+  use m_datasets, only: t_layerdata, t_dataset
   use m_flow_model, only: t_flow_model
   use m_pilotpoints, only: t_pilotpoints
   use m_interpolator, only: t_interpolator
@@ -13,7 +13,7 @@ module m_T2P
     class(t_flow_model),pointer      :: fmodel      => null()
     class(t_interpolator),pointer    :: interp_data => null()
     class(t_interpolator),pointer    :: interp_pp   => null()
-    class(t_layerdata),pointer       :: datasets(:)
+    type(t_layerdata),allocatable    :: datasets(:)
     type(t_layerdata)                :: hydraulic_par(10) ! Hydraulic Parameters - KCMin, DeltaKC, KFMin, DeltaKF, SsC, SsF, SyC, Aniso
     type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)
     type(t_pilotpoints),pointer      :: pilot_points
@@ -44,10 +44,15 @@ module m_T2P
     logical                          :: has_pplocs
     logical                          :: has_pp
     logical                          :: has_datafiles
+    
+    ! Groups (HSUs, PP Zones)
+    logical                          :: has_hsus
+    logical                          :: has_ppzones
   
   contains
     ! Setup procedures
     procedure,public   :: initialize
+    procedure,public   :: setup_flow_model
     procedure,public   :: setup_data_classes
     procedure,public   :: setup_variograms
     procedure,public   :: setup_pplocs
@@ -79,6 +84,9 @@ module m_T2P
     this%has_pplocs    = .false.
     this%has_pp        = .false.
     this%has_datafiles = .false.
+    ! And group trackers...
+    this%has_hsus      = .false.
+    this%has_ppzones   = .false.
     
     ! Initialize Elements
     call this%opt%initialize()
@@ -96,28 +104,42 @@ module m_T2P
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine setup_data_classes(this, num_primary, class_names, class_connections, class_type)
+  subroutine setup_flow_model(this)
     implicit none
     class(t_T2P), intent(inout)   :: this
-    integer,intent(in)            :: num_primary
+    
+    if (len_trim(this%fmodel%sim_file).or.len_trim(this%fmodel%grd_file)) then
+      this%has_fmodel = .true.
+    end if
+    if (len_trim(this%fmodel%hsu_file))     this%has_hsus = .true.
+    if (len_trim(this%fmodel%ppzone_file))  this%has_ppzones = .true.
+    
+  end subroutine setup_flow_model
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine setup_data_classes(this, num_primary, num_total, class_names, class_connections, class_type)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    integer,intent(in)            :: num_primary, num_total
     type(t_vstringlist),pointer   :: class_names
     integer,pointer               :: class_connections(:,:), class_type(:)
-    integer                       :: i,j
+    integer                       :: i
     
     ! TODO needs to store different when INTERP_ORDER: AFTER is passed
     
     this%nprimary = num_primary
-    this%nclasses = maxval(this%class_connections) !this%opt%DATA_CLASSES
+    this%nclasses = num_total !this%opt%DATA_CLASSES
     this%class_names => class_names
     this%class_connections => class_connections
     this%class_type => class_type
-    allocate(this%datasets(this%nclasses))  ! allocate dataset pointers
+    allocate(this%datasets(this%nclasses))  ! allocate dataset
     
     ! TODO Maybe this belongs somewhere else, but this is when find out
     ! TODO handle INTERP_ORDER: AFTER
     this%nvario = maxval(this%class_connections) + 1  ! +1 for pilot points
     
-    ! Subtract one if INFER because we don't krige - it's the remainder of the other class(es)
+    ! Subtract one if INFER because we don't krige - last class is the remainder of the other class(es)
     if (this%opt%INFER_LAST_CLASS) this%nvario = this%nvario - 1  
     
     this%has_classes = .true.

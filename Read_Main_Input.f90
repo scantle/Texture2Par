@@ -154,7 +154,8 @@ module m_read_main_input
       end select
     end do
     
-    t2p%has_fmodel = .true.
+    ! Hook for T2P to process flowmodel entries
+    call t2p%setup_flow_model()
   
   end subroutine read_FLOW_MODEL_block
   
@@ -171,15 +172,20 @@ module m_read_main_input
     character(30)              :: id, value
     type(t_vstringlist)        :: strings
     ! sub variables
-    integer                       :: i, j, k, n, prime_id, class_id
+    integer                       :: i, j, k, n, nclasses, prime_id, class_id
     type(t_vstringlist),pointer   :: class_names
     integer,pointer               :: class_connections(:,:), class_type(:)
     
     allocate(class_names)
     call vstrlist_new (class_names)
-    n = reader%get_block_len()  !t2p%opt%DATA_CLASSES
-    allocate(class_connections(n, n)) ! symmetric n x n
-    allocate(class_type(n))
+    
+    ! Pre-read for number of classes
+    call reader%get_block_dim(n, nclasses)  !t2p%opt%DATA_CLASSES
+    if (n < 1) then
+      call error_handler(2,reader%file,"No Data Classes Listed")
+    end if
+    allocate(class_connections(nclasses, nclasses)) ! symmetric n x n
+    allocate(class_type(nclasses))
     
     ! Setup matrix, values indicate variogram ID. Can start off assuming each class has a variogram (fill diagonal)
     class_connections = 0
@@ -209,14 +215,10 @@ module m_read_main_input
         j = j + 1
       end do
     end do
-    
-    ! Some early validation
-    if (j < 1) then
-      call error_handler(2,reader%file,"No Data Classes Listed")
-    end if
+    read(reader%unit,*)  ! Read past end block
     
     ! Pass to T2P
-    call t2p%setup_data_classes(n, class_names, class_connections, class_type)
+    call t2p%setup_data_classes(n,nclasses, class_names, class_connections, class_type)
     
   end subroutine read_class_block
   
@@ -260,6 +262,7 @@ subroutine read_dataset_block(t2p, reader)
   end if
   
   ! Add to T2P
+  t2p%ndatafiles = t2p%ndatafiles + 1
   call vstrlist_append(t2p%dataset_files, fname)
   call vstrlist_append(t2p%dataset_trans, ftrans)
       
@@ -355,9 +358,13 @@ subroutine read_variogram_block(t2p, reader)
           !TODO validate struct_id
           ! Get full variogram item from the rest of the line
           vgms(struct_id,vario_id) = get_vgm_from_line(strings, struct_id)
-          ! NNear on first struct read, advance vcount
+          ! NNear on first struct read, if not cross, advance vcount
           if (struct_id == 1) then
-            nnear(vario_id) = item2int(strings, 11)
+            if (iscross) then
+              nnear(vario_id) = 0 ! Can't get n cross points...
+            else
+              nnear(vario_id) = item2int(strings, 11)
+            end if
             vcount = vcount + 1
           end if
         end do

@@ -11,8 +11,8 @@ module m_datasets
     ! allowed to have their own data storage
     
     contains
-      procedure,private            :: initialize_abc
-      generic                      :: initialize => initialize_abc
+      procedure,nopass             :: initialize_abc
+      generic,public               :: initialize => initialize_abc
   
   end type t_dataset
 !-------------------------------------------------------------------------------------------------!
@@ -37,8 +37,8 @@ module m_datasets
     !integer,allocatable            :: nearest_node(:)  ! Nearest model node (cell) to data point
     
     contains
-      procedure,public            :: init_layerdata
-      generic                     :: initialize => init_layerdata
+      procedure                    :: init_layerdata
+      generic                      :: initialize => init_layerdata
   
   end type t_layerdata
 !-------------------------------------------------------------------------------------------------!
@@ -52,18 +52,7 @@ module m_datasets
 !-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!
-  
-  function create_layerdata_object(npoints) result(object)
-    implicit none
-    
-    integer,intent(inout)            :: npoints
-    class(t_layerdata),pointer       :: object
-    
-    allocate(object)
-    call object%initialize(npoints)
-  
-  end function
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! BASE CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!

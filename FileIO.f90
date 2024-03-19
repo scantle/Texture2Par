@@ -32,6 +32,7 @@ module m_file_io
       procedure,public       :: next_block_id
       procedure,public       :: next_block_item
       procedure,public       :: get_block_len
+      procedure,public       :: get_block_dim
       procedure,public       :: get_data_len
       procedure,public       :: back
     
@@ -532,6 +533,46 @@ module m_file_io
     end do
           
   end function get_block_len
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine get_block_dim(this, block_len, entries)
+    ! Returns the number of non-comment, non-empty entries in a block, as well as block length
+    implicit none
+    class(t_file_reader), intent(in) :: this
+    integer                         :: i, block_len, eof, ierr
+    integer                         :: status, skipped, total_skipped, entries
+    character(30)                   :: id
+    type(t_vstringlist)             :: strings
+    
+    ! TODO what if file changes in block? (backspace may fail)
+
+    status = 0
+    total_skipped = 0
+    block_len = -1  ! To account for reading END line
+    entries = 0
+          
+    ! Loop through the block items and count non-comment lines
+    call this%read_to_next_line(eof, skipped=total_skipped)
+    !read(this%unit, '(a500)', iostat=ierr) line
+    if (index(line, "END") > 0.or.eof < 0) status = 1
+    do while (status == 0)
+      block_len = block_len + 1
+      call this%read_to_next_line(eof, skipped=skipped)
+      call this%next_item(eof, strings)
+      entries = entries + vstrlist_length(strings)
+      total_skipped = total_skipped + skipped + 1
+      if (vstring_equals(vstrlist_index(strings,1),"END").or.eof < 0) status = 1
+    end do
+    
+    entries = entries - vstrlist_length(strings)  ! Subtract out END
+    
+    ! Rewind!
+    do i=1, total_skipped
+      backspace(this%unit)
+    end do
+          
+  end subroutine get_block_dim
 
 !-------------------------------------------------------------------------------------------------!
   
