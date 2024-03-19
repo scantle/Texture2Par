@@ -20,6 +20,7 @@ module m_T2P
     
     ! Counters
     integer                          :: nclasses   ! Number of data classes
+    integer                          :: ndatasets  ! Number of data sets (one may be inferred)
     integer                          :: ndatafiles ! Number of data files to read in
     integer                          :: nprimary   ! Number of *primary* datasets (for which hydraulic properties exist)
     integer                          :: nhsus      ! Number of Hydrostratigraphic Units (HSUs)
@@ -129,21 +130,26 @@ module m_T2P
     ! TODO needs to store different when INTERP_ORDER: AFTER is passed
     
     this%nprimary = num_primary
-    this%nclasses = num_total !this%opt%DATA_CLASSES
+    this%nclasses = num_total
+    this%ndatasets = num_total
     this%class_names => class_names
     this%class_connections => class_connections
     this%class_type => class_type
-    allocate(this%datasets(this%nclasses))  ! allocate dataset
     
     ! TODO Maybe this belongs somewhere else, but this is when find out
     ! TODO handle INTERP_ORDER: AFTER
     this%nvario = maxval(this%class_connections) + 1  ! +1 for pilot points
     
     ! Subtract one if INFER because we don't krige - last class is the remainder of the other class(es)
-    if (this%opt%INFER_LAST_CLASS) this%nvario = this%nvario - 1  
+    ! We also don't store it as a dataset
+    if (this%opt%INFER_LAST_CLASS) then
+      this%nvario = this%nvario - 1
+      this%ndatasets = this%ndatasets - 1
+    end if
     
+    allocate(this%datasets(this%ndatasets))  ! allocate dataset
     this%has_classes = .true.
-  
+    
   end subroutine setup_data_classes
 
 !-------------------------------------------------------------------------------------------------!
