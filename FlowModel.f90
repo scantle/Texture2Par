@@ -2,6 +2,7 @@ module m_flow_model
   use m_file_io
   use m_grid, only: t_grid, create_grid_object
   use m_error_handler, only: error_handler
+  !use kdtree2_module, only: kdtree2, kdtree2_create
   implicit none
 !-------------------------------------------------------------------------------------------------!
   ! Module variables
@@ -35,6 +36,7 @@ module m_flow_model
     contains
       procedure,public            :: initialize
       procedure,public            :: read_model
+      procedure,public            :: find_in_grid
       procedure,private           :: alloc_layers
       procedure,private           :: alloc_nodes
       !procedure,private     :: write_model_input
@@ -44,13 +46,17 @@ module m_flow_model
   type,extends(t_flow_model) :: t_flow_fdmodel    ! Finite Difference Model
     ! Ineligant solution to both MF-USG and Grid using the GSF
     integer                   :: nvert
-    integer,allocatable       :: vertnnode(:)   ! Number of nodes that include each vertex
-    integer,allocatable       :: vert2node(:,:) ! Nodes that include each vertex
+    ! I am not sure we actually need either of these vert arrays since we have node coordinates
+    !integer,allocatable       :: vertnnode(:)   ! Number of nodes that include each vertex
+    !integer,allocatable       :: vert2node(:,:) ! Nodes that include each vertex
+    ! These two are used to confirm a point is within a node (cell) in find_in_grid_gsf
+    integer,allocatable       :: nodenvert(:)   ! Number of verticies attached to each node (vert)
+    integer,allocatable       :: node2vert(:,:) ! ID of verticies attached to each node (vert, node)
     type(t_grid),pointer      :: vertgrid       ! xyz grid for vertices
     
     contains
       procedure,private       :: read_gsf
-      procedure,private       :: add_node2vert2node
+      !procedure,private       :: add_node2vert2node
   end type t_flow_fdmodel
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_flow_fdmodel) :: t_mgrid
@@ -58,6 +64,7 @@ module m_flow_model
   contains
     procedure,public          :: initialize => init_mgrid
     procedure,public          :: read_model => read_mgrid
+    procedure,public          :: find_in_grid => find_in_grid_gsf
   
   end type 
 !-------------------------------------------------------------------------------------------------!
@@ -73,13 +80,14 @@ module m_flow_model
     integer,allocatable       :: elemid(:)      ! IWFM Elem ID for each element
     integer,allocatable       :: elemnnodes(:)  ! Number of nodes forming each element
     integer,allocatable       :: nodenelem(:)   ! Number of elements that include each node
-    integer,allocatable       :: node2elem(:,:) ! Elements that include each node
+    integer,allocatable       :: node2elem(:,:) ! Elements that include each node (elemid,nodes)
     logical,allocatable       :: lay_exist(:)   ! Tracks whether layer has thickness > 0.00
     logical,allocatable       :: lay_aqtard(:)  ! Tracks whether layer is an aquitard
   
   contains
     procedure,public          :: initialize => init_iwfm
     procedure,public          :: read_model => read_iwfm
+    procedure,public          :: find_in_grid => find_in_grid_elem
     procedure,private         :: alloc_layers => alloc_layers_iwfm
     procedure,private         :: alloc_nodes  => alloc_nodes_iwfm
     procedure,private         :: alloc_elems
@@ -98,6 +106,9 @@ module m_flow_model
   contains
     procedure,public          :: initialize => init_modflow2000
     procedure,public          :: read_model => read_modflow2000
+    procedure,public          :: find_in_grid => find_in_grid_cell
+    procedure,private         :: get_cell_local
+    procedure,private         :: cell2rowcol
     procedure,private         :: calc_mfcell_centers_global
   
   end type 
@@ -221,30 +232,43 @@ module m_flow_model
     end do
     
   end subroutine alloc_nodes
-  
+
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine add_node2vert2node(this, node, nvert, node_vert)
+  function find_in_grid(this, coords) result(res)
+    ! Base class method, should not be run
     implicit none
-    class(t_flow_fdmodel)     :: this
-    integer                   :: i, j, k
-    integer, intent(in)       :: node, nvert
-    integer, intent(in)       :: node_vert(nvert)
+    class(t_flow_model)     :: this
+    real(dp)                :: coords(:)
+    integer                 :: res
     
-    do j=1, nvert
-      ! Increment node-element membership array
-      this%vertnnode(node_vert(j)) = this%vertnnode(node_vert(j)) + 1
-      ! Ensure we're not going over our max
-      if (this%vertnnode(node_vert(j)) > max_node_elem_members) then
-        write(*,*) 'ERROR - max_vert_node_members exceeded!'     ! a slight lie in variable name
-        write(*,'(a,i7,a,i3)') 'vert ', node_vert(j), 'is in >', max_node_elem_members
-        stop
-      end if
-      ! Otherwise, add to the array
-      this%vert2node(this%vertnnode(node_vert(j)),node_vert(j)) = node
-    end do
+    res = 0
+    
+  end function find_in_grid
 
-  end subroutine add_node2vert2node
+!-------------------------------------------------------------------------------------------------!
+  
+  !subroutine add_node2vert2node(this, node, nvert)
+  !  ! Not currently used
+  !  implicit none
+  !  class(t_flow_fdmodel)     :: this
+  !  integer                   :: i, j, k
+  !  integer, intent(in)       :: node, nvert
+  !  
+  !  do j=1, nvert
+  !    ! Increment node-element membership array
+  !    this%vertnnode(this%node2vert(j)) = this%vertnnode(this%node2vert(j)) + 1
+  !    ! Ensure we're not going over our max
+  !    if (this%vertnnode(this%node2vert(j)) > max_node_elem_members) then
+  !      write(*,*) 'ERROR - max_vert_node_members exceeded!'     ! a slight lie in variable name
+  !      write(*,'(a,i7,a,i3)') 'vert ', this%node2vert(j), 'is in >', max_node_elem_members
+  !      stop
+  !    end if
+  !    ! Otherwise, add to the array
+  !    this%vert2node(this%vertnnode(this%node2vert(j)),this%node2vert(j)) = node
+  !  end do
+  !
+  !end subroutine add_node2vert2node
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -254,7 +278,7 @@ module m_flow_model
     type(t_vstring)           :: strtemp
     integer                   :: i, j, total_nodes, ngrids, nvert, node, lay, grid, itemp, &
                                  gridcount, nodevert
-    integer,allocatable       :: nnodes(:), grid_count(:), lay2grid(:), node_nvert(:), node_vert(:)
+    integer,allocatable       :: nnodes(:), grid_count(:), lay2grid(:),temp_node_vert(:)
     real(dp)                  :: rtemp(3)
     character(200)            :: ctemp
     logical                   :: found
@@ -324,29 +348,35 @@ module m_flow_model
     end do
     
     ! Read to get number of verticies associated with each node
-    allocate(node_nvert(total_nodes))
+    allocate(this%nodenvert(total_nodes))
+    this%nodenvert = 0
     grid = 1
     gridcount = 0
     do i=1, total_nodes
       read(reader%unit, *) node, rtemp(1:3), lay, nodevert
-      node_nvert(i) = nodevert
+      this%nodenvert(i) = nodevert
     end do
     
     ! Allocate vertex lists...
-    allocate(this%vertnnode(nvert), &
-             this%vert2node(max_node_elem_members,nvert), &
-             node_vert(maxval(node_nvert(:))))
-    this%vertnnode = 0
-    this%vert2node = 0
+    !allocate(this%vertnnode(nvert), &
+    !         this%vert2node(max_node_elem_members,nvert), &
+    !         this%node2vert(maxval(this%nodenvert(:))))
+    !this%vertnnode = 0
+    !this%vert2node = 0
+    allocate(temp_node_vert(maxval(this%nodenvert(:))), &
+             this%node2vert(maxval(this%nodenvert(:)), total_nodes))
+    this%node2vert = 0
     
     ! Now we backup... and read for vert2node, node x, y, [and a calculated z if grid, not MF-USG]
     call reader%back(total_nodes)
     grid = 1
     gridcount = 0
     do i=1, total_nodes
-      read(reader%unit, *) itemp, rtemp(1:3), lay, nodevert, node_vert(1:node_nvert(i))
+      temp_node_vert = 0
+      read(reader%unit, *) itemp, rtemp(1:3), lay, nodevert, temp_node_vert(1:this%nodenvert(i))
       node = merge(itemp - sum(this%nnodes(2:lay)), itemp, lay > 1)
-      call this%add_node2vert2node(i, nodevert/2, node_vert)  ! Only connecting to top vertices
+      this%node2vert(1:this%nodenvert(i), node) = temp_node_vert(1:this%nodenvert(i))
+      !call this%add_node2vert2node(i, nodevert/2, this%node2vert)  ! Only connecting to top vertices
       if (lay2grid(lay) == grid) then
         ! Process node
         this%grid(grid)%coords(1:2,i) = rtemp(1:2)
@@ -356,9 +386,9 @@ module m_flow_model
         type is (t_mgrid)
           if (node==1) write(*,*) 'REAL NODE FOUND LAYER', lay, itemp, node
           if (lay==1) then  ! top
-            this%elev(node, lay-1) = sum(this%vertgrid%coords(3,node_vert(1:nodevert/2))) / (nodevert/2)
+            this%elev(node, lay-1) = sum(this%vertgrid%coords(3,temp_node_vert(1:nodevert/2))) / (nodevert/2)
           end if            ! bot
-            this%elev(node, lay)   = sum(this%vertgrid%coords(3,node_vert(nodevert/2+1:nodevert  ))) / (nodevert/2)
+            this%elev(node, lay)   = sum(this%vertgrid%coords(3,temp_node_vert(nodevert/2+1:nodevert  ))) / (nodevert/2)
           ! Make sure top/bot make sense
           if (this%elev(node,lay) > this%elev(node,lay-1)) then
             write(ctemp,*) itemp
@@ -405,6 +435,42 @@ module m_flow_model
     end select
   
   end subroutine read_mgrid
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  function find_in_grid_gsf(this, coords) result(node)
+    use tools, only: pinpol
+    ! Assumes coords is in GLOBAL coordinates
+    ! Assumes uniform xy layers
+    ! Returns 0 if not found
+    ! in T2P 1.0, it gave an error within here if the cell was not found. However, seems best to
+    ! let the calling routine handle the error - it has more context.
+    implicit none
+    class(t_mgrid)   :: this
+    real(dp)                :: coords(:)
+    integer                 :: i,j,node
+    integer                 :: nodeids(5)
+    real(dp)                :: in_node
+    real(dp)                :: nodedist(5), elemx(max_node_elem_members), elemy(max_node_elem_members)
+    
+    node = 0
+    call this%grid(this%lay2grid(1))%get_nnear(coords, 5, nodeids, nodedist)
+    
+    ! Loop over elements of closest node
+    do i=1, 5
+      do j=1, this%nodenvert(nodeids(i))/2  ! Only the top vertices
+        elemx(j) = this%vertgrid%coords(1, this%node2vert(j, nodeids(i)))
+        elemy(j) = this%vertgrid%coords(2, this%node2vert(j, nodeids(i)))
+      end do
+      ! Check if the point is in this polygon
+      in_node = pinpol(coords(1), coords(2), elemx, elemy, this%nodenvert(nodeids(i))/2)
+      if (in_node >= 0.0d0) then             ! Greedy, treats on line as in elem
+        node = nodeids(i)
+        exit
+      end if
+    end do
+    
+  end function find_in_grid_gsf
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -461,6 +527,49 @@ module m_flow_model
     
   end subroutine alloc_nodes_iwfm
 
+!-------------------------------------------------------------------------------------------------!
+  
+  function find_in_grid_elem(this, coords) result(element)
+    use tools, only: pinpol
+    ! Assumes uniform xy layers
+    ! Returns 0 if not found
+    ! in T2P 1.0, it gave an error within here if the element was not found. However, seems best to
+    ! let the calling routine handle the error - it has more context.
+    implicit none
+    class(t_iwfm_model)     :: this
+    real(dp)                :: coords(:)
+    integer                 :: element
+    integer                 :: nodeids(5)
+    real(dp)                :: nodedist(5), elemx(4), elemy(4), inelem
+    integer                 :: inode, i, j, count, elem
+    
+    element = 0
+    call this%grid(this%lay2grid(1))%get_nnear(coords, 5, nodeids, nodedist)
+    
+    ! Loop over elements of closest node
+    outerloop:  do inode=1, 5
+      do i=1, this%nodenelem(nodeids(inode))
+        elem = this%node2elem(i,nodeids(inode))
+        count = 0
+        ! Get Element node x,y coordinates
+        do j=1, 4
+          if (this%elements(j, elem) > 0) then
+            elemx(j) = this%grid(this%lay2grid(1))%coords(1, this%elements(j, elem))
+            elemy(j) = this%grid(this%lay2grid(1))%coords(2, this%elements(j, elem))
+            count = count + 1
+          end if
+        end do
+        ! Check if the point is in this polygon
+        inelem = pinpol(coords(1), coords(2), elemx, elemy, count)
+        if (inelem >= 0.0d0) then             ! Greedy, treats on line as in elem
+          element = elem
+          exit outerloop
+        end if
+      end do
+    end do outerloop
+    
+  end function find_in_grid_elem
+  
 !-------------------------------------------------------------------------------------------------!
   
   subroutine alloc_elems(this)
@@ -677,6 +786,9 @@ module m_flow_model
   
 !-------------------------------------------------------------------------------------------------!
   
+  
+!-------------------------------------------------------------------------------------------------!
+  
 !-------------------------------------------------------------------------------------------------!
 ! MODFLOW 2000 CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -691,7 +803,7 @@ module m_flow_model
     
   end subroutine init_modflow2000
   
-!-----------------------------------------------------------------------------!
+!-------------------------------------------------------------------------------------------------!
   subroutine calc_mfcell_centers_global(this)
     use tools, only: loc2glo
     use GLOBAL, ONLY : NROW, NCOL, DELR, DELC
@@ -715,7 +827,77 @@ module m_flow_model
     end do
   
   end subroutine calc_mfcell_centers_global
-!-----------------------------------------------------------------------------!
+!-------------------------------------------------------------------------------------------------!
+  
+  function find_in_grid_cell(this, coords) result(cell)
+    use tools, only: glo2loc
+    ! Assumes coords is in GLOBAL coordinates
+    ! Assumes uniform xy layers
+    ! Returns 0 if not found
+    ! in T2P 1.0, it gave an error within here if the cell was not found. However, seems best to
+    ! let the calling routine handle the error - it has more context.
+    implicit none
+    class(t_modflow_model)  :: this
+    real(dp)                :: coords(:)
+    integer                 :: cellids(4)
+    real(dp)                :: celldist(4), xmin,xmax,ymin,ymax,xl,yl
+    integer                 :: cell, i
+    
+    cell = 0
+    call this%grid(this%lay2grid(1))%get_nnear(coords, 4, cellids, celldist)  ! do we need more than 4 for USG?
+    
+    if (this%structured) then
+      ! Check each cell center to see if well belongs
+      do i=1, 4
+        call this%get_cell_local(cellids(i), xmin, xmax, ymin, ymax)
+        call glo2loc(coords(1), coords(2), this%xoff, this%yoff, this%rot, xl, yl)
+        if ((xl >= xmin).and.(xl < xmax).and.(yl >= ymin).and.(yl < ymax)) then
+          cell = cellids(i)
+          exit
+        end if
+      end do
+    else  ! USG
+      !cell = find_in_grid_gsf(coord) 
+    end if
+    
+  end function find_in_grid_cell
+  
+  !-------------------------------------------------------------------------------------------------!
+
+  subroutine cell2rowcol(this, cell, row, col)
+    use GLOBAL, ONLY : NCOL
+    implicit none
+    class(t_modflow_model)  :: this
+    integer,intent(in)     :: cell
+    integer,intent(out)    :: row, col
+
+    row = CEILING(real(cell) / real(NCOL))
+    col = cell - (row-1) * NCOL
+
+  end subroutine cell2rowcol
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine get_cell_local(this, cell, xmin, xmax, ymin, ymax)
+    ! Assumes uniform xy layers
+    use GLOBAL, ONLY : DELR, DELC
+    implicit none
+    class(t_modflow_model)  :: this
+    integer,intent(in)     :: cell
+    real(dp),intent(out)       :: xmin,xmax,ymin,ymax
+    integer                :: row, col
+    
+    if (this%structured) then
+      call this%cell2rowcol(cell, row, col)
+      xmin = this%grid(this%lay2grid(1))%coords(1,cell) - 0.5 * delr(col)
+      xmax = this%grid(this%lay2grid(1))%coords(1,cell) + 0.5 * delr(col)
+      ymin = this%grid(this%lay2grid(1))%coords(2,cell) - 0.5 * delc(row)
+      ymax = this%grid(this%lay2grid(1))%coords(2,cell) + 0.5 * delc(row)
+    else
+      ! TODO
+    end if      
+
+  end subroutine get_cell_local
 
 !-------------------------------------------------------------------------------------------------!
   
