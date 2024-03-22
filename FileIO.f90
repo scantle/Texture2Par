@@ -41,7 +41,9 @@ module m_file_io
     type, extends(t_file_handler) :: t_file_writer
   
     contains
-      procedure,public      :: write_line
+      procedure,private     :: write_line_character
+      procedure,private     :: write_line_t_vstring
+      generic,public        :: write_line => write_line_character, write_line_t_vstring
     
   end type t_file_writer
 
@@ -615,10 +617,10 @@ module m_file_io
 ! WRITER TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine write_line(this, outline, blank_start, blank_end)
+  subroutine write_line_character(this, line, blank_start, blank_end)
     implicit none
     class(t_file_writer), intent(inout) :: this
-    character(len=*), intent(in)        :: outline
+    character(len=*), intent(in)        :: line
     integer,intent(in),optional         :: blank_start, blank_end
     integer                             :: i
     
@@ -628,7 +630,7 @@ module m_file_io
       end do
     end if
     
-    write(this%unit, '(A)') outline
+    write(this%unit, '(A)') trim(line)
     
     if (present(blank_end)) then
       do i=1, blank_end
@@ -636,7 +638,35 @@ module m_file_io
       end do
     end if
     
-  end subroutine write_line
+  end subroutine write_line_character
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_line_t_vstring(this, line, blank_start, blank_end)
+    implicit none
+    class(t_file_writer), intent(inout) :: this
+    type(t_vstring), intent(in)         :: line
+    character(300)                      :: out_char
+    integer,intent(in),optional         :: blank_start, blank_end
+    integer                             :: i
+    
+    if (present(blank_start)) then
+      do i=1, blank_start
+        write(this%unit,*)
+      end do
+    end if
+    
+    call vstring_cast(line, out_char)
+    
+    write(this%unit, '(A)') trim(out_char)
+    
+    if (present(blank_end)) then
+      do i=1, blank_end
+        write(this%unit,*)
+      end do
+    end if
+    
+  end subroutine write_line_t_vstring
 
 !-------------------------------------------------------------------------------------------------!
 

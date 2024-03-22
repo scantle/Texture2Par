@@ -1,6 +1,7 @@
 module m_T2P
   use m_vstringlist, only: t_vstringlist, vstrlist_search
   use m_vstring, only: t_vstring
+  use m_error_handler, only: warnings
   use m_options, only: t_options
   use m_datasets, only: t_layerdata, t_dataset
   use m_flow_model, only: t_flow_model
@@ -100,6 +101,9 @@ module m_T2P
     
     ! Set class defaults
     this%nhsus    = 1
+    
+    ! Setup warnings
+    call vstrlist_new (warnings)  ! belongs to m_error_handler
     
   end subroutine initialize
   
@@ -205,7 +209,7 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     ! Assign PPTO_grid (data or fmodel)
     ! Krige PP to PPTO_grid
-    ! Write PP weights (
+    ! Write PP weights
   
     ! INTERP_ORDER: BEFORE
     ! Krige textures to fmodel grid

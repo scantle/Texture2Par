@@ -78,6 +78,7 @@
 		<File RelativePath=".\ErrorHandler.f90"/>
 		<File RelativePath=".\kdtree2.f90"/>
 		<File RelativePath=".\Str_Module.f90"/>
+		<File RelativePath=".\time.f90"/>
 		<File RelativePath=".\Tools.f90"/></Filter>
 		<File RelativePath=".\global.f90"/>
 		<File RelativePath=".\kriging.f90"/>

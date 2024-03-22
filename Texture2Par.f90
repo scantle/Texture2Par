@@ -3,7 +3,7 @@ program Texture2Par
   use m_T2P, only: t_t2p
   use m_file_io, only: io_initialize, get_command_args
   use m_read_main_input, only: read_main_input
-  use m_log, only: log_init
+  use m_log, only: log_init, write_warnings, write_elapsed_time
   use m_error_handler, only: normal_exit
   use m_read_datasets, only: read_datasets
   implicit none
@@ -44,16 +44,19 @@ program Texture2Par
   call t2p%fmodel%read_model()
   ! Read datasets
   call read_datasets(t2p)
-  ! Check Major Inputs
+  call write_elapsed_time(log)
+  ! Check Major Inputs/write warnings
   
+  call write_warnings(log)
     
   ! Main
-  call t2p%predict()  
+  call t2p%predict()
     
   ! Output
   !call t2p%write_output()
     
   ! Exit
+  call write_elapsed_time(log)
   call normal_exit()
 
   end program Texture2Par

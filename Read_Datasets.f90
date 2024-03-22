@@ -27,8 +27,6 @@ module m_read_datasets
       
       ! Read in header
       call reader%next_item(eof, strings)
-      
-      ! Process header
       call process_header(t2p, file, strings, nsets, ids)
       
       ! Get data length
@@ -38,7 +36,6 @@ module m_read_datasets
       backspace(reader%unit)  ! Last line of data
       call reader%next_item(eof, strings)
       npoints = item2int(strings,2)  ! Reasonable assumption? 
-      
       ! Allocate dataset(s)
       do j=1, nsets
         call t2p%datasets(ids(j))%initialize(npoints)
@@ -46,9 +43,14 @@ module m_read_datasets
       
       ! Rewind
       rewind(reader%unit)
+      ! Skip header this time...
+      call reader%skip(1, eof)
       
-      ! Check
-      read(reader%unit) file
+      ! The real work begins
+      do j=1, nlines
+        
+      end do
+      
     end do
   
   end subroutine read_datasets
@@ -64,6 +66,7 @@ module m_read_datasets
     integer,pointer                    :: temp(:)
     integer                            :: i, count
     character(30)                      :: badclass
+    character(5)                       :: cint
     
     ! Columns of header should be Location ID n X Y Zland Depth follwed by class data, then layers
     !                             1        2  3 4 5 6     7
@@ -78,6 +81,8 @@ module m_read_datasets
       if (temp(i)==0) then
         if (vstring_is(vstrlist_index(header,7+i),'integer')) then
           ! Assumption - an integer indicates this is an (unused) HSU zone == done with classes
+          write(cint,'(i5)') count
+          call warning_handler("Encountered integer in header for "//trim(file)//" - assuming "//trim(adjustl(cint))//" classes in file")
           exit
         end if
         call item2char(header,7+i,badclass)
