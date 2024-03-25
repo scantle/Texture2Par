@@ -14,7 +14,7 @@ module m_T2P
     class(t_flow_model),pointer      :: fmodel      => null()
     class(t_interpolator),pointer    :: interp_data => null()
     class(t_interpolator),pointer    :: interp_pp   => null()
-    type(t_layerdata),allocatable    :: datasets(:)
+    type(t_layerdata),pointer        :: datasets(:,:)     ! Datasets (dataset, layer)
     type(t_layerdata)                :: hydraulic_par(10) ! Hydraulic Parameters - KCMin, DeltaKC, KFMin, DeltaKF, SsC, SsF, SyC, Aniso
     type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)
     type(t_pilotpoints),pointer      :: pilot_points
@@ -151,7 +151,6 @@ module m_T2P
       this%ndatasets = this%ndatasets - 1
     end if
     
-    allocate(this%datasets(this%ndatasets))  ! allocate dataset
     this%has_classes = .true.
     
   end subroutine setup_data_classes

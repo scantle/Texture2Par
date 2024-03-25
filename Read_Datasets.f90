@@ -1,10 +1,12 @@
 module m_read_datasets
-  use m_datasets
+  use m_global, only: dp, NODATA
+!  use m_datasets
   use m_T2P, only: t_t2p
   use m_vstring, only: t_vstring, vstring_is
   use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_split, vstrlist_length,vstrlist_index
-  use m_file_io
+  use m_file_io, only: t_file_reader, open_file_reader, item2int, item2char
   use m_error_handler, only: error_handler, warning_handler
+  use m_grid, only: t_grid, create_grid_object
   implicit none
 
   type(t_file_reader), pointer :: reader
@@ -16,9 +18,17 @@ module m_read_datasets
     implicit none
     class(t_T2P), intent(inout)   :: t2p
     type(t_vstringlist)           :: strings
-    character(200)                :: file
-    integer                       :: i, j, ndat, nlines, npoints, nsets, eof, idx
+    character(200)                :: file, name
+    character(30),allocatable     :: hsus(:)
+    integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, eof
+    integer                       :: prev_idx, idx, iint, fmodel_loc
+    real(dp)                      :: x, y, z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
+    real(dp),allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:)
     integer,pointer               :: ids(:)
+    type(t_grid),pointer          :: grid
+    
+    ! Allocate datasets (is this the right place for this to happen?)
+    allocate(t2p%datasets(t2p%ndatasets, t2p%fmodel%nlayers))
     
     ! Loop over files
     do i=1, t2p%ndatafiles
@@ -29,6 +39,10 @@ module m_read_datasets
       call reader%next_item(eof, strings)
       call process_header(t2p, file, strings, nsets, ids)
       
+      ! Allocate for reading
+      allocate(wvalues(nsets), total_thick(nsets), wv_accumulator(nsets,t2p%fmodel%nlayers), hsus(0))  ! TODO handle nlayers of hsus when active
+      allocate(local_elevs(0:t2p%fmodel%nlayers))
+      
       ! Get data length
       nlines = reader%get_data_len()
       ! Get npoints
@@ -36,9 +50,16 @@ module m_read_datasets
       backspace(reader%unit)  ! Last line of data
       call reader%next_item(eof, strings)
       npoints = item2int(strings,2)  ! Reasonable assumption? 
-      ! Allocate dataset(s)
-      do j=1, nsets
-        call t2p%datasets(ids(j))%initialize(npoints)
+      ! Allocate shared grid
+      grid => create_grid_object(2, npoints)
+      ! Allocate dataset(s) for all layers, set default value
+      do k=1, t2p%fmodel%nlayers
+        do j=1, nsets
+          call t2p%datasets(ids(j),k)%initialize(npoints)
+          t2p%datasets(ids(j),k)%values = NODATA
+          ! Point all datasets to the same grid object
+          t2p%datasets(ids(j),k)%grid => grid
+        end do
       end do
       
       ! Rewind
@@ -48,8 +69,60 @@ module m_read_datasets
       
       ! The real work begins
       do j=1, nlines
-        
+        read(reader%unit, *) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:0)
+        if (iint==1) then
+          ! Store previous log values...
+          if (j>1) then
+            do k=1, t2p%fmodel%nlayers
+              do l=1, nsets
+                t2p%datasets(ids(l),k)%values(prev_idx) = wv_accumulator(l,k) / total_thick(l)
+              end do
+            end do
+          end if
+          ! And reset for new log
+          wv_accumulator = 0.0_dp
+          total_thick = 0.0_dp
+          intv_top = z
+          thick = depth
+          grid%coords(1,idx) = x
+          grid%coords(2,idx) = y
+          ! TODO HSUS
+          ! Get location in model, get elevation at model layers in model
+          fmodel_loc = t2p%fmodel%find_in_grid(grid%coords(:,idx))
+          call t2p%fmodel%get_elev_at_point(grid%coords(:,idx), local_elevs(:), fmodel_loc)
+          prev_idx = idx
+        else
+          thick = depth - prev_depth
+          intv_top = z - prev_depth
+        end if
+        intv_bot = z - depth
+        ! Accumulate wvalues * interval values for averaging... by layer. It's fun.
+        do k=1, t2p%fmodel%nlayers
+          if ((intv_top >= local_elevs(k)).and.(intv_bot <= local_elevs(k-1))) then
+            ! Find min top/bot values
+            frac_thick = min(local_elevs(k-1), intv_top)-max(local_elevs(k), intv_bot)
+            do l=1, nsets
+              if (wvalues(l)>0) then
+                wv_accumulator(l,k) = wv_accumulator(l,k) + wvalues(l) * thick
+                total_thick(l) = total_thick(l) + thick
+              end if
+            end do
+          end if
+        end do
+        prev_depth = depth
       end do
+      
+      ! Store final log values
+      do k=1, t2p%fmodel%nlayers
+        do l=1, nsets
+          t2p%datasets(ids(l),k)%values(prev_idx) = wv_accumulator(l,k) / total_thick(l)
+        end do
+      end do
+      
+      ! Point all datasets to the same grid object
+      !do j=1, nsets
+      !  t2p%datasets%grid = grid
+      !end do
       
     end do
   

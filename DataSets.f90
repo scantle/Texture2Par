@@ -1,6 +1,6 @@
 module m_datasets
   use m_global, only: dp
-  use m_grid, only: t_grid
+  use m_grid, only: t_grid, create_grid_object
   implicit none
 !-------------------------------------------------------------------------------------------------!
   type, abstract  :: t_dataset  ! Abstract Base Class
@@ -34,7 +34,7 @@ module m_datasets
     character(30)                  :: name             ! Class Name
     integer                        :: class_id         ! Class ID
     real(dp),allocatable           :: values(:)        ! Data values associated with each grid point, for each data class (point, class)
-    !integer,allocatable            :: nearest_node(:)  ! Nearest model node (cell) to data point
+    integer,allocatable            :: fmodel_loc(:)    ! Containing model element/cell
     
     contains
       procedure                    :: init_layerdata
@@ -78,7 +78,7 @@ module m_datasets
              this%values    (npoints))
     allocate(this%grid)
 
-    !this%grid => create_grid_object(3, npoints)  ! X,Y,Z coords by n 
+    !this%grid = create_grid_object(2, npoints)  ! X,Y,Z coords by n 
   
   end subroutine init_layerdata
   

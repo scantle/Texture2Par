@@ -37,6 +37,7 @@ module m_flow_model
       procedure,public            :: initialize
       procedure,public            :: read_model
       procedure,public            :: find_in_grid
+      procedure,public            :: get_elev_at_point
       procedure,private           :: alloc_layers
       procedure,private           :: alloc_nodes
       !procedure,private     :: write_model_input
@@ -57,6 +58,7 @@ module m_flow_model
     contains
       procedure,private       :: read_gsf
       !procedure,private       :: add_node2vert2node
+      procedure,public          :: get_elev_at_point => get_elev_at_point_cell
   end type t_flow_fdmodel
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_flow_fdmodel) :: t_mgrid
@@ -88,6 +90,8 @@ module m_flow_model
     procedure,public          :: initialize => init_iwfm
     procedure,public          :: read_model => read_iwfm
     procedure,public          :: find_in_grid => find_in_grid_elem
+    procedure,public          :: get_elev_at_point =>  get_elev_at_point_elem
+    procedure,private         :: iwfm_elem_elev_idw
     procedure,private         :: alloc_layers => alloc_layers_iwfm
     procedure,private         :: alloc_nodes  => alloc_nodes_iwfm
     procedure,private         :: alloc_elems
@@ -245,6 +249,20 @@ module m_flow_model
     res = 0
     
   end function find_in_grid
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine get_elev_at_point(this, coords, point_elevs, locid)
+    ! Base class method, should not be run
+    implicit none
+    class(t_flow_model)     :: this
+    real(dp), intent(in)    :: coords(:)
+    real(dp), intent(out)   :: point_elevs(this%nlayers)
+    integer, optional       :: locid    ! Cell id, element id
+    
+    point_elevs = 0
+  
+  end subroutine get_elev_at_point
 
 !-------------------------------------------------------------------------------------------------!
   
@@ -473,6 +491,7 @@ module m_flow_model
   end function find_in_grid_gsf
   
 !-------------------------------------------------------------------------------------------------!
+
   
 !-------------------------------------------------------------------------------------------------!
 ! IWFM CLASS TYPE-BOUND PROCEDURES
@@ -569,6 +588,27 @@ module m_flow_model
     end do outerloop
     
   end function find_in_grid_elem
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine get_elev_at_point_elem(this, coords, point_elevs, locid)
+    ! Returns elevations for each layer given coordinates.
+    implicit none
+    class(t_iwfm_model)   :: this
+    real(dp), intent(in)    :: coords(:)
+    real(dp), intent(out)   :: point_elevs(0:this%nlayers)
+    integer, optional       :: locid      ! Containing cell id if known
+    integer                 :: elemid
+    
+    if (present(locid)) then
+      elemid = locid
+    else
+      elemid = this%find_in_grid(coords)
+    end if
+
+    call this%iwfm_elem_elev_idw(coords,elemid,point_elevs)
+    
+  end subroutine get_elev_at_point_elem
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -786,6 +826,58 @@ module m_flow_model
   
 !-------------------------------------------------------------------------------------------------!
   
+  subroutine iwfm_elem_elev_idw(this,coords,ObsElem,InterpValues)
+    use m_interpolator, only: dist_2D
+  ! Author: Marinko Karanovic, SSP&A
+  ! Reworked for T2P v2 by Leland Scantlebury
+  ! p hardcoded to 1, hardcoded to layer elevations
+    implicit none
+    class(t_iwfm_model)   :: this
+    integer               :: j,k,nodeID
+    integer               :: ObsElem
+    real(dp)              :: dist
+    real(dp)              :: coords(2),InterpValues(:)
+    real(dp)              :: wgt_tmp,wgt
+    InterpValues=0
+    wgt=0
+    do j=1,4
+      if (ObsElem.gt.0) then
+        nodeID = this%elements(ObsElem,j)
+        if (nodeID.gt.0) then
+          dist = dist_2D(coords, this%grid(1)%coords(:,nodeID)) ! Assumes all layers share xy
+          wgt_tmp = 1.0 / dist
+	        wgt = wgt + wgt_tmp
+          InterpValues(:) =InterpValues(:) + wgt_tmp * this%elev(nodeID,:)
+        end if
+      end if
+    end do
+    InterpValues(:) =InterpValues(:) / wgt
+  end subroutine iwfm_elem_elev_idw
+    
+!-------------------------------------------------------------------------------------------------!
+
+!-------------------------------------------------------------------------------------------------!
+! FINITE-DIFFERENCE CLASS TYPE-BOUND PROCEDURES (MODFLOW, GSF)
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine get_elev_at_point_cell(this, coords, point_elevs, locid)
+    ! Returns elevations for each layer given coordinates.
+    implicit none
+    class(t_flow_fdmodel)   :: this
+    real(dp), intent(in)    :: coords(:)
+    real(dp), intent(out)   :: point_elevs(0:this%nlayers)
+    integer, optional       :: locid      ! Containing cell id if known
+    integer                 :: cellid
+    
+    if (present(locid)) then
+      cellid = locid
+    else
+      cellid = this%find_in_grid(coords)
+    end if
+    
+    point_elevs = this%elev(cellid,:)
+  
+  end subroutine get_elev_at_point_cell
   
 !-------------------------------------------------------------------------------------------------!
   

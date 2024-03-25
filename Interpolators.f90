@@ -20,14 +20,14 @@ module m_interpolator
   end type t_interpolator
 !-------------------------------------------------------------------------------------------------!
   
-  type, extends(t_interpolator) :: IDW
+  type, extends(t_interpolator) :: t_idw
     integer                :: p
   contains
     procedure              :: initialize_idw
     generic                :: initialize => initialize_idw
     procedure              :: calculate_weights => calculate_weights_idw
     !procedure              :: apply_weights => apply_weights_idw
-  end type IDW
+  end type t_idw
   
 !-------------------------------------------------------------------------------------------------!
 ! Kriging class/routines are located in kriging.f90. They inheret from Interpolator
@@ -45,6 +45,8 @@ module m_interpolator
 
     distance = sqrt((point2(1) - point1(1))**2 + (point2(2) - point1(2))**2)
   end function dist_2D
+  
+!-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!
 ! BASE CLASS TYPE-BOUND PROCEDURES
@@ -187,7 +189,7 @@ module m_interpolator
   
   subroutine initialize_idw(this, opt)
     implicit none
-    class(IDW)                    :: this
+    class(t_idw)                  :: this
     class(t_options)              :: opt
     
     this%p = opt%IDW_POWER
@@ -198,7 +200,7 @@ module m_interpolator
   
   subroutine calculate_weights_idw(this, input_grids, output_grid, weights)
     implicit none
-    class(IDW)                      :: this
+    class(t_idw)                    :: this
     type(t_grid), intent(in)        :: input_grids(:)
     type(t_grid), intent(in)        :: output_grid
     type(t_weights),pointer         :: weights
