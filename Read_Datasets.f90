@@ -23,7 +23,7 @@ module m_read_datasets
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, eof
     integer                       :: prev_idx, idx, iint, fmodel_loc
     real(dp)                      :: x, y, z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
-    real(dp),allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:)
+    real(dp),allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:)
     integer,pointer               :: ids(:)
     type(t_grid),pointer          :: grid
     
@@ -40,14 +40,17 @@ module m_read_datasets
       call process_header(t2p, file, strings, nsets, ids)
       
       ! Allocate for reading
-      allocate(wvalues(nsets), total_thick(nsets), wv_accumulator(nsets,t2p%fmodel%nlayers), hsus(0))  ! TODO handle nlayers of hsus when active
-      allocate(local_elevs(0:t2p%fmodel%nlayers))
+      allocate(wvalues      (nsets), &
+              total_thick   (nsets,t2p%fmodel%nlayers), &
+              wv_accumulator(nsets,t2p%fmodel%nlayers), &
+              hsus(0))  ! TODO handle nlayers of hsus when active
+      if (allocated(local_elevs)==.false.) allocate(local_elevs(0:t2p%fmodel%nlayers))
       
-      ! Get data length
-      nlines = reader%get_data_len()
+      ! Get data length (not file length, since we've gone past the header)
+      nlines = reader%get_data_len(rewind_to_last_line=.true.)
       ! Get npoints
-      backspace(reader%unit)  ! EOF
-      backspace(reader%unit)  ! Last line of data
+      !backspace(reader%unit)  ! EOF
+      !backspace(reader%unit)  ! Last line of data
       call reader%next_item(eof, strings)
       npoints = item2int(strings,2)  ! Reasonable assumption? 
       ! Allocate shared grid
@@ -75,7 +78,9 @@ module m_read_datasets
           if (j>1) then
             do k=1, t2p%fmodel%nlayers
               do l=1, nsets
-                t2p%datasets(ids(l),k)%values(prev_idx) = wv_accumulator(l,k) / total_thick(l)
+                if (total_thick(l,k)>0.0) then
+                  t2p%datasets(ids(l),k)%values(prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
+                end if
               end do
             end do
           end if
@@ -102,9 +107,9 @@ module m_read_datasets
             ! Find min top/bot values
             frac_thick = min(local_elevs(k-1), intv_top)-max(local_elevs(k), intv_bot)
             do l=1, nsets
-              if (wvalues(l)>0) then
-                wv_accumulator(l,k) = wv_accumulator(l,k) + wvalues(l) * thick
-                total_thick(l) = total_thick(l) + thick
+              if (wvalues(l)>=0) then
+                wv_accumulator(l,k) = wv_accumulator(l,k) + wvalues(l) * frac_thick
+                total_thick(l,k) = total_thick(l,k) + frac_thick
               end if
             end do
           end if
@@ -115,15 +120,14 @@ module m_read_datasets
       ! Store final log values
       do k=1, t2p%fmodel%nlayers
         do l=1, nsets
-          t2p%datasets(ids(l),k)%values(prev_idx) = wv_accumulator(l,k) / total_thick(l)
+          if (total_thick(l,k)>0.0) then
+            t2p%datasets(ids(l),k)%values(prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
+          end if
         end do
       end do
       
-      ! Point all datasets to the same grid object
-      !do j=1, nsets
-      !  t2p%datasets%grid = grid
-      !end do
-      
+      ! Cleanup loop variables
+      deallocate(wvalues, total_thick, wv_accumulator, hsus)
     end do
   
   end subroutine read_datasets

@@ -842,7 +842,7 @@ module m_flow_model
     wgt=0
     do j=1,4
       if (ObsElem.gt.0) then
-        nodeID = this%elements(ObsElem,j)
+        nodeID = this%elements(j,ObsElem)
         if (nodeID.gt.0) then
           dist = dist_2D(coords, this%grid(1)%coords(:,nodeID)) ! Assumes all layers share xy
           wgt_tmp = 1.0 / dist

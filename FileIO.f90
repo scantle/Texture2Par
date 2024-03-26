@@ -578,24 +578,36 @@ module m_file_io
 
 !-------------------------------------------------------------------------------------------------!
   
-  function get_data_len(this) result(data_len)
+  function get_data_len(this,rewind_to_last_line) result(data_len)
     implicit none
     class(t_file_reader), intent(in) :: this
     integer                         :: i, data_len, eof, ierr
-    integer                         :: length
-    character(30)                   :: id
-    type(t_vstringlist)             :: strings
+    character(200)                  :: line
+    logical, optional               :: rewind_to_last_line
 
     data_len = 0
           
     ! Loop through and count non-comment lines
     call this%read_to_next_line(eof)
     do while (eof == 0)
-      data_len = data_len + 1
-      call this%read_to_next_line(eof)
-      read(this%unit, '', iostat=ierr)
-      if (IS_IOSTAT_END(ierr)) eof = 1
+      !call this%read_to_next_line(eof)  ! Inconsistent with how data files are usually read
+      read(this%unit, '(a)', iostat=ierr) line
+      if (IS_IOSTAT_END(ierr)) then
+        eof = 1
+      else if (trim(adjustl(line)) /= '') then
+        ! not blank
+        data_len = data_len + 1
+      else
+        ! blank - easiest implementation is to stop here
+        exit
+      end if
     end do
+    
+    if (present(rewind_to_last_line)) then
+      if (rewind_to_last_line) then
+        call this%back(2)
+      end if
+    end if
           
   end function get_data_len
 
