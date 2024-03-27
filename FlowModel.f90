@@ -36,6 +36,7 @@ module m_flow_model
     contains
       procedure,public            :: initialize
       procedure,public            :: read_model
+      procedure,public            :: write_input_summary
       procedure,public            :: find_in_grid
       procedure,public            :: get_elev_at_point
       procedure,private           :: alloc_layers
@@ -237,6 +238,24 @@ module m_flow_model
     
   end subroutine alloc_nodes
 
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_input_summary(this)
+    use m_global, only: log
+    implicit none
+    class(t_flow_model)     :: this
+    
+    select type (this)
+      type is (t_iwfm_model)
+        call log%write_valueline('Number of Model Nodes',    this%nnodes(1))
+        call log%write_valueline('Number of Model Elements', this%nelements)
+      type is (t_flow_fdmodel)
+        call log%write_valueline('Number of Model Cells (All Layers)', sum(this%nnodes))
+    end select
+    call log%write_valueline('Number of Model Layers',      this%nlayers)
+  
+  end subroutine write_input_summary
+  
 !-------------------------------------------------------------------------------------------------!
   
   function find_in_grid(this, coords) result(res)

@@ -4,6 +4,7 @@ module m_options
 !  1. Add it as a variable in the type t_options
 !  2. Add it to the initialize routine and give it a default value
 !  3. Create a new case for it in the read_options routine. Write code to handle assignment.
+!  4. Add it to the write_input_summary routine
 !-------------------------------------------------------------------------------------------------!
   type t_options
     ! Required Options:
@@ -36,6 +37,7 @@ module m_options
     contains
       procedure, public :: initialize
       procedure, public :: read_options
+      procedure, public :: write_input_summary
     
   end type t_options
 
@@ -98,9 +100,7 @@ subroutine read_options(this, reader)
     if (status /= 0) exit  ! exit if end of block or end of file
     select case(trim(id))
       case("MAX_VSTRUCT")
-        ! TODO LENGTH CHECK
         this%MAX_VSTRUCT          = item2int(strings, 2)
-        ! WHAT HAPPENS IF THIS FAILS?
       !case("DATA_CLASSES")
       !  this%DATA_CLASSES         = item2int(strings, 2)
       case("INTERP_DIM")
@@ -155,5 +155,54 @@ subroutine read_options(this, reader)
   ! Handle EOF
     
 end subroutine read_options
+
+!-------------------------------------------------------------------------------------------------!
+
+subroutine write_input_summary(this)
+  use m_global, only: log
+  implicit none
+  class(t_options)           :: this
+  character(200)             :: logic_true
+  integer                    :: no_true_len
+
+    call log%write_valueline('Max Variogram Structures:', this%MAX_VSTRUCT)
+    call log%write_valueline('No Data Value:',this%NO_DATA_VALUE)
+    call log%write_valueline('IDW Power Value:',this%IDW_POWER)
+    !call log%write_valueline('',this%INTERP_DIM)  ! unimplemented
+    call log%write_valueline('Interpolation Method:',this%INTERP_METHOD)
+    call log%write_valueline('Interpolation Order:',this%INTERP_ORDER)
+    !call log%write_valueline('',this%MAIN_OUTPUT) ! unneeded (we're writing to that file!)
+    !call log%write_valueline('',this%OUTPUT_DIR)  ! unimplemented
+    !call log%write_valueline('',this%INPUT_DIR)   ! unimplemented
+    
+    ! Logical variables
+    logic_true = ''
+    no_true_len = 0 !len(trim(logic_true))
+    
+    if (this%SILENT_MODE        ) logic_true = trim(logic_true) // "SILENT_MODE"
+    if (this%DEBUG_MODE         ) logic_true = trim(logic_true) // "DEBUG_MODE"
+    if (this%WRITE_MATRIX       ) logic_true = trim(logic_true) // "WRITE_MATRIX"
+    if (this%WRITE_PP_WEIGHTS   ) logic_true = trim(logic_true) // "WRITE_PP_WEIGHTS"
+    if (this%WRITE_GRID_WEIGHTS ) logic_true = trim(logic_true) // "WRITE_GRID_WEIGHTS"
+    if (this%READ_PP_WEIGHTS    ) logic_true = trim(logic_true) // "READ_PP_WEIGHTS"
+    if (this%READ_GRID_WEIGHTS  ) logic_true = trim(logic_true) // "READ_GRID_WEIGHTS"
+    if (this%WRITE_NONE         ) logic_true = trim(logic_true) // "WRITE_NONE"
+    if (this%WRITE_NODE_FILES   ) logic_true = trim(logic_true) // "WRITE_NODE_FILES"
+    if (this%WRITE_DATASET_FILES) logic_true = trim(logic_true) // "WRITE_DATASET_FILES"
+    if (this%OUTPUT_GRID        ) logic_true = trim(logic_true) // "OUTPUT_GRID"
+    if (this%OUTPUT_ARRAY       ) logic_true = trim(logic_true) // "OUTPUT_ARRAY"
+    if (this%LOG_KRIGE_K        ) logic_true = trim(logic_true) // "LOG_KRIGE_K"
+    if (this%INFER_LAST_CLASS   ) logic_true = trim(logic_true) // "INFER_LAST_CLASS"
+    
+    if (len(trim(logic_true)) > no_true_len) then
+      !call log%write_line(logic_true)
+      call log%write_valueline('Logical Options Set to TRUE:',logic_true)
+    else
+      !call log%write_line("All Logical Options Set to FALSE")
+      call log%write_valueline('All Logical Options Set to','FALSE')
+    end if
+  
+end subroutine write_input_summary
+!-------------------------------------------------------------------------------------------------!
 
 end module m_options
