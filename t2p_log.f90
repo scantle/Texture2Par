@@ -58,6 +58,37 @@ module m_log
     call log%write_line(line, blank_start=1)
   
   end subroutine write_elapsed_time
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_input_summary(log, t2p)
+    use m_T2P, only: t_t2p
+    use m_flow_model
+    implicit none
+    type(t_file_writer),pointer  :: log
+    type(t_t2p)                  :: t2p
+    
+    call log%write_line('--- INPUT SUMMARY ---', blank_start=1)
+
+    ! T2P
+    call log%write_valueline('Number of Data Classes:', t2p%nclasses)
+    call log%write_valueline('Primary Data Classes:',   t2p%nprimary)
+    call log%write_valueline('Number of Data Files:',   t2p%ndatafiles)
+    !call log%write_valueline('Number of Datasets:',     t2p%ndatasets)
+    call log%write_valueline('Number of HSUs:',         t2p%nhsus)
+    call log%write_valueline('Number of Variograms:',   t2p%nvario)
+    
+    ! Flow Model
+    call t2p%fmodel%write_input_summary()
+    
+    ! Pilot Points
+    call log%write_valueline('Number of Pilot Points',      t2p%pilot_points%npp)
+    call log%write_valueline('Number of Pilot Point Zones', t2p%pilot_points%nppzones)
+    
+    ! Options
+    call t2p%opt%write_input_summary() ! Move here?
+    
+  end subroutine write_input_summary
 
 !-------------------------------------------------------------------------------------------------!
   
@@ -71,7 +102,7 @@ module m_log
   
     if (vstrlist_length(warnings) < 1) return   ! Early return if no warnings
     
-    call log%write_line('WARNINGS:', blank_start=1)
+    call log%write_line('--- WARNINGS ---', blank_start=1)
     do i=1, vstrlist_length(warnings)
       call log%write_line(vstrlist_index(warnings,i))
     end do
@@ -79,5 +110,6 @@ module m_log
   end subroutine write_warnings
   
 !-------------------------------------------------------------------------------------------------!
+
   
 end module m_log

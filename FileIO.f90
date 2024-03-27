@@ -41,9 +41,10 @@ module m_file_io
     type, extends(t_file_handler) :: t_file_writer
   
     contains
-      procedure,private     :: write_line_character
-      procedure,private     :: write_line_t_vstring
+      procedure,private     :: write_line_character, write_line_t_vstring
       generic,public        :: write_line => write_line_character, write_line_t_vstring
+      procedure,private     :: write_valueline_int, write_valueline_real, write_valueline_char
+      generic,public        :: write_valueline => write_valueline_int, write_valueline_real, write_valueline_char
     
   end type t_file_writer
 
@@ -55,6 +56,7 @@ module m_file_io
                                             ! (so IO errors can be written to it)
   character(500)              :: line       ! For reading in lines from files
   INTEGER, PARAMETER          :: dp = SELECTED_REAL_KIND(15,307)  ! 64-bit real
+  integer, parameter          :: log_width=32   
   
   contains
 
@@ -679,6 +681,72 @@ module m_file_io
     end if
     
   end subroutine write_line_t_vstring
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_valueline_int(this, line, value, fmt)
+    implicit none
+    class(t_file_writer), intent(inout) :: this
+    character(*), intent(in)            :: line
+    integer, intent(in)                 :: value
+    character(*), optional              :: fmt
+    character(24)                       :: fmt_use,full_fmt
+    integer                             :: line_length, spaces
+    
+    fmt_use = 'i8'
+    if (present(fmt)) fmt_use = trim(fmt)
+    
+    line_length = len_trim(line)
+    spaces = log_width - line_length
+    
+    write(full_fmt, '(2(a,i2),7a)') '(1x,a', line_length, ',', spaces, 'x,', trim(fmt_use), ')'
+    write(this%unit, full_fmt) adjustl(line), value
+    
+  end subroutine write_valueline_int
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_valueline_real(this, line, value, fmt)
+    implicit none
+    class(t_file_writer), intent(inout) :: this
+    character(*), intent(in)            :: line
+    real(dp)                            :: value
+    character(*), optional              :: fmt
+    character(24)                       :: fmt_use,full_fmt
+    integer                             :: line_length, spaces
+    
+    fmt_use = 'f8.2'
+    if (present(fmt)) fmt_use = trim(fmt)
+    
+    line_length = len_trim(line)
+    spaces = log_width - line_length
+    
+    write(full_fmt, '(2(a,i2),7a)') '(1x,a', line_length, ',', spaces, 'x,', trim(fmt_use), ')'
+    write(this%unit, full_fmt) adjustl(line), value
+    
+  end subroutine write_valueline_real
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_valueline_char(this, line, value, fmt)
+    implicit none
+    class(t_file_writer), intent(inout) :: this
+    character(*), intent(in)            :: line
+    character(*)                        :: value
+    character(*), optional              :: fmt
+    character(24)                       :: fmt_use,full_fmt
+    integer                             :: line_length, spaces
+    
+    fmt_use = 'a'
+    if (present(fmt)) fmt_use = trim(fmt)
+    
+    line_length = len_trim(line)
+    spaces = log_width - line_length
+    
+    write(full_fmt, '(2(a,i2),7a)') '(1x,a', line_length, ',', spaces, 'x,', trim(fmt_use), ')'
+    write(this%unit, full_fmt) adjustl(line), trim(value)
+    
+  end subroutine write_valueline_char
 
 !-------------------------------------------------------------------------------------------------!
 
