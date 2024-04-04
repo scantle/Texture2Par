@@ -145,7 +145,7 @@ module m_read_datasets
     character(30)                      :: badclass
     character(5)                       :: cint
     
-    ! Columns of header should be Location ID n X Y Zland Depth follwed by class data, then layers
+    ! Columns of header should be Location ID n X Y Zland Depth follwed by class data, then layer groups
     !                             1        2  3 4 5 6     7
     nsets = vstrlist_length(header) - 7
     if (t2p%has_hsus) nsets = nsets - t2p%fmodel%nlayers

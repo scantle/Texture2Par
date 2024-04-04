@@ -12,7 +12,6 @@ module m_kriging
 
   type, extends(t_interpolator) :: t_krige
     
-    class(t_vgm), allocatable :: vgm
     ! Attributes for KD-tree and search parameters could be added here
   contains
     procedure                 :: intialize => initialize_kriging
@@ -44,12 +43,10 @@ module m_kriging
 ! KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine initialize_kriging(this, vgm)
+  subroutine initialize_kriging(this)
     implicit none
     class(t_krige)                :: this
-    class(t_vgm)                  :: vgm
     
-    this%vgm = vgm
     
   end subroutine initialize_kriging
   

@@ -48,8 +48,8 @@ module m_read_main_input
     select case(trim(id))
       case("OPTIONS")
         ! This is the only block we let read it's own entries and set it's own read tracker (has_opt)
-        ! In the future we may need a post-read hook to process this info, but for now we keep it simple
         call t2p%opt%read_options(reader)
+        call t2p%process_options()
         t2p%has_opt = .true.
       case("FLOW_MODEL")
         call read_FLOW_MODEL_block(t2p, reader)

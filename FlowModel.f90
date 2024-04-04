@@ -59,7 +59,7 @@ module m_flow_model
     contains
       procedure,private       :: read_gsf
       !procedure,private       :: add_node2vert2node
-      procedure,public          :: get_elev_at_point => get_elev_at_point_cell
+      procedure,public        :: get_elev_at_point => get_elev_at_point_cell
   end type t_flow_fdmodel
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_flow_fdmodel) :: t_mgrid

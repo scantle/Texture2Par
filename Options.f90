@@ -5,6 +5,8 @@ module m_options
 !  2. Add it to the initialize routine and give it a default value
 !  3. Create a new case for it in the read_options routine. Write code to handle assignment.
 !  4. Add it to the write_input_summary routine
+!  5. If necessary, add a handler for the option to the t2p%process_options() hook that is called
+!     after the options are read.
 !-------------------------------------------------------------------------------------------------!
   type t_options
     ! Required Options:
@@ -56,7 +58,7 @@ module m_options
     this%NO_DATA_VALUE        = -999.0
     this%IDW_POWER            =  2.0
     this%INTERP_DIM           = '2D'
-    this%INTERP_METHOD        = 'KRIGING'
+    this%INTERP_METHOD        = 'OK'
     this%INTERP_ORDER         = 'BEFORE'
     this%MAIN_OUTPUT          = 't2p_log.txt'
     !this%OUTPUT_DIR           = './'
@@ -89,11 +91,6 @@ subroutine read_options(this, reader)
   integer                    :: status, length
   character(30)              :: id
   type(t_vstringlist)        :: strings
-  
-  ! To hold anything read
-  integer                    :: in_int
-  real                       :: in_real
-  character(30)              :: in_char
 
   do
     call reader%next_block_item(status, id, strings, length)
@@ -162,14 +159,25 @@ subroutine write_input_summary(this)
   use m_global, only: log
   implicit none
   class(t_options)           :: this
-  character(200)             :: logic_true
+  character(200)             :: logic_true, interp_text
   integer                    :: no_true_len
 
     call log%write_valueline('Max Variogram Structures:', this%MAX_VSTRUCT)
     call log%write_valueline('No Data Value:',this%NO_DATA_VALUE)
     call log%write_valueline('IDW Power Value:',this%IDW_POWER)
     !call log%write_valueline('',this%INTERP_DIM)  ! unimplemented
-    call log%write_valueline('Interpolation Method:',this%INTERP_METHOD)
+    ! Going to do something a little nicer for the Interpolation Method
+    select case(this%INTERP_METHOD)
+      case("OK")
+        interp_text = "Ordinary Kriging (OK)"
+      case("SK")
+        interp_text = "Simple Kriging (SK)"
+      case("IDW")
+        interp_text = "Inverse Distance Weighting (IDW)"
+      case DEFAULT  ! Shouldn't be able to get here
+        interp_text = this%INTERP_METHOD
+    end select
+    call log%write_valueline('Interpolation Method:',trim(interp_text))
     call log%write_valueline('Interpolation Order:',this%INTERP_ORDER)
     !call log%write_valueline('',this%MAIN_OUTPUT) ! unneeded (we're writing to that file!)
     !call log%write_valueline('',this%OUTPUT_DIR)  ! unimplemented

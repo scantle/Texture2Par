@@ -1,12 +1,13 @@
 module m_T2P
   use m_vstringlist, only: t_vstringlist, vstrlist_search
   use m_vstring, only: t_vstring
-  use m_error_handler, only: warnings
+  use m_error_handler, only: error_handler,warnings
   use m_options, only: t_options
   use m_datasets, only: t_layerdata, t_dataset
   use m_flow_model, only: t_flow_model
   use m_pilotpoints, only: t_pilotpoints
-  use m_interpolator, only: t_interpolator
+  use m_interpolator, only: t_interpolator, t_idw
+  use m_kriging, only: t_simpkrige, t_ordkrige
   use m_vario, only: t_vgm
 !-------------------------------------------------------------------------------------------------!
   type t_T2P
@@ -54,6 +55,7 @@ module m_T2P
   contains
     ! Setup procedures
     procedure,public   :: initialize
+    procedure,public   :: process_options
     procedure,public   :: setup_flow_model
     procedure,public   :: setup_data_classes
     procedure,public   :: setup_variograms
@@ -106,6 +108,32 @@ module m_T2P
     call vstrlist_new (warnings)  ! belongs to m_error_handler
     
   end subroutine initialize
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine process_options(this)
+    ! Hook for after options are read
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    
+    ! Handle Interpolation Method
+    select case (this%opt%INTERP_METHOD)
+      case("OK")
+        allocate(t_ordkrige::this%interp_data)
+        allocate(t_ordkrige::this%interp_pp)
+      case("SK")
+        allocate(t_simpkrige::this%interp_data)
+        allocate(t_simpkrige::this%interp_pp)
+      case("IDW")
+        allocate(t_idw::this%interp_data)
+        allocate(t_idw::this%interp_pp)
+      case DEFAULT
+        call error_handler(1,opt_msg="Invalid Interpolation Method: " // this%opt%INTERP_METHOD)
+    end select
+    call this%interp_data%initialize()  ! Todo - custom parameters?
+    call this%interp_pp%initialize()    ! Todo - custom parameters?
+  
+  end subroutine process_options
   
 !-------------------------------------------------------------------------------------------------!
   
