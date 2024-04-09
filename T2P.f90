@@ -16,11 +16,12 @@ module m_T2P
     class(t_interpolator),pointer    :: interp_data => null()
     class(t_interpolator),pointer    :: interp_pp   => null()
     type(t_layerdata),pointer        :: datasets(:,:)     ! Datasets (dataset, layer)
-    type(t_layerdata)                :: hydraulic_par(10) ! Hydraulic Parameters - KCMin, DeltaKC, KFMin, DeltaKF, SsC, SsF, SyC, Aniso
+    type(t_layerdata),pointer        :: par(:,:)          ! Final model hydraulic parameters (parameters, layers)
     type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)
     type(t_pilotpoints),pointer      :: pilot_points
     
     ! Counters
+    integer                          :: npar=4     ! Kh, Kv, Ss, Sy (what about aquitards?) (Attach to fmodel?)
     integer                          :: nclasses   ! Number of data classes
     integer                          :: ndatasets  ! Number of data sets (one may be inferred)
     integer                          :: ndatafiles ! Number of data files to read in
@@ -65,6 +66,9 @@ module m_T2P
     
     ! Main Procedures
     procedure,public   :: predict
+    procedure,private  :: interpolate_pp
+    procedure,private  :: interpolate_model
+    procedure,private  :: calc_block_parameters
     
     ! Access procedures
     procedure, public  :: get_class_id
@@ -147,11 +151,15 @@ module m_T2P
     if (len_trim(this%fmodel%hsu_file))     this%has_hsus = .true.
     if (len_trim(this%fmodel%ppzone_file))  this%has_ppzones = .true.
     
+    ! Allocate the final parameter objects
+    allocate(this%par(this%npar, this%fmodel%nlayers))
+    
   end subroutine setup_flow_model
   
 !-------------------------------------------------------------------------------------------------!
   
   subroutine setup_data_classes(this, num_primary, num_total, class_names, class_connections, class_type)
+    use m_pilotpoints, only: nproperties
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer,intent(in)            :: num_primary, num_total
@@ -231,23 +239,108 @@ module m_T2P
 !-------------------------------------------------------------------------------------------------!
   
   subroutine predict(this)
+    use m_grid, only: t_grid
     implicit none
     class(t_T2P), intent(inout)   :: this
+    class(t_grid),pointer         :: pp_to
+    type(t_pilotpoints)           :: pp_intermediate
+    integer                       :: i,j
+    
     ! Assign PPTO_grid (data or fmodel)
-    ! Krige PP to PPTO_grid
-    ! Write PP weights
+    if (this%opt%INTERP_ORDER=="BEFORE") then
+      ! T2P 1.0 Method
+      ! Uses layer 1 grid
+      pp_to => this%fmodel%grid(1)
+    else if (this%opt%INTERP_ORDER=="AFTER") then
+      ! Uses first dataset layer 1 grid TODO: Check to ensure they're all the same?
+      ! (dataset 1 always has to be a primary dataset)
+      pp_to => this%datasets(1,1)%grid
+    end if
   
-    ! INTERP_ORDER: BEFORE
-    ! Krige textures to fmodel grid
-    ! Write weights 
-    ! Calc parameters at fmodel grid locations
+    ! Interpolate PP to PPTO_grid
+    call this%interpolate_pp(pp_to, pp_intermediate)
+    
+    ! TODO I'm not sure the above is more readable than just including it below in the if statement.
   
-    ! INTERP_ORDER: AFTER
-    ! Calc parameters at data locations
-    ! Krige parameters to fmodel grid
-    ! Write weights
+    if (this%opt%INTERP_ORDER=="BEFORE") then
+      ! Krige textures to fmodel grid
+      call this%interpolate_model()
+      ! Write weights 
+      ! Calc parameters at fmodel grid locations
+      call this%calc_block_parameters(pp_intermediate)
+      
+    else if (this%opt%INTERP_ORDER=="AFTER") then
+      ! Calc parameters at data locations
+      call this%calc_block_parameters(pp_intermediate)
+      ! Krige parameters to fmodel grid
+      call this%interpolate_model()
+      ! Write weights
+    end if
     
   end subroutine predict
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine interpolate_pp(this, to_grid, results)
+    use m_grid, only: t_grid
+    ! Pilot Point type in, Pilot Point type out
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    type(t_pilotpoints)             :: results
+    type(t_grid)                    :: to_grid
+    
+    ! Go by layer
+    
+    ! Check if we have precalculated weights for the pilot point interpolation
+    if (this%opt%READ_PP_WEIGHTS) then
+      ! TODO READ
+    else
+      ! CALCULATE WEIGHTS
+    end if
+    
+    ! Write PP weights
+    if (this%opt%WRITE_PP_WEIGHTS) then
+      ! TODO WRITE
+    end if
+    
+    ! Apply weights and create results
+    
+  end subroutine interpolate_pp
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine interpolate_model(this)
+    use m_grid, only: t_grid
+    ! Pilot Point type in, Pilot Point type out
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    
+    ! Go by layer
+    
+    ! Check if we have precalculated weights for the pilot point interpolation
+    if (this%opt%READ_GRID_WEIGHTS) then
+      ! TODO READ
+    else
+      ! CALCULATE WEIGHTS
+    end if
+    
+    ! Write PP weights
+    if (this%opt%WRITE_GRID_WEIGHTS) then
+      ! TODO WRITE
+    end if
+    
+    ! Apply weights and create results
+    
+  end subroutine interpolate_model
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine calc_block_parameters(this, pp_obj)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    type(t_pilotpoints)           :: pp_obj
+  
+  end subroutine calc_block_parameters
+  
 !-------------------------------------------------------------------------------------------------!
 
 end module m_T2P

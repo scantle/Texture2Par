@@ -17,7 +17,7 @@ module m_options
     real                     :: IDW_POWER             ! Inverse Distance Weighting Power Parameter
     character(10)            :: INTERP_DIM            ! 2D, 3D
     character(10)            :: INTERP_METHOD         ! KRIGING, IDW
-    character(10)            :: INTERP_ORDER          ! BEFORE, AFTER
+    character(10)            :: INTERP_ORDER          ! Interpolate to grid: [BEFORE, AFTER] upscaling/aggegating?
     character(60)            :: MAIN_OUTPUT           ! 
     !character(100)           :: OUTPUT_DIR            ! Directory where output gets written
     !character(100)           :: INPUT_DIR             ! Direction where input gets read
