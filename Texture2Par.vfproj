@@ -70,6 +70,7 @@
 		<File RelativePath=".\kriging.f90"/>
 		<File RelativePath=".\variogram.f90"/></Filter>
 		<Filter Name="Objects">
+		<File RelativePath=".\Categories.f90"/>
 		<File RelativePath=".\DataSets.f90"/>
 		<File RelativePath=".\FlowModel.f90"/>
 		<File RelativePath=".\Options.f90"/>
