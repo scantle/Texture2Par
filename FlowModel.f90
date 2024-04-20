@@ -2,6 +2,7 @@ module m_flow_model
   use m_file_io
   use m_grid, only: t_grid, create_grid_object
   use m_error_handler, only: error_handler
+  use m_categories, only: t_category
   !use kdtree2_module, only: kdtree2, kdtree2_create
   implicit none
 !-------------------------------------------------------------------------------------------------!
@@ -32,10 +33,13 @@ module m_flow_model
     character(100)                :: output_file    ! File where aquifer parameters are written
     real(dp), allocatable         :: elev(:,:)      ! Elevations for each layer (node, layer)
     type(t_grid),pointer          :: grid(:)        ! xy grids for layers
+    type(t_category)              :: ppzones        ! Pilot point zone fmodel grid arrays & tracking
+    type(t_category)              :: hsus           ! HSU fmodel grid arrays & tracking
   
     contains
       procedure,public            :: initialize
       procedure,public            :: read_model
+      procedure,public            :: read_category_files
       procedure,public            :: write_input_summary
       procedure,public            :: find_in_grid
       procedure,public            :: get_elev_at_point
@@ -283,6 +287,23 @@ module m_flow_model
   
   end subroutine get_elev_at_point
 
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine read_category_files(this)
+    ! Called after model read
+    ! Assumes all layers have same number of nodes
+    ! (Could be modified in the future by passing all this%nnodes)
+    implicit none
+    class(t_flow_model)     :: this
+    
+    ! Read ppzones file
+    call this%ppzones%read_file(this%ppzone_file, this%nlayers, this%nnodes(1), 0)
+    
+    ! Read hsus file
+    call this%hsus%read_file(this%hsu_file, this%nlayers, this%nnodes(1), 1)
+    
+  end subroutine read_category_files
+  
 !-------------------------------------------------------------------------------------------------!
   
   !subroutine add_node2vert2node(this, node, nvert)
@@ -1105,4 +1126,5 @@ module m_flow_model
   end subroutine read_modflow2000
   
 !-------------------------------------------------------------------------------------------------!
+  
 end module m_flow_model

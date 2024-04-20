@@ -15,27 +15,33 @@ module m_categories
     integer,allocatable        :: array(:,:)     ! Arrays of category values (nvalues, narr)
     
     contains
-      procedure, public        :: initialize
-      procedure, public        :: add_category => add_category_int, add_category_str
+      procedure, public        :: read_file
+      procedure, private       :: initialize
+      procedure, private       :: add_category => add_category_int, add_category_str
   end type
 !-------------------------------------------------------------------------------------------------!
   contains
+  
 !-------------------------------------------------------------------------------------------------!
 ! CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
-  subroutine initialize(this, narr, fmodel, datatype)
-    use m_flow_model, only: t_flow_model
+  subroutine initialize(this, narr, nlayers, nnodes, datatype)
+    ! Called by this%read_file()
     implicit none
     class(t_category)     :: this
-    integer,intent(in)    :: narr, datatype
-    type(t_flow_model)    :: fmodel
+    integer,intent(in)    :: narr, datatype, nlayers, nnodes
     
     this%dtype = datatype
     this%narr = narr
-    allocate(this%lay2arr(fmodel%nlayers      ), &
-             this%array(fmodel%nnodes(1), narr), &  ! Assumes uniform size layers
+    allocate(this%lay2arr(nlayers      ), &
+             this%array   (nnodes, narr), &  ! Assumes uniform size layers
              this%catlist(DEFAULT_CATLIST_SIZE)  )
     if (this%dtype==1) call vstrlist_new(this%strlist)
+    
+    ! By Default
+    this%lay2arr =  1
+    this%array   =  1
+    this%catlist = -1
   
   end subroutine initialize
 
@@ -94,6 +100,37 @@ module m_categories
     temp_catlist(:size(this%catlist)) = this%catlist
     call move_alloc(temp_catlist, this%catlist)
   end subroutine reallocate_catlist
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine read_file(this, file, nlayers, nnodes, datatype)
+    use m_file_io, only: t_file_reader, open_file_reader, item2int, item2char
+    use m_error_handler, only: error_handler
+    implicit none
+    class(t_category), intent(inout) :: this
+    character(*), intent(in)         :: file
+    integer,intent(in)               :: datatype, nlayers, nnodes
+    type(t_file_reader), pointer     :: reader
+    type(t_vstringlist)              :: strings
+    integer                          :: lay2arr(nlayers)
+    integer                          :: eof, narr
+    
+    ! Check if a file was actually passed. If not, we'll just initialize and be done
+    if (len(trim(file))>0) then
+      reader => open_file_reader(file)
+      call reader%next_item(eof, strings)
+      
+      narr = maxval(lay2arr)
+      call this%initialize(narr, nlayers, nnodes, datatype)
+    else
+      narr = 1
+      call this%initialize(narr, nlayers, nnodes, datatype)
+      return                   ! Early return if no file
+    end if
+    
+    ! Continue if file passed
+    
+  end subroutine read_file
   
 !-------------------------------------------------------------------------------------------------!
 end module m_categories

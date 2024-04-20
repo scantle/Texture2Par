@@ -42,6 +42,7 @@ program Texture2Par
   ! Read Main Input
   call read_main_input(t2p, main_input_file)
   call t2p%fmodel%read_model()
+  call t2p%fmodel%read_category_files()
   ! Read datasets
   call read_datasets(t2p)
   call write_elapsed_time(log)
