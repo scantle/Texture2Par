@@ -25,7 +25,7 @@ module m_file_io
     contains
       procedure,private      :: jump_to_external
       procedure,private      :: handle_eof
-      procedure,private      :: read_to_next_line
+      procedure,public       :: read_to_next_line
       procedure,public       :: read_to_next_iwfm_line
       procedure,public       :: next_item
       procedure,public       :: skip
