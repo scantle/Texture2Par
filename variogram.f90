@@ -4,7 +4,7 @@ module m_vario
 
 type :: t_vgm
 ! Variogram or cross variogram structure
-  integer                  :: itype       ! Variogram model (0-linear, 1-spherical, 2-exponential)
+  integer                 :: itype       ! Variogram model (0-linear, 1-spherical, 2-exponential)
   real(dp)                :: sill        ! Contribution of each structure, when summed (with nugget) the sill
   real(dp)                :: a_hmax      ! Range: distance where data are no longer correlated
   real(dp)                :: a_hmin      ! Range min (equal to amax when anis1/anis2 ==1)

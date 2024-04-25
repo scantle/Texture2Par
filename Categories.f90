@@ -6,7 +6,6 @@ module m_categories
   integer,parameter   :: DEFAULT_CATLIST_SIZE=10
 !-------------------------------------------------------------------------------------------------!
 
-  
   type :: t_category
     integer                    :: dtype          ! Data type, 0-int, 1-str
     integer                    :: narr           ! Number of unique arrays

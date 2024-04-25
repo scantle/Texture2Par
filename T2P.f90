@@ -282,27 +282,33 @@ module m_T2P
   
   subroutine interpolate_pp(this, to_grid, results)
     use m_grid, only: t_grid
+    use m_weights, only: t_weights
     ! Pilot Point type in, Pilot Point type out
     implicit none
-    class(t_T2P), intent(inout)   :: this
+    class(t_T2P), intent(inout)     :: this
     type(t_pilotpoints)             :: results
     type(t_grid)                    :: to_grid
+    type(t_weights),pointer         :: weights
+    integer                         :: k
     
-    ! Go by layer
+    ! Go by pilot point zone arrays (up to nlayers)
+    do k=1, this%fmodel%ppzones%narr
     
-    ! Check if we have precalculated weights for the pilot point interpolation
-    if (this%opt%READ_PP_WEIGHTS) then
-      ! TODO READ
-    else
-      ! CALCULATE WEIGHTS
-    end if
+      ! Check if we have precalculated weights for the pilot point interpolation
+      if (this%opt%READ_PP_WEIGHTS) then
+        ! TODO READ
+      else
+        call this%interp_pp%calc_weights_by_category(this%pilot_points, to_grid, weights, this%fmodel%ppzones, k, this%variograms(:,this%nvario), this%nstruct(this%nvario))
+      end if
     
-    ! Write PP weights
-    if (this%opt%WRITE_PP_WEIGHTS) then
-      ! TODO WRITE
-    end if
+      ! Write PP weights
+      if (this%opt%WRITE_PP_WEIGHTS) then
+        ! TODO WRITE
+      end if
     
-    ! Apply weights and create results
+      ! Apply weights and create results
+      
+    end do
     
   end subroutine interpolate_pp
 
@@ -313,22 +319,31 @@ module m_T2P
     ! Pilot Point type in, Pilot Point type out
     implicit none
     class(t_T2P), intent(inout)   :: this
+    integer                       :: k, i
     
-    ! Go by layer
+    ! Loop over model layers
+    do k=1, this%fmodel%nlayers
     
-    ! Check if we have precalculated weights for the pilot point interpolation
-    if (this%opt%READ_GRID_WEIGHTS) then
-      ! TODO READ
-    else
-      ! CALCULATE WEIGHTS
-    end if
+      ! Loop over primary classes
+      ! Check for identical/shared grids??
+      do i=1, this%nprimary
     
-    ! Write PP weights
-    if (this%opt%WRITE_GRID_WEIGHTS) then
-      ! TODO WRITE
-    end if
+        ! Check if we have precalculated weights for the pilot point interpolation
+        if (this%opt%READ_GRID_WEIGHTS) then
+          ! TODO READ
+        else
+          ! CALCULATE WEIGHTS
+        end if
     
-    ! Apply weights and create results
+        ! Write PP weights
+        if (this%opt%WRITE_GRID_WEIGHTS) then
+          ! TODO WRITE
+        end if
+    
+        ! Apply weights and create results
+    
+      end do
+    end do
     
   end subroutine interpolate_model
 
