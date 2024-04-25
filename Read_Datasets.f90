@@ -20,7 +20,7 @@ module m_read_datasets
     type(t_vstringlist)           :: strings
     character(200)                :: file, name
     character(30),allocatable     :: hsus(:)
-    integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, eof
+    integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
     integer                       :: prev_idx, idx, iint, fmodel_loc
     real(dp)                      :: x, y, z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
     real(dp),allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:)
@@ -29,6 +29,14 @@ module m_read_datasets
     
     ! Allocate datasets (is this the right place for this to happen?)
     allocate(t2p%datasets(t2p%ndatasets, t2p%fmodel%nlayers))
+    
+    ! Setup for HSUs - if a HSU file was given/read, then they are expected in the dataset files
+    ! Should we skip if ncat is 1???
+    if (t2p%fmodel%hsus%from_file) then
+      ncats = t2p%fmodel%nlayers
+    else
+      ncats = 0
+    end if
     
     ! Loop over files
     do i=1, t2p%ndatafiles
@@ -43,7 +51,7 @@ module m_read_datasets
       allocate(wvalues      (nsets), &
               total_thick   (nsets,t2p%fmodel%nlayers), &
               wv_accumulator(nsets,t2p%fmodel%nlayers), &
-              hsus(0))  ! TODO handle nlayers of hsus when active
+              hsus(ncats))  ! TODO handle nlayers of hsus when active
       if (allocated(local_elevs)==.false.) allocate(local_elevs(0:t2p%fmodel%nlayers))
       
       ! Get data length (not file length, since we've gone past the header)
@@ -72,7 +80,7 @@ module m_read_datasets
       
       ! The real work begins
       do j=1, nlines
-        read(reader%unit, *) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:0)
+        read(reader%unit, *) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
         if (iint==1) then
           ! Store previous log values...
           if (j>1) then
@@ -91,9 +99,17 @@ module m_read_datasets
           thick = depth
           grid%coords(1,idx) = x
           grid%coords(2,idx) = y
-          ! TODO HSUS
           ! Get location in model, get elevation at model layers in model
           fmodel_loc = t2p%fmodel%find_in_grid(grid%coords(:,idx))
+          ! Store HSUs for each layer
+          do k=1, ncats
+            do l=1, nsets
+              t2p%datasets(ids(l),k)%category(idx) = t2p%fmodel%hsus%get_id(hsus(k))
+              if (t2p%datasets(ids(l),k)%category(idx)==0) then
+                call error_handler(1,file,"Invalid HSU: "//trim(hsus(k))//" (No matching category in HSU file)")
+              end if
+            end do
+          end do
           call t2p%fmodel%get_elev_at_point(grid%coords(:,idx), local_elevs(:), fmodel_loc)
           prev_idx = idx
         else

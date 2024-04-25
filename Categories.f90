@@ -25,6 +25,8 @@ module m_categories
       procedure, pass          :: add_category_str
       procedure, pass          :: add_category_char
       generic, private         :: add_category => add_category_int,add_category_str,add_category_char
+      procedure, pass          :: get_id_char
+      generic, public          :: get_id => get_id_char
   end type
 !-------------------------------------------------------------------------------------------------!
   contains
@@ -201,6 +203,7 @@ module m_categories
           call this%add_category(chartemp(j), cidx)
           this%array(j,i) = cidx
         end do
+        ! Too slow with vstrlists
         !inode = 1
         !do while (inode < nnodes)
         !  call reader%next_item(eof, strings)
@@ -215,6 +218,19 @@ module m_categories
     end do
     
   end subroutine read_file
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_id_char(this, value) result(index)
+    ! Gets strlist index of pass character category
+    implicit none
+    class(t_category), intent(inout) :: this
+    character(*),intent(in)          :: value
+    integer                          :: index
+    
+    index = vstrlist_search(this%strlist, trim(value))
+  
+  end function get_id_char
   
 !-------------------------------------------------------------------------------------------------!
 end module m_categories
