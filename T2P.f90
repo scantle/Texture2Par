@@ -290,7 +290,7 @@ module m_T2P
     type(t_pilotpoints)             :: results
     type(t_grid)                    :: to_grid
     type(t_weights),pointer         :: weights
-    integer                         :: k
+    integer                         :: i,k
     
     ! Go by pilot point zone arrays (up to nlayers)
     do k=1, this%fmodel%ppzones%narr
@@ -299,7 +299,11 @@ module m_T2P
       if (this%opt%READ_PP_WEIGHTS) then
         ! TODO READ
       else
-        call this%interp_pp%calc_weights_by_category(this%pilot_points, to_grid, weights, this%fmodel%ppzones, k, this%variograms(:,this%nvario), this%nstruct(this%nvario))
+        do i=1, this%fmodel%ppzones%ncat                                              ! Loop over categories
+          where (this%fmodel%ppzones%array(:,k)== this%fmodel%ppzones%catlist(i))  ! Subset by category array
+            !call this%calc_weights(this%pilot_points%grid, to_grid, weights, this%variograms(:,this%nvario), nstruct)
+          end where
+        end do
       end if
     
       ! Write PP weights
@@ -347,7 +351,7 @@ module m_T2P
     end do
     
   end subroutine interpolate_model
-
+  
 !-------------------------------------------------------------------------------------------------!
   
   subroutine calc_block_parameters(this, pp_obj)

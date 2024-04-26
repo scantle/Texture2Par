@@ -14,9 +14,6 @@ module m_interpolator
   contains
     procedure,private      :: initialize_abc
     generic                :: initialize => initialize_abc       ! placeholder
-    procedure              :: calc_weights_by_category_pp
-    generic                :: calc_weights_by_category => calc_weights_by_category_pp
-
   end type t_interpolator
 !-------------------------------------------------------------------------------------------------!
   
@@ -58,28 +55,7 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine calc_weights_by_category_pp(this, pilot_points, output_grid, weights, output_categories, arr_id, variograms, nstruct)
-    use m_pilotpoints, only: t_pilotpoints
-    implicit none
-    class(t_interpolator)             :: this
-    type(t_pilotpoints)               :: pilot_points
-    type(t_grid)                      :: output_grid
-    type(t_weights)                   :: weights
-    type(t_category),optional         :: output_categories
-    integer,intent(in),optional       :: arr_id, nstruct
-    type(t_vgm),optional              :: variograms(:)
-    
-    integer                           :: i
-    
-    do i=1, output_categories%ncat
-      where (output_categories%array(:,arr_id)== output_categories%catlist(i))
-        ! Passes to the method specific, grid-only routine
-        !call this%calc_weights(this%pilot_points%grid, this%output_grid, weights, variograms, nstruct)
-      end where
-    end do
-    
-  end subroutine calc_weights_by_category_pp
-  
+
 !-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!
