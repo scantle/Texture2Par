@@ -13,7 +13,6 @@ module m_pilotpoints
     !integer,allocatable           :: category(:)      ! Zones, Hydrostratigraphic Units (HSUs)
     !type(t_grid),pointer          :: grid             ! Grid
   
-    integer,allocatable            :: lay_type(:)      ! Aquifer (1), Aquitard (2), Unused (0)
     integer,pointer                :: pp_id(:)         ! ID value of each pilot point (index matches pilot_points)
     integer,allocatable            :: zonelist(:)      ! List of all "categories" assigned to a pilot point
     real(dp),allocatable           :: values(:,:,:)    ! Data values by parameter (point, parameter, class_id)
@@ -21,9 +20,11 @@ module m_pilotpoints
     ! Counters
     integer                        :: npp              ! Number of pilot points
     integer                        :: nppzones         ! Number of pilot point zones
-    integer                        :: max_a_cat        ! Max aquifer category id
-    integer                        :: pp_split         ! First aquitard point index
-    integer                        :: zonelist_split   ! The first aquitard zone in zonelist
+    
+    ! Flags
+    logical                        :: has_aquitard_pp  ! True if aquitard pilot points were read
+    logical,allocatable            :: is_aquifer (:)
+    logical,allocatable            :: is_aquitard(:)
     
     contains
     
@@ -66,19 +67,19 @@ module m_pilotpoints
     class(t_pilotpoints),intent(inout) :: this
     integer,intent(in)                 :: npoints
     
-    allocate(this%category  (npoints), &
-             this%lay_type  (npoints)  )
+    allocate(this%category   (npoints), &
+             this%is_aquifer (npoints), &
+             this%is_aquitard(npoints)  )
     allocate(this%grid)
     
     this%npp            = npoints
 
     ! Intialize with default values
-    this%nppzones       = 1
-    this%category       = 1
-    this%lay_type       = 0
-    this%max_a_cat      = 0
-    this%pp_split       = npoints
-    this%zonelist_split = 0
+    this%nppzones        = 1
+    this%category        = 1
+    this%has_aquitard_pp = .false.
+    this%is_aquifer      = .false.
+    this%is_aquitard     = .false.
     
     this%grid => create_grid_object(2, npoints)  ! X,Y coords by n 
   
@@ -116,21 +117,14 @@ module m_pilotpoints
     pp_index = this%get_pp_index(item2int(strings, 1))
     ! Now we react to type
     select case(pp_type)
-      case("CLASS")
+      case("AQUIFER")
         class_id = vstrlist_search(class_names, vstrlist_index(strings, 2))
-        if (pp_index < this%pp_split) then
         this%values(pp_index,1,class_id) = item2dp(strings, 3)  ! Kmin
         this%values(pp_index,2,class_id) = item2dp(strings, 4)  ! Kmax
         this%values(pp_index,3,class_id) = item2dp(strings, 5)  ! Ss
         this%values(pp_index,4,class_id) = item2dp(strings, 6)  ! Sy
         this%values(pp_index,5,class_id) = item2dp(strings, 7)  ! Aniso
         this%values(pp_index,6,class_id) = item2dp(strings, 8)  ! Kd
-        else   ! Aquitard
-        this%values(pp_index,1,class_id) = item2dp(strings, 3)  ! Kmin
-        this%values(pp_index,2,class_id) = item2dp(strings, 4)  ! Kmax
-        this%values(pp_index,5,class_id) = item2dp(strings, 5)  ! Aniso
-        this%values(pp_index,6,class_id) = item2dp(strings, 6)  ! Kd
-        end if
         ! K Processing & Checking
         if (this%values(pp_index,2,class_id) <= this%values(pp_index,1,class_id)) then
           call error_handler(1,"KMax <= Kmin for pilot point " // trim(id))
@@ -139,6 +133,27 @@ module m_pilotpoints
           ! Store this value as a difference
           this%values(pp_index,2,class_id) = this%values(pp_index,2,class_id) - this%values(pp_index,1,class_id)
         end if
+        ! PP type handling - has this previously been used as a aquiTARD pp?
+        if(this%is_aquitard(pp_index)) call error_handler(1,"Cannot assign aquifer parameters to pilot point previously used for aquitard parameters: " // trim(id))
+        this%is_aquifer(pp_index) = .true.
+      case("AQUITARD")
+        class_id = vstrlist_search(class_names, vstrlist_index(strings, 2))
+        this%values(pp_index,1,class_id) = item2dp(strings, 3)  ! Kmin
+        this%values(pp_index,2,class_id) = item2dp(strings, 4)  ! Kmax
+        this%values(pp_index,5,class_id) = item2dp(strings, 5)  ! Aniso
+        this%values(pp_index,6,class_id) = item2dp(strings, 6)  ! Kd
+        ! K Processing & Checking
+        if (this%values(pp_index,2,class_id) <= this%values(pp_index,1,class_id)) then
+          call error_handler(1,"KMax <= Kmin for pilot point " // trim(id))
+        else
+          ! We krige the *difference* to ensure Kmax > Kmin everywhere
+          ! Store this value as a difference
+          this%values(pp_index,2,class_id) = this%values(pp_index,2,class_id) - this%values(pp_index,1,class_id)
+        end if
+        ! PP type handling - has this previously been used as a aquiFER pp?
+        if(this%is_aquifer(pp_index)) call error_handler(1,opt_msg="Cannot assign aquitard parameters to pilot point previously used for aquifer parameters: " // trim(id))
+        this%is_aquitard(pp_index) = .true.
+        this%has_aquitard_pp = .true.
       case("GLOBAL")
         ! Set for ALL classes
         this%values(pp_index,7, :) = item2dp(strings, 2)  ! KHp
@@ -149,6 +164,30 @@ module m_pilotpoints
     end select
   
   end subroutine read_pp_line
+
+!-------------------------------------------------------------------------------------------------!  
+  
+  !subroutine add_zone_id(this, value)
+  !  ! Modified version of add_category_int from Categories.f90    
+  !  class(t_category), intent(inout) :: this
+  !  integer, intent(in)              :: value
+  !  logical                          :: is_new
+  !  integer                          :: index
+  !
+  !  ! Check if new_cat is a new unique category
+  !  is_new = .true.
+  !  do index = 1, this%nppzones
+  !    if (this%zonelist(index) == value) then
+  !      is_new = .false.
+  !      exit             ! Early exit
+  !    end if
+  !  end do
+  !
+  !  if (is_new) then
+  !    this%nppzones = this%nppzones + 1
+  !    this%zonelist(this%nppzones) = value
+  !  end if
+  !end subroutine add_zone_id
   
 !-------------------------------------------------------------------------------------------------!  
 end module m_pilotpoints

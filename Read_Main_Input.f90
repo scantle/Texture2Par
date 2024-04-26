@@ -28,7 +28,7 @@ module m_read_main_input
       if (eof_check == -1) exit
       call block_redirect(t2p, id)
     end do
-    write(*,*) 'DONE READING!'
+    !write(*,*) 'DONE READING!'
     
     call close_file(reader)
   
@@ -421,32 +421,13 @@ subroutine read_pploc_block(t2p, reader)
     t2p%pilot_points%grid%coords(1,i)  = item2dp (strings, 2)
     t2p%pilot_points%grid%coords(2,i)  = item2dp (strings, 3)
     t2p%pilot_points%category(i)       = item2int(strings, 4)
-    t2p%pilot_points%lay_type(i)       = find_string_index_in_list(strings, 5, "A,T", .true.)
+    !t2p%pilot_points%lay_type(i)       = find_string_index_in_list(strings, 5, "A,T", .true.)
     
     ! Early input checking & handling
     do j=1, i-1
       if (pp_id(j) == pp_id(i)) call error_handler(1,reader%file,"All pilot point IDs must be unique")
     end do
-    if (i == 1) then  ! Make sure first pilot point wasn't aquitard
-      if(t2p%pilot_points%lay_type(i)==2) then
-        call error_handler(1,reader%file,"Must list all aquifer pilot points (A) before aquitard pilot points (T)")
-      end if
-    else  ! Check to make sure all aquifer pps listed before aquitard & store max aquifer pp
-      if (t2p%pilot_points%lay_type(i)==1 .and. t2p%pilot_points%lay_type(i-1)==2) then
-        call error_handler(1,reader%file,"Must list all aquifer pilot points (A) before aquitard pilot points (T)")
-      else if (t2p%pilot_points%lay_type(i)==2 .and. t2p%pilot_points%lay_type(i-1)==1) then
-        ! First aquitard pilot point - record (TODO: All Necessary?)
-        t2p%pilot_points%max_a_cat = maxval(t2p%pilot_points%category(:))
-        t2p%pilot_points%pp_split = i
-        t2p%pilot_points%zonelist_split = nzones + 1
-      end if
-      
-      ! Adjust aquitard zone id for internal use - offset by maximum aquifer category
-      if (t2p%pilot_points%lay_type(i)==2) then
-        t2p%pilot_points%category(i) = t2p%pilot_points%max_a_cat + t2p%pilot_points%category(i)
-      end if
 
-    end if
     ! Zone tracking
     zone_counted = .false.
     do j=1, nzones

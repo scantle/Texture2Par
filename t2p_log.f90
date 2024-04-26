@@ -83,7 +83,11 @@ module m_log
     
     ! Pilot Points
     call log%write_valueline('Number of Pilot Points',      t2p%pilot_points%npp)
-    call log%write_valueline('Number of Pilot Point Zones', t2p%pilot_points%nppzones)
+    if (t2p%pilot_points%has_aquitard_pp) then
+      call log%write_valueline('Number of Aquifer Pilot Points',   count(t2p%pilot_points%is_aquifer))
+      call log%write_valueline('Number of Aquitard Pilot Points',  count(t2p%pilot_points%is_aquitard))
+    end if
+    !call log%write_valueline('Number of Pilot Point Zones', t2p%pilot_points%nppzones)
     
     ! Options
     call t2p%opt%write_input_summary() ! Move here?

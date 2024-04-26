@@ -218,6 +218,7 @@ module m_T2P
     this%pilot_points%pp_id => pp_id
     allocate(this%pilot_points%zonelist(nzones))
     
+    this%pilot_points%nppzones = nzones
     do i=1, nzones
       this%pilot_points%zonelist(i) = zone_tracker(i)
     end do
@@ -316,7 +317,7 @@ module m_T2P
   
   subroutine interpolate_model(this)
     use m_grid, only: t_grid
-    ! Pilot Point type in, Pilot Point type out
+    
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer                       :: k, i
