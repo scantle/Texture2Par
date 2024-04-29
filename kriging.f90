@@ -11,7 +11,10 @@ module m_kriging
 !-------------------------------------------------------------------------------------------------!
 
   type, extends(t_interpolator) :: t_krige
-    
+    integer                          :: nvario            ! Number of variograms stored for interpolator
+    integer,pointer                  :: nnear(:)          ! Number of nearest points used for interpolation
+    integer,pointer                  :: nstruct(:)        ! Number of structures for each variogram
+    type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)
     ! Attributes for KD-tree and search parameters could be added here
   contains
     procedure                 :: intialize => initialize_kriging
@@ -21,14 +24,14 @@ module m_kriging
   
   type, extends(t_krige) :: t_simpkrige
   contains
-    !procedure              :: calculate_weights => calculate_weights_sk
+    !procedure              :: calc_weights => calc_weights_sk
     !procedure              :: apply_weights => apply_weights_sk
   end type t_simpkrige
 !-------------------------------------------------------------------------------------------------!
   
   type, extends(t_krige) :: t_ordkrige
   contains
-    !procedure              :: calculate_weights => calculate_weights_ok
+    !procedure              :: calc_weights => calc_weights_ok
     !procedure              :: apply_weights => apply_weights_ok
   end type t_ordkrige
 !-------------------------------------------------------------------------------------------------!
@@ -56,7 +59,14 @@ module m_kriging
 !-------------------------------------------------------------------------------------------------!
 ! SIMPLE KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
-  
+
+    subroutine calc_weights_sk(this, from_grid, to_grid, weights)
+    implicit none
+    class(t_simpkrige), intent(in)  :: this
+    type(t_grid),intent(in)         :: from_grid, to_grid
+    type(t_weights)                 :: weights
+    
+  end subroutine calc_weights_sk
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -64,6 +74,14 @@ module m_kriging
 ! ORDINARY KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
+    subroutine calc_weights_ok(this, from_grid, to_grid, weights)
+    implicit none
+    class(t_ordkrige), intent(in)   :: this
+    type(t_grid),intent(in)         :: from_grid, to_grid
+    type(t_weights)                 :: weights
+    
+  end subroutine calc_weights_ok
+  
 !-------------------------------------------------------------------------------------------------!
   
 end module m_kriging

@@ -14,14 +14,16 @@ module m_interpolator
   contains
     procedure,private      :: initialize_abc
     generic                :: initialize => initialize_abc       ! placeholder
+    procedure,public       :: calc_weights
   end type t_interpolator
 !-------------------------------------------------------------------------------------------------!
   
   type, extends(t_interpolator) :: t_idw
     integer                :: p
   contains
-    procedure              :: initialize_idw
-    generic                :: initialize => initialize_idw
+    !procedure              :: initialize_idw
+    !generic                :: initialize => initialize_idw
+    !procedure,public       :: calc_weights => calc_weights_idw
   end type t_idw
   
 !-------------------------------------------------------------------------------------------------!
@@ -55,23 +57,38 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-
+  subroutine calc_weights(this, from_grid, to_grid, weights, catid)
+    ! Abstract Base Class Routine - not meant to be used
+    implicit none
+    class(t_interpolator), intent(in)     :: this
+    type(t_grid),intent(in)               :: from_grid, to_grid
+    type(t_weights)                       :: weights
+    
+    integer,intent(in)                    :: catid
+    
+  end subroutine calc_weights
+  
 !-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!
 ! INVERSE DISTANCE WEIGHTING (IDW) CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine initialize_idw(this, opt)
-    implicit none
-    class(t_idw)                  :: this
-    class(t_options)              :: opt
-    
-    this%p = opt%IDW_POWER
-    
-  end subroutine initialize_idw
+  !subroutine initialize_idw(this)
+  !  implicit none
+  !  class(t_idw)                  :: this
+  !  
+  !end subroutine initialize_idw
   
 !-------------------------------------------------------------------------------------------------!
+
+    subroutine calc_weights_idw(this, from_grid, to_grid, weights)
+    implicit none
+    class(t_idw), intent(in)        :: this
+    type(t_grid),intent(in)         :: from_grid, to_grid
+    type(t_weights)                 :: weights
+    
+  end subroutine calc_weights_idw
   
 !-------------------------------------------------------------------------------------------------!
 end module m_interpolator
