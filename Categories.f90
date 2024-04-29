@@ -14,6 +14,8 @@ module m_categories
     type(t_vstringlist)        :: strlist        ! Category values, but when string
     integer,allocatable        :: lay2arr(:)     ! Translation from layer to array
     integer,allocatable        :: array(:,:)     ! Arrays of category values (nvalues, narr)
+    integer,allocatable        :: arrncat(:)     ! Number of categories per array
+    integer,allocatable        :: arrcat(:,:)    ! Categories present in each array
     logical                    :: from_file      ! Categories were read from file
     
     contains
@@ -41,9 +43,11 @@ module m_categories
     
     this%dtype = datatype
     this%narr = narr
-    allocate(this%lay2arr(nlayers      ), &
+    allocate(this%lay2arr (nlayers     ), &
              this%array   (nnodes, narr), &  ! Assumes uniform size layers
-             this%catlist(DEFAULT_CATLIST_SIZE)  )
+             this%arrncat (narr        ), &
+             this%catlist(DEFAULT_CATLIST_SIZE), &
+             this%arrcat(DEFAULT_CATLIST_SIZE, narr) ) 
     if (this%dtype==1) call vstrlist_new(this%strlist)
     
     ! By Default
@@ -51,6 +55,8 @@ module m_categories
     this%lay2arr    =  1
     this%array      =  1
     this%catlist    = -1
+    this%arrncat    =  0
+    this%arrcat     = -1
   
   end subroutine initialize
 
@@ -69,9 +75,9 @@ module m_categories
   
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine add_category_int(this, value, index)
+  subroutine add_category_int(this, value, arr, index)
     class(t_category), intent(inout) :: this
-    integer, intent(in)              :: value
+    integer, intent(in)              :: value, arr
     logical                          :: is_new
     integer, intent(out)             :: index
 
@@ -92,14 +98,17 @@ module m_categories
       this%ncat = this%ncat + 1
       index = this%ncat
       this%catlist(this%ncat) = value
+      this%arrncat(arr) = this%arrncat(arr) + 1
+      this%arrcat(this%arrncat(arr), arr) = value
     end if
   end subroutine add_category_int
   
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine add_category_str(this, value, index)
+  subroutine add_category_str(this, value, arr, index)
     class(t_category), intent(inout) :: this
     type(t_vstring), intent(in)      :: value
+    integer, intent(in)              :: arr
     integer, intent(out)             :: index
 
     ! Check if new_cat is a new unique category
@@ -107,16 +116,19 @@ module m_categories
     if (index == 0) then
       call vstrlist_append(this%strlist, value)
       this%ncat = this%ncat + 1
-      this%catlist(this%ncat) = this%ncat
       index = this%ncat
+      this%catlist(this%ncat) = this%ncat
+      this%arrncat(arr) = this%arrncat(arr) + 1
+      this%arrcat(this%arrncat(arr), arr) = this%ncat
     end if
   end subroutine add_category_str
   
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine add_category_char(this, value, index)
+  subroutine add_category_char(this, value, arr, index)
     class(t_category), intent(inout) :: this
     character(*), intent(in)         :: value
+    integer, intent(in)              :: arr
     integer, intent(out)             :: index
 
     ! Check if new_cat is a new unique category
@@ -124,8 +136,10 @@ module m_categories
     if (index == 0) then
       call vstrlist_append(this%strlist, trim(value))
       this%ncat = this%ncat + 1
-      this%catlist(this%ncat) = this%ncat
       index = this%ncat
+      this%catlist(this%ncat) = this%ncat
+      this%arrncat(arr) = this%arrncat(arr) + 1
+      this%arrcat(this%arrncat(arr), arr) = this%ncat
     end if
   end subroutine add_category_char
   
@@ -133,13 +147,16 @@ module m_categories
 
   subroutine reallocate_catlist(this)
     class(t_category), intent(inout) :: this
-    integer, allocatable :: temp_catlist(:)
+    integer, allocatable :: temp_catlist(:), temp_arrcat(:,:)
     integer :: new_size
 
     new_size = size(this%catlist) + 5  ! Increase size by 5, adjust as necessary
     allocate(temp_catlist(new_size))
+    allocate(temp_arrcat (new_size,this%narr))
     temp_catlist(:size(this%catlist)) = this%catlist
+    temp_arrcat(:size(this%arrcat),1:this%narr) = this%arrcat
     call move_alloc(temp_catlist, this%catlist)
+    call move_alloc(temp_arrcat, this%arrcat)
   end subroutine reallocate_catlist
   
 !-------------------------------------------------------------------------------------------------!
@@ -155,7 +172,7 @@ module m_categories
     type(t_vstringlist)              :: strings
     !type(t_vstring)                  :: temp
     integer                          :: lay2arr(nlayers)
-    integer                          :: eof, narr, cidx, i, j, inode
+    integer                          :: eof, narr, cidx, i, j, inode, itemp
     character(30)                    :: chartemp(nnodes)
     
     lay2arr = 0
@@ -191,28 +208,35 @@ module m_categories
     do i=1, narr
       call reader%read_to_next_line(eof)  ! Skip header
       if (datatype==0) then ! INT
-        read(reader%unit,*) this%array(:,i)
-        do j=1, nnodes
-          call this%add_category(this%array(j,i), cidx)
-          !this%array(j,i) = cidx  ! Excessively confusing, e.g. cat 4 is 3...
-        end do
+        ! Check for constant
+        read(reader%unit,*) chartemp(1), itemp
+        if (trim(chartemp(1))=="CONSTANT") then
+          this%array(:,i) = itemp
+          call this%add_category(itemp, i, cidx)
+        else
+          ! array
+          backspace(reader%unit)
+          read(reader%unit,*) this%array(:,i)
+          do j=1, nnodes
+            call this%add_category(this%array(j,i), i, cidx)
+            !this%array(j,i) = cidx  ! Excessively confusing, e.g. cat 4 is 3...
+          end do
+        end if
       else if (datatype==1) then  ! STR/CHAR
-        read(reader%unit,*) chartemp
-        do j=1, nnodes
-          call this%add_category(chartemp(j), cidx)
-          this%array(j,i) = cidx
-        end do
-        ! Too slow with vstrlists
-        !inode = 1
-        !do while (inode < nnodes)
-        !  call reader%next_item(eof, strings)
-        !  do j=1, vstrlist_length(strings)
-        !    temp = vstrlist_index(strings, j)
-        !    call this%add_category(temp, cidx)
-        !    this%array(inode,i) = cidx
-        !    inode = inode + 1
-        !  end do
-        !end do
+        ! Check for constant
+        read(reader%unit,*) chartemp(1), chartemp(2)
+        if (trim(chartemp(1))=="CONSTANT") then
+          call this%add_category(chartemp(2), i, cidx)
+          this%array(:,i) = cidx
+        else
+          ! array
+          backspace(reader%unit)
+          read(reader%unit,*) chartemp
+          do j=1, nnodes
+            call this%add_category(chartemp(j), i, cidx)
+            this%array(j,i) = cidx
+          end do
+        end if
       end if
     end do
     
