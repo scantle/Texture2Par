@@ -4,10 +4,10 @@ module m_T2P
   use m_error_handler, only: error_handler,warnings
   use m_options, only: t_options
   use m_datasets, only: t_layerdata, t_dataset
-  use m_flow_model, only: t_flow_model
+  use m_flow_model, only: t_flow_model, t_iwfm_model
   use m_pilotpoints, only: t_pilotpoints
   use m_interpolator, only: t_interpolator, t_idw
-  use m_kriging, only: t_simpkrige, t_ordkrige
+  use m_kriging, only: t_krige, t_simpkrige, t_ordkrige
   use m_vario, only: t_vgm
 !-------------------------------------------------------------------------------------------------!
   type t_T2P
@@ -17,7 +17,7 @@ module m_T2P
     class(t_interpolator),pointer    :: interp_pp   => null()
     type(t_layerdata),pointer        :: datasets(:,:)     ! Datasets (dataset, layer)
     type(t_layerdata),pointer        :: par(:,:)          ! Final model hydraulic parameters (parameters, layers)
-    type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)
+    !type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)
     type(t_pilotpoints),pointer      :: pilot_points
     
     ! Counters
@@ -29,7 +29,6 @@ module m_T2P
     integer                          :: nhsus      ! Number of Hydrostratigraphic Units (HSUs)
                                                    ! (Formerly "geologic zones")
     integer                          :: nvario     ! Number of variograms
-    integer,pointer                  :: nstruct(:) ! Number of structures for each variogram
     
     ! Trackers
     type(t_vstringlist),pointer      :: class_names
@@ -38,7 +37,6 @@ module m_T2P
     integer,allocatable              :: class_dataset(:) ! Which dataset object each class is stored in
     type(t_vstringlist)              :: dataset_files    ! dataset filenames
     type(t_vstringlist)              :: dataset_trans    ! dataset transformations
-    integer,pointer                  :: nnear(:)         ! Number of nearest points used for interpolation
     
     ! Read trackers - used to check if a block has been read (and make sure it exists)
     logical                          :: has_opt
@@ -61,8 +59,8 @@ module m_T2P
     procedure,public   :: setup_data_classes
     procedure,public   :: setup_variograms
     procedure,public   :: setup_pplocs
-    !procedure :: allocate_data_classes
-    !procedure :: allocate
+    procedure,public   :: check_major_inputs
+    procedure,private  :: check_pp_zone_layertype_assignments
     
     ! Main Procedures
     procedure,public   :: predict
@@ -77,6 +75,10 @@ module m_T2P
 !-------------------------------------------------------------------------------------------------!
   
   contains
+
+!-------------------------------------------------------------------------------------------------!
+! SETUP PROCEDURES
+!-------------------------------------------------------------------------------------------------!
   
   subroutine initialize(this)
     use m_file_io, only: open_file_writer, log_unit
@@ -131,6 +133,7 @@ module m_T2P
       case("IDW")
         allocate(t_idw::this%interp_data)
         allocate(t_idw::this%interp_pp)
+        this%has_interp = .true.
       case DEFAULT
         call error_handler(1,opt_msg="Invalid Interpolation Method: " // this%opt%INTERP_METHOD)
     end select
@@ -198,10 +201,26 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     integer, pointer              :: nnear(:), nstruct(:)
     type(t_vgm),pointer           :: variograms(:,:)
+    class(*),pointer              :: p
     
-    this%variograms => variograms
-    this%nnear      => nnear
-    this%nstruct    => nstruct
+    !this%variograms => variograms
+    !this%nnear      => nnear
+    !this%nstruct    => nstruct
+    ! Place directly in the kriging interpolator objects
+    select type(p => this%interp_data)
+      type is(t_krige)
+        ! First n are for classes/properties
+        p%nvario     = this%nvario -1
+        p%nstruct    => nstruct(1:this%nvario-1)
+        p%variograms => variograms(:,1:this%nvario)    
+    end select
+    ! PP is the last one
+    select type(p => this%interp_pp)
+      type is(t_krige)
+        p%nvario     = 1
+        p%nstruct    => nstruct(this%nvario:this%nvario)
+        p%variograms => variograms(:,this%nvario:this%nvario)
+    end select
     
     this%has_interp = .true.
   
@@ -226,17 +245,89 @@ module m_T2P
     this%has_pplocs = .true.
   
   end subroutine setup_pplocs
+  
 !-------------------------------------------------------------------------------------------------!
   
-  function get_class_id(this, string) result (id)
-    ! Returns zero if not found
+  subroutine check_major_inputs(this)
     implicit none
     class(t_T2P), intent(inout)   :: this
-    type(t_vstring),intent(in)    :: string
-    integer                       :: id
-    id = vstrlist_search(this%class_names, string)
-  end function get_class_id
+    
+    ! Do we have everything we need to run the model?
+    if(this%has_opt      ==.false.) call error_handler(1,opt_msg="Missing Required OPTIONS Block")
+    if(this%has_classes  ==.false.) call error_handler(1,opt_msg="Missing Required CLASSES Block")
+    if(this%has_fmodel   ==.false.) call error_handler(1,opt_msg="Missing Required FLOW_MODEL Block")
+    if(this%has_pplocs   ==.false.) call error_handler(1,opt_msg="Missing Required PP_LOCS Block")
+    if(this%has_pp       ==.false.) call error_handler(1,opt_msg="Missing Required PP_PARAMETERS Block")
+    if(this%has_datafiles==.false.) call error_handler(1,opt_msg="Missing Required DATASET Block(s)")
+    if(this%has_interp   ==.false.) then
+      if (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK") then
+        call error_handler(1,opt_msg="Missing Required VARIOGRAMS Block")
+      else  ! Unknown interpolator parameters required??
+        call error_handler(1,opt_msg="Missing Required Interpolation Method Parameters")
+      end if
+    end if
+    
+    ! Do the number of categories for pilot points/HRUs (respectively) match?
+    if (this%pilot_points%nppzones /= this%fmodel%ppzones%ncat) then
+      call error_handler(1,opt_msg="Mismatch between Pilot Point Zones assigned to Pilot Points vs Model Grid")
+      ! Doesn't ensure they are the same ID values...
+    end if
+    
+    call this%check_pp_zone_layertype_assignments()
+    
+  end subroutine check_major_inputs
   
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine check_pp_zone_layertype_assignments(this)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    type(t_flow_model),pointer    :: p
+    integer                       :: k,i,j, arrid, catid
+    character(3)                  :: iout(2)
+  
+      ! Only for IWFM - Do aquitard/aquifer pilot point zones conflict?
+    select type(p=>this%fmodel)
+      type is(t_iwfm_model)
+        if (this%pilot_points%has_aquitard_pp .or. count(p%lay_aqtard) > 0) then
+          do k=1, p%nlayers
+            arrid = this%fmodel%ppzones%lay2arr(k)
+            if (p%lay_aqtard(k)) then  ! Aquitard
+              do i=1, this%fmodel%ppzones%arrncat(arrid)
+                catid = this%fmodel%ppzones%arrcat(i,arrid)
+                ! Loop over pilot points in this zone and see if they're aquitard pilot points
+                do j=1, this%pilot_points%npp
+                  if (this%pilot_points%category(j)==catid) then
+                    if (this%pilot_points%is_aquifer(j)) then
+                      write(iout(1),'(i)') this%pilot_points%pp_id(j)
+                      write(iout(1),'(i)') catid
+                      call error_handler(1,opt_msg="Aquitard Pilot Point "//iout(1)//" assigned to Zone "//iout(2)//", which is in an aquifer layer")
+                    end if
+                  end if
+                end do
+              end do
+            else                    ! Aquifer
+              do i=1, this%fmodel%ppzones%arrncat(arrid)
+                catid = this%fmodel%ppzones%arrcat(i,arrid)
+                ! Loop over pilot points in this zone and see if they're aquitard pilot points
+                do j=1, this%pilot_points%npp
+                  if (this%pilot_points%category(j)==catid) then
+                    if (this%pilot_points%is_aquitard(j)) then
+                      write(iout(1),'(i)') this%pilot_points%pp_id(j)
+                      write(iout(1),'(i)') catid
+                      call error_handler(1,opt_msg="Aquifer Pilot Point "//iout(1)//" assigned to Zone "//iout(2)//", which is in an aquitard layer")
+                    end if
+                  end if
+                end do
+              end do  
+            end if
+          end do
+        end if
+    end select
+  end subroutine
+  
+!-------------------------------------------------------------------------------------------------!
+! MAIN PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
   subroutine predict(this)
@@ -301,7 +392,7 @@ module m_T2P
       else
         do i=1, this%fmodel%ppzones%ncat                                              ! Loop over categories
           where (this%fmodel%ppzones%array(:,k)== this%fmodel%ppzones%catlist(i))  ! Subset by category array
-            !call this%calc_weights(this%pilot_points%grid, to_grid, weights, this%variograms(:,this%nvario), nstruct)
+            !call this%interp_pp%calc_weights(this%pilot_points%grid%coords, to_grid%coords, weights%values)
           end where
         end do
       end if
@@ -361,6 +452,21 @@ module m_T2P
   
   end subroutine calc_block_parameters
   
+!-------------------------------------------------------------------------------------------------!
+  
+!-------------------------------------------------------------------------------------------------!
+! ACCESS PROCEDURES
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_class_id(this, string) result (id)
+    ! Returns zero if not found
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    type(t_vstring),intent(in)    :: string
+    integer                       :: id
+    id = vstrlist_search(this%class_names, string)
+  end function get_class_id
+
 !-------------------------------------------------------------------------------------------------!
 
 end module m_T2P

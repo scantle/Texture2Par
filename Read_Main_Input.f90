@@ -265,6 +265,9 @@ subroutine read_dataset_block(t2p, reader)
   t2p%ndatafiles = t2p%ndatafiles + 1
   call vstrlist_append(t2p%dataset_files, fname)
   call vstrlist_append(t2p%dataset_trans, ftrans)
+  
+  ! No Hook (yet) for datasets
+  t2p%has_datafiles = .true.
       
 end subroutine read_dataset_block
 
@@ -379,7 +382,7 @@ subroutine read_variogram_block(t2p, reader)
     write(msg, '(2(a,i3))') "Too Few Variograms, expected ", t2p%nvario, ", found: ", vcount
     call error_handler(2,reader%file,msg)
   end if
-  call t2p%setup_variograms(vgms, nnear, nstruct)
+  call t2p%setup_variograms(vgms, nnear, nstruct)  ! t2p%interp_pp, t2p%interp_data)
 
 end subroutine read_variogram_block
 
