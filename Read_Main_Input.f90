@@ -1,6 +1,6 @@
 module m_read_main_input
   use m_T2P, only: t_t2p
-  use m_vstring, only: t_vstring, vstring_new
+  use m_vstring, only: t_vstring, vstring_new, vstrlist_append, vstring_toupper
   use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_split
   use m_file_io
   use m_error_handler, only: error_handler
@@ -55,6 +55,8 @@ module m_read_main_input
         call read_FLOW_MODEL_block(t2p, reader)
       case("CLASSES")
         CALL read_class_block(t2p, reader)
+      case("COVARIATES")
+        CALL read_covariates_block(t2p, reader)
       case("DATASET")
         CALL read_dataset_block(t2p, reader)
       case("VARIOGRAMS")
@@ -162,7 +164,6 @@ module m_read_main_input
 !-------------------------------------------------------------------------------------------------!
   
   subroutine read_class_block(t2p, reader)
-    
     implicit none
     type(t_t2p),intent(inout)       :: t2p
     type(t_file_reader), pointer    :: reader
@@ -177,51 +178,102 @@ module m_read_main_input
     integer,pointer               :: class_connections(:,:), class_type(:)
     
     allocate(class_names)
-    call vstrlist_new (class_names)
     
     ! Pre-read for number of classes
-    call reader%get_block_dim(n, nclasses)  !t2p%opt%DATA_CLASSES
+    !call reader%get_block_dim(n, nclasses)  ! returns primary, total classes, or generally (lines, items)
+    n = reader%get_block_len()
     if (n < 1) then
       call error_handler(2,reader%file,"No Data Classes Listed")
     end if
-    allocate(class_connections(nclasses, nclasses)) ! symmetric n x n
-    allocate(class_type(nclasses))
-    
-    ! Setup matrix, values indicate variogram ID. Can start off assuming each class has a variogram (fill diagonal)
-    class_connections = 0
-    do i = 1, n
-      class_connections(i, i) = i
-    end do
-    
-    j = n+1 ! tracks relationship id
     
     ! Loop over data class lines
     do i=1, n
       call reader%next_block_item(status, id, strings, length)
       if (status /= 0) exit  ! exit if end of block or end of file
-      !if (i+(j-n-1) > t2p%opt%DATA_CLASSES) then
-      !  call error_handler(1,reader%file,"Too many data classes listed in CLASSES block. Increase DATA_CLASSES")
-      !end if
-      ! Add items to arrays
-      call vstrlist_append(class_names, strings)
-      prime_id = vstrlist_search(class_names, vstrlist_index(strings, 1))
-      class_type(prime_id) = 1
-      ! Loop over specifying the cross relationships
-      do k=2, length
-        class_id = vstrlist_search(class_names, vstrlist_index(strings, k))
-        class_connections(prime_id,class_id) = j
-        class_connections(class_id,prime_id) = j ! symmetric
-        class_type(class_id) = 2
-        j = j + 1
-      end do
+      call vstrlist_append(class_names, vstring_toupper(vstrlist_index(strings,1)))
     end do
     read(reader%unit,*)  ! Read past end block
     
     ! Pass to T2P
-    call t2p%setup_data_classes(n,nclasses, class_names, class_connections, class_type)
+    call t2p%setup_data_classes(n,class_names)
     
   end subroutine read_class_block
   
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine read_covariates_block(t2p, reader)    
+    implicit none
+    type(t_t2p),intent(inout)       :: t2p
+    type(t_file_reader), pointer    :: reader
+    integer                         :: i,k,n,nlines,nitems,cid,nsecondary,prime_id
+    integer,pointer                 :: connections(:,:)
+    character(30)                   :: temp
+    
+    ! Standard file reader variables
+    integer                    :: status, length
+    character(30)              :: id, value
+    type(t_vstringlist)        :: strings
+    
+    nsecondary = 0
+    
+    ! Pre-read for number of classes
+    call reader%get_block_dim(nlines, nitems)  ! returns nlines, total items
+    
+    ! Allocate based on interpolation order
+    if (t2p%opt%INTERP_ORDER=="BEFORE") then
+      n = t2p%nclasses
+    else ! t2p%opt%INTERP_ORDER=="AFTER")
+      n = t2p%npar
+    end if
+    allocate(connections(n, nitems), t2p%nsecondary_by_id(n))
+    t2p%nsecondary_by_id(:) = 0
+    
+    ! Setup matrix, values indicate variogram ID. Can start off assuming each class has a variogram (fill diagonal)
+    connections = 0
+    do i = 1, n
+      connections(1, i) = i
+    end do
+    
+    if (n < 1) then
+      !call error_handler(2,reader%file,"No Covariates Listed")
+      ! Instead, early return
+      return
+    end if
+    
+    ! Loop over data class lines
+    
+    do i=1, nlines
+      call reader%next_block_item(status, id, strings, length)
+      if (status /= 0) exit  ! exit if end of block or end of file
+      ! Locate primary data ID
+      if (t2p%opt%INTERP_ORDER=="BEFORE") then
+        prime_id = t2p%get_class_id(vstrlist_index(strings, 1))
+        if (prime_id==0) call error_handler(1,reader%file,"Invalid Class Name in Covariates Block = "//id)
+      else ! t2p%opt%INTERP_ORDER=="AFTER")
+        prime_id = t2p%get_parameter_id(vstrlist_index(strings, 1))
+        if (prime_id==0) call error_handler(1,reader%file,"Invalid Hydraulic Parameter Name in Covariates Block = "//id)
+      end if
+        
+      ! Loop over specifying the cross relationship(s)
+      do k=2, length
+        ! New covariate?
+        cid = t2p%get_class_id(vstrlist_index(strings, k))
+        if (cid==0) then
+          call vstrlist_append(t2p%class_names, vstring_toupper(vstrlist_index(strings,k)))
+          cid = t2p%get_class_id(vstrlist_index(strings, k))
+          nsecondary = nsecondary + 1
+        end if
+        connections(k,prime_id) = cid
+      end do
+      t2p%nsecondary_by_id(prime_id) = length-1
+    end do
+    read(reader%unit,*)  ! Read past end block
+    
+    ! Pass to T2P
+    call t2p%setup_covariates(nsecondary,connections)
+  
+  end subroutine read_covariates_block
+    
 !-------------------------------------------------------------------------------------------------!
   
 subroutine read_dataset_block(t2p, reader)
@@ -341,9 +393,9 @@ subroutine read_variogram_block(t2p, reader)
           if (iscross) then
             cross_id = vstrlist_search(t2p%class_names, cross_name)
           else
-            cross_id = class_id
+            cross_id = 1
           end if
-          vario_id = t2p%class_connections(class_id, cross_id)
+          vario_id = 0  ! TODO
           !TODO Validate vario_id
         end if
         

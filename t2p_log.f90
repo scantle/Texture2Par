@@ -71,10 +71,10 @@ module m_log
     call log%write_line('--- INPUT SUMMARY ---', blank_start=1)
 
     ! T2P
-    call log%write_valueline('Number of Data Classes:', t2p%nclasses)
+    call log%write_valueline('Total Data Classes:',   t2p%nclasses)
     call log%write_valueline('Primary Data Classes:',   t2p%nprimary)
-    call log%write_valueline('Number of Data Files:',   t2p%ndatafiles)
-    !call log%write_valueline('Number of Datasets:',     t2p%ndatasets)
+    call log%write_valueline('Covariate Data Classes:', t2p%nsecondary)
+    call log%write_valueline('Number of Dataset Files:',t2p%ndatafiles)
     call log%write_valueline('Number of HSUs:',         t2p%nhsus)
     call log%write_valueline('Number of Variograms:',   t2p%nvario)
     

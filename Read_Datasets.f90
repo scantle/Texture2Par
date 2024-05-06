@@ -65,12 +65,16 @@ module m_read_datasets
       grid => create_grid_object(2, npoints)
       ! Allocate dataset(s) for all layers, set default value
       do k=1, t2p%fmodel%nlayers
-        do j=1, nsets
-          call t2p%datasets(ids(j),k)%initialize(npoints)
-          t2p%datasets(ids(j),k)%values = NODATA
-          ! Point all datasets to the same grid object
-          t2p%datasets(ids(j),k)%grid => grid
-        end do
+        !do j=1, nsets
+        !  call t2p%datasets(ids(j),k)%initialize(npoints)
+        !  t2p%datasets(ids(j),k)%values = NODATA
+        !  ! Point all datasets to the same grid object
+        !  t2p%datasets(ids(j),k)%grid => grid
+        !end do
+        ! Now all in one dataset...
+        call t2p%datasets(ids(j),k)%initialize(npoints, t2p%nprimary)
+        t2p%datasets(ids(j),k)%values = NODATA
+        t2p%datasets(ids(j),k)%grid => grid
       end do
       
       ! Rewind
@@ -87,7 +91,7 @@ module m_read_datasets
             do k=1, t2p%fmodel%nlayers
               do l=1, nsets
                 if (total_thick(l,k)>0.0) then
-                  t2p%datasets(ids(l),k)%values(prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
+                  t2p%datasets(ids(l),k)%values(ids(l), prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
                 end if
               end do
             end do
@@ -137,7 +141,7 @@ module m_read_datasets
       do k=1, t2p%fmodel%nlayers
         do l=1, nsets
           if (total_thick(l,k)>0.0) then
-            t2p%datasets(ids(l),k)%values(prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
+            t2p%datasets(ids(l),k)%values(ids(l),prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
           end if
         end do
       end do

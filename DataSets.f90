@@ -30,10 +30,10 @@ module m_datasets
 !  end type t_intervaldata
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_dataset) :: t_layerdata
-    
+    ! Intended for input data
     character(30)                  :: name             ! Class Name
     integer                        :: class_id         ! Class ID
-    real(dp),allocatable           :: values(:)        ! Data values associated with each grid point, for each data class (point, class)
+    real(dp),allocatable           :: values(:,:)        ! Data values associated with each grid point for each class (nclasses, npoints)
     integer,allocatable            :: fmodel_loc(:)    ! Containing model element/cell
     
     contains
@@ -41,6 +41,19 @@ module m_datasets
       generic                      :: initialize => init_layerdata
   
   end type t_layerdata
+!-------------------------------------------------------------------------------------------------!
+!  type, extends(t_dataset) :: t_layermultidata
+!    ! Intended for intermediate data
+!    character(30)                  :: name             ! Class Name
+!    integer                        :: class_id         ! Class ID
+!    real(dp),allocatable           :: values(:,:)      ! Data values associated with each grid point for each class (nclasses, npoints)
+!    integer,allocatable            :: fmodel_loc(:)    ! Containing model element/cell
+!    
+!    contains
+!      procedure                    :: init_layermultidata
+!      generic                      :: initialize => init_layermultidata
+!  
+!  end type t_layermultidata
 !-------------------------------------------------------------------------------------------------!
 ! See also: t_pilotpoint derived class in PilotPoints.f90
 !-------------------------------------------------------------------------------------------------!
@@ -69,19 +82,40 @@ module m_datasets
 ! LAYER CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine init_layerdata(this, npoints)
+  subroutine init_layerdata(this, npoints, nclasses)
     implicit none
     class(t_layerdata),intent(inout)  :: this
-    integer,intent(in)                :: npoints
+    integer,intent(in)                :: npoints, nclasses
     
     allocate(this%category  (npoints), &
-             this%values    (npoints))
+             this%values    (nclasses, npoints))
     allocate(this%grid)
 
     !this%grid = create_grid_object(2, npoints)  ! X,Y,Z coords by n 
   
   end subroutine init_layerdata
   
+!-------------------------------------------------------------------------------------------------!
+  
+!-------------------------------------------------------------------------------------------------!
+! LAYER MULTI-DATA CLASS TYPE-BOUND PROCEDURES
+!-------------------------------------------------------------------------------------------------!
+!  
+!  subroutine init_layermultidata(this, npoints, nclasses, grid)
+!    implicit none
+!    class(t_layermultidata),intent(inout)  :: this
+!    integer,intent(in)                     :: npoints, nclasses
+!    class(t_grid),pointer                  :: grid
+!    
+!    allocate(this%category  (npoints), &
+!             this%values    (nclasses, npoints))
+!    !allocate(this%grid)  ! Already should exist, avoid copying
+!    this%grid => grid
+!
+!    !this%grid = create_grid_object(2, npoints)  ! X,Y,Z coords by n 
+!  
+!  end subroutine init_layermultidata
+!  
 !-------------------------------------------------------------------------------------------------!
   
 end module m_datasets

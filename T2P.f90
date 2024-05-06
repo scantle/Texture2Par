@@ -1,6 +1,6 @@
 module m_T2P
-  use m_vstringlist, only: t_vstringlist, vstrlist_search
-  use m_vstring, only: t_vstring
+  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_append
+  use m_vstring, only: t_vstring, vstring_toupper
   use m_error_handler, only: error_handler,warnings
   use m_options, only: t_options
   use m_datasets, only: t_layerdata, t_dataset
@@ -15,32 +15,39 @@ module m_T2P
     class(t_flow_model),pointer      :: fmodel      => null()
     class(t_interpolator),pointer    :: interp_data => null()
     class(t_interpolator),pointer    :: interp_pp   => null()
-    type(t_layerdata),pointer        :: datasets(:,:)     ! Datasets (dataset, layer)
+    type(t_layerdata),pointer        :: datasets(:,:)     ! Datasets (dataset, layer) (1+nsecondary, layer)
     type(t_layerdata),pointer        :: par(:,:)          ! Final model hydraulic parameters (parameters, layers)
-    !type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)
+    !type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)  ! Moved to interpolator
     type(t_pilotpoints),pointer      :: pilot_points
     
     ! Counters
-    integer                          :: npar=4     ! Kh, Kv, Ss, Sy (what about aquitards?) (Attach to fmodel?)
-    integer                          :: nclasses   ! Number of data classes
-    integer                          :: ndatasets  ! Number of data sets (one may be inferred)
-    integer                          :: ndatafiles ! Number of data files to read in
-    integer                          :: nprimary   ! Number of *primary* datasets (for which hydraulic properties exist)
-    integer                          :: nhsus      ! Number of Hydrostratigraphic Units (HSUs)
-                                                   ! (Formerly "geologic zones")
-    integer                          :: nvario     ! Number of variograms
+    integer                          :: npar        ! Kh, Kv, Ss, Sy (what about aquitards?) (Attach to fmodel?)
+    integer                          :: nclasses    ! Number of data classes
+    integer                          :: nprimary    ! Primary datasets (for which hydraulic properties exist) (one may be inferred)
+    integer                          :: nsecondary  ! Number of covariate data classes
+    integer                          :: ndatasets   ! Number of dataset objects (one for primary datasets, n for secondary)
+    integer                          :: ndatafiles  ! Number of data files to read in
+    integer                          :: nhsus       ! Number of Hydrostratigraphic Units (HSUs)
+                                                    ! (Formerly "geologic zones")
+    integer                          :: nvario      ! Number of variograms
     
     ! Trackers
-    type(t_vstringlist),pointer      :: class_names
-    integer,pointer                  :: class_connections(:,:)
-    integer,pointer                  :: class_type(:)    ! Primary (1) or Secondary (2) for each class
-    integer,allocatable              :: class_dataset(:) ! Which dataset object each class is stored in
-    type(t_vstringlist)              :: dataset_files    ! dataset filenames
-    type(t_vstringlist)              :: dataset_trans    ! dataset transformations
+    ! Naming:
+    ! Class = primary data
+    ! Covariates = CVT = secondary data (for cokriging)
+    type(t_vstringlist),pointer      :: class_names           ! Primary data class names
+    type(t_vstringlist)              :: parnames              ! Names of output parameters calculated
+    integer,pointer                  :: nsecondary_by_id(:)   ! Connections (covariates) per [class, hyd property]
+    integer,pointer                  :: connections(:,:)      ! (connections, [classes or hyd properties])
+    integer,allocatable              :: class_dataset(:)      ! Which dataset object each class is stored in
+    integer,allocatable              :: cvt_dataset(:)        ! Which dataset object each covariate is stored in
+    type(t_vstringlist)              :: dataset_files         ! dataset filenames
+    type(t_vstringlist)              :: dataset_trans         ! dataset transformations
     
     ! Read trackers - used to check if a block has been read (and make sure it exists)
     logical                          :: has_opt
     logical                          :: has_classes
+    logical                          :: has_covar
     logical                          :: has_interp
     logical                          :: has_fmodel
     logical                          :: has_pplocs
@@ -57,10 +64,12 @@ module m_T2P
     procedure,public   :: process_options
     procedure,public   :: setup_flow_model
     procedure,public   :: setup_data_classes
+    procedure,public   :: setup_covariates
     procedure,public   :: setup_variograms
     procedure,public   :: setup_pplocs
     procedure,public   :: check_major_inputs
     procedure,private  :: check_pp_zone_layertype_assignments
+    procedure,private  :: nvario_estimator
     
     ! Main Procedures
     procedure,public   :: predict
@@ -70,6 +79,8 @@ module m_T2P
     
     ! Access procedures
     procedure, public  :: get_class_id
+    !procedure, public  :: get_covariate_id
+    procedure, public  :: get_parameter_id
   
   end type t_T2P
 !-------------------------------------------------------------------------------------------------!
@@ -82,7 +93,7 @@ module m_T2P
   
   subroutine initialize(this)
     use m_file_io, only: open_file_writer, log_unit
-    use m_vstringlist, only: vstrlist_new
+    use m_vstringlist, only: vstrlist_new, vstrlist_length
     implicit none
     class(t_T2P), intent(inout)      :: this
     
@@ -102,6 +113,14 @@ module m_T2P
     call this%opt%initialize()
     call vstrlist_new (this%dataset_files)
     call vstrlist_new (this%dataset_trans)
+    
+    ! Initialize Aquifer Parameter list - MUST BE IN CAPS
+    call vstrlist_new(this%parnames)
+    call vstrlist_append (this%parnames, "KH" )
+    call vstrlist_append (this%parnames, "KV" )
+    call vstrlist_append (this%parnames, "SY" )
+    call vstrlist_append (this%parnames, "SS" )
+    this%npar = vstrlist_length(this%parnames)
     
     ! Intialize counters (useful to determine when a block is missing or has not been read yet)
     this%nclasses = 0
@@ -161,39 +180,79 @@ module m_T2P
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine setup_data_classes(this, num_primary, num_total, class_names, class_connections, class_type)
-    use m_pilotpoints, only: nproperties
+  subroutine setup_data_classes(this, nclasses, class_names)
     implicit none
     class(t_T2P), intent(inout)   :: this
-    integer,intent(in)            :: num_primary, num_total
+    integer,intent(in)            :: nclasses
     type(t_vstringlist),pointer   :: class_names
-    integer,pointer               :: class_connections(:,:), class_type(:)
+    
     integer                       :: i
     
     ! TODO needs to store different when INTERP_ORDER: AFTER is passed
     
-    this%nprimary = num_primary
-    this%nclasses = num_total
-    this%ndatasets = num_total
+    this%nclasses = nclasses
+    this%nprimary = nclasses
     this%class_names => class_names
-    this%class_connections => class_connections
-    this%class_type => class_type
+    this%ndatasets = 1
     
-    ! TODO Maybe this belongs somewhere else, but this is when find out
-    ! TODO handle INTERP_ORDER: AFTER
-    this%nvario = maxval(this%class_connections) + 1  ! +1 for pilot points
+    ! Allocate
+    allocate(this%class_dataset(nclasses))
     
+    call this%nvario_estimator()
+    
+    this%has_classes = .true.
+  end subroutine setup_data_classes
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine setup_covariates(this, nsecondary, connections)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    integer,intent(in)            :: nsecondary
+    type(t_vstringlist),pointer   :: covnames
+    integer,pointer               :: connections(:,:)
+    
+    this%nsecondary   =  nsecondary
+    this%nclasses     = this%nclasses + nsecondary
+    this%ndatasets    = 1 + this%nclasses
+    this%connections => connections
+
+    call this%nvario_estimator()
+    
+    if (maxval(this%nsecondary_by_id) > 1) then
+      this%has_covar = .true.
+    end if
+    
+  
+  end subroutine setup_covariates
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine nvario_estimator(this)
+    ! Called during setup_data_classes AND setup_covariates as more info comes in
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    integer                       :: i
+    
+    if (ASSOCIATED(this%connections)) then
+      ! Loop over connections
+      do i=1, size(this%connections,2)
+        ! TODO
+      end do
+    else
+      this%nvario = this%nclasses
+    end if            
+
+    this%nvario = this%nvario + 1  ! Pilot Points
+
     ! Subtract one if INFER because we don't krige - last class is the remainder of the other class(es)
     ! We also don't store it as a dataset
     if (this%opt%INFER_LAST_CLASS) then
-      this%nvario = this%nvario - 1
-      this%ndatasets = this%ndatasets - 1
+      this%nvario    = this%nvario - 1
     end if
-    
-    this%has_classes = .true.
-    
-  end subroutine setup_data_classes
-
+  
+  end subroutine nvario_estimator
+  
 !-------------------------------------------------------------------------------------------------!
   
   subroutine setup_variograms(this, variograms, nnear, nstruct)
@@ -422,7 +481,7 @@ module m_T2P
     
       ! Loop over primary classes
       ! Check for identical/shared grids??
-      do i=1, this%nprimary
+      do i=1, this%nclasses
     
         ! Check if we have precalculated weights for the pilot point interpolation
         if (this%opt%READ_GRID_WEIGHTS) then
@@ -464,8 +523,19 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     type(t_vstring),intent(in)    :: string
     integer                       :: id
-    id = vstrlist_search(this%class_names, string)
+    id = vstrlist_search(this%class_names, vstring_toupper(string), exact=.true.)
   end function get_class_id
+
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_parameter_id(this, string) result (id)
+    ! Returns zero if not found
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    type(t_vstring),intent(in)    :: string
+    integer                       :: id
+    id = vstrlist_search(this%parnames, vstring_toupper(string), exact=.true.)
+  end function get_parameter_id
 
 !-------------------------------------------------------------------------------------------------!
 
