@@ -21,10 +21,10 @@ module m_read_datasets
     character(200)                :: file, name
     character(30),allocatable     :: hsus(:)
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
-    integer                       :: prev_idx, idx, iint, fmodel_loc
+    integer                       :: prev_idx, idx, iint, fmodel_loc, didx
+    integer,allocatable           :: cids(:)
     real(dp)                      :: x, y, z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
     real(dp),allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:)
-    integer,pointer               :: ids(:)
     type(t_grid),pointer          :: grid
     
     ! Allocate datasets (is this the right place for this to happen?)
@@ -45,7 +45,7 @@ module m_read_datasets
       
       ! Read in header
       call reader%next_item(eof, strings)
-      call process_header(t2p, file, strings, nsets, ids)
+      call process_header(t2p, file, strings, nsets, didx, cids)
       
       ! Allocate for reading
       allocate(wvalues      (nsets), &
@@ -65,16 +65,9 @@ module m_read_datasets
       grid => create_grid_object(2, npoints)
       ! Allocate dataset(s) for all layers, set default value
       do k=1, t2p%fmodel%nlayers
-        !do j=1, nsets
-        !  call t2p%datasets(ids(j),k)%initialize(npoints)
-        !  t2p%datasets(ids(j),k)%values = NODATA
-        !  ! Point all datasets to the same grid object
-        !  t2p%datasets(ids(j),k)%grid => grid
-        !end do
-        ! Now all in one dataset...
-        call t2p%datasets(ids(j),k)%initialize(npoints, t2p%nprimary)
-        t2p%datasets(ids(j),k)%values = NODATA
-        t2p%datasets(ids(j),k)%grid => grid
+        call t2p%datasets(didx,k)%initialize(npoints, t2p%nprimary)
+        t2p%datasets(didx,k)%values = NODATA
+        t2p%datasets(didx,k)%grid => grid
       end do
       
       ! Rewind
@@ -91,7 +84,7 @@ module m_read_datasets
             do k=1, t2p%fmodel%nlayers
               do l=1, nsets
                 if (total_thick(l,k)>0.0) then
-                  t2p%datasets(ids(l),k)%values(ids(l), prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
+                  t2p%datasets(didx,k)%values(cids(l), prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
                 end if
               end do
             end do
@@ -108,8 +101,8 @@ module m_read_datasets
           ! Store HSUs for each layer
           do k=1, ncats
             do l=1, nsets
-              t2p%datasets(ids(l),k)%category(idx) = t2p%fmodel%hsus%get_id(hsus(k))
-              if (t2p%datasets(ids(l),k)%category(idx)==0) then
+              t2p%datasets(didx,k)%category(idx) = t2p%fmodel%hsus%get_id(hsus(k))
+              if (t2p%datasets(didx,k)%category(idx)==0) then
                 call error_handler(1,file,"Invalid HSU: "//trim(hsus(k))//" (No matching category in HSU file)")
               end if
             end do
@@ -141,7 +134,7 @@ module m_read_datasets
       do k=1, t2p%fmodel%nlayers
         do l=1, nsets
           if (total_thick(l,k)>0.0) then
-            t2p%datasets(ids(l),k)%values(ids(l),prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
+            t2p%datasets(didx,k)%values(cids(l),prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
           end if
         end do
       end do
@@ -153,14 +146,14 @@ module m_read_datasets
   end subroutine read_datasets
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine process_header(t2p, file, header, nsets, ids)
+  subroutine process_header(t2p, file, header, nsets, dataset_idx, class_ids)
     implicit none
     class(t_T2P), intent(inout)        :: t2p
     character(*),intent(in)            :: file
     type(t_vstringlist),intent(in)     :: header
-    integer,intent(out)                :: nsets
-    integer,pointer                    :: ids(:)
-    integer,pointer                    :: temp(:)
+    integer,intent(out)                :: nsets, dataset_idx
+    integer,allocatable                :: temp(:)
+    integer,allocatable,intent(out)    :: class_ids(:)
     integer                            :: i, count
     character(30)                      :: badclass
     character(5)                       :: cint
@@ -169,7 +162,10 @@ module m_read_datasets
     !                             1        2  3 4 5 6     7
     nsets = vstrlist_length(header) - 7
     if (t2p%has_hsus) nsets = nsets - t2p%fmodel%nlayers
-    ! TODO check to make zure nsets > 0
+    if (nsets < 1) then
+       call error_handler(1,file,"Invalid number of entries in dataset header")
+    end if
+    
     allocate(temp(nsets))
     count = 0
     
@@ -183,16 +179,36 @@ module m_read_datasets
           exit
         end if
         call item2char(header,7+i,badclass)
-        call error_handler(1,filename=file,opt_msg="Bad class name = " // badclass)
+        call error_handler(1,file,"Bad class name = " // badclass)
       end if
       count = count + 1
     end do
     
+    ! Move to output variables
     nsets = count
-    allocate(ids(nsets))
-    ids(:) = temp(:nsets)
+    allocate(class_ids(nsets))
+    class_ids(:) = temp(1:nsets)
     deallocate(temp)
-  
+    
+    ! Validate datasets either (1) are all the primary datasets or (2) are a secondary dataset
+    ! Return index of t2p dataset object to store them in
+    if (maxval(class_ids) <= t2p%get_active_primary_classes()) then
+      ! is primary...
+      if (nsets==t2p%get_active_primary_classes()) then
+        dataset_idx = 1
+      else
+        call error_handler(1,file,"All primary datasets must be in same dataset file")
+      end if
+    else
+      ! Secondary: we adjust all indexes relative to the secondary datasets
+      ! (Each in their own dataset)
+      if (nsets==1) then
+        dataset_idx = class_ids(1) - t2p%get_active_primary_classes()
+        class_ids(:) = 1
+      else
+        call error_handler(1,file,"Each secondary dataset must have their own dataset file")
+      end if
+    end if
   end subroutine process_header
   
 !-------------------------------------------------------------------------------------------------!

@@ -40,7 +40,6 @@ module m_T2P
     integer,pointer                  :: nsecondary_by_id(:)   ! Connections (covariates) per [class, hyd property]
     integer,pointer                  :: connections(:,:)      ! (connections, [classes or hyd properties])
     integer,allocatable              :: vario_idx(:,:)        ! Variogram index given (class_id, class_id)  ! TODO: How to make this part of interpolator? Global?
-    integer,allocatable              :: class_dataset(:)      ! Which dataset object each class is stored in
     type(t_vstringlist)              :: dataset_files         ! dataset filenames
     type(t_vstringlist)              :: dataset_trans         ! dataset transformations
     
@@ -83,6 +82,7 @@ module m_T2P
     procedure, public  :: get_class_id
     !procedure, public  :: get_covariate_id
     procedure, public  :: get_parameter_id
+    procedure, public  :: get_active_primary_classes
   
   end type t_T2P
 !-------------------------------------------------------------------------------------------------!
@@ -171,7 +171,7 @@ module m_T2P
     implicit none
     class(t_T2P), intent(inout)   :: this
     
-    if (len_trim(this%fmodel%sim_file).or.len_trim(this%fmodel%grd_file)) then
+    if (len_trim(this%fmodel%sim_file)>0.or.len_trim(this%fmodel%grd_file)>0) then
       this%has_fmodel = .true.
     end if
     if (len_trim(this%fmodel%hsu_file))     this%has_hsus = .true.
@@ -197,7 +197,7 @@ module m_T2P
     this%ndatasets = 1
     
     ! Allocate
-    allocate(this%class_dataset(nclasses), this%nsecondary_by_id(nclasses))
+    allocate(this%nsecondary_by_id(nclasses))
     this%nsecondary_by_id(:) = 0
     
     call this%nvario_estimator()
@@ -216,7 +216,7 @@ module m_T2P
     
     this%nsecondary   =  nsecondary
     this%nclasses     = this%nclasses + nsecondary
-    this%ndatasets    = 1 + this%nclasses
+    this%ndatasets    = 1 + this%nsecondary
     this%connections => connections
 
     call this%nvario_estimator()
@@ -234,49 +234,54 @@ module m_T2P
     ! LATER nvario is passed to the interpolator (if kriging)
     implicit none
     class(t_T2P), intent(inout)   :: this
-    integer                       :: n, i, j, x, vidx
+    integer                       :: n, m, i, j, x, vidx
     
     ! Get problem size
     if (this%opt%INTERP_ORDER=="BEFORE") then
-      n = this%nclasses
+      n = this%nprimary
+      m = this%nclasses 
     else ! this%opt%INTERP_ORDER=="AFTER")
       n = this%npar
+      m = this%npar + this%nsecondary
     end if
     
     ! Allocate variogram matrix
     if (allocated(this%vario_idx)) deallocate(this%vario_idx)
-    allocate(this%vario_idx(n,n))
+    allocate(this%vario_idx(m,m))
     this%vario_idx = 0
     
     ! Defaults
-    this%nvario = n
-    do i=1, n
+    this%nvario = m
+    
+    do i=1, this%nvario
       this%vario_idx(i,i) = i
     end do
+    
+    ! Subtract one if INFER because we don't krige - last class is the remainder of the other class(es)
+    if (this%opt%INFER_LAST_CLASS.and.this%opt%INTERP_ORDER=="BEFORE") then
+      this%vario_idx(n,n) = 0
+      this%vario_idx(n+1:m,n+1:m) = this%vario_idx(n+1:m,n+1:m) - 1
+      this%nvario = this%nvario - 1
+    end if
       
     if (ASSOCIATED(this%connections)) then
-      vidx = this%nvario + 1
+      vidx = this%nvario
       ! Loop over connections
       do i=1, n
-        x = count(this%connections(:,i) > 0)
-        !nvario = nvario + (x*(x-1)/2)
         ! Fill matrix
-        do j=2, this%nsecondary_by_id(i)
-          this%vario_idx(i,this%connections(j,i)) = vidx
-          this%vario_idx(this%connections(j,i),i) = vidx ! symmetry
+        do j=1, this%nsecondary_by_id(i)
           vidx = vidx + 1
+          this%vario_idx(i,this%connections(j+1,i)) = vidx
+          this%vario_idx(this%connections(j+1,i),i) = vidx ! symmetry          
         end do
       end do
+      this%nvario = vidx
     else
       
-    end if            
-
-    this%nvario = vidx + 1  ! Add Pilot Point variogram
-
-    ! Subtract one if INFER because we don't krige - last class is the remainder of the other class(es)
-    if (this%opt%INFER_LAST_CLASS) then
-      this%nvario    = this%nvario - 1
     end if
+    
+    ! Add Pilot Point variogram
+    this%nvario = this%nvario + 1  
   
   end subroutine nvario_estimator
   
@@ -377,10 +382,10 @@ module m_T2P
       end if
     end if
     
-    ! Do the number of categories for pilot points/HRUs (respectively) match?
-    if (this%pilot_points%nppzones /= this%fmodel%ppzones%ncat) then
+    ! Check pilot point zones
+    ! Doesn't ensure they are the same ID values...
+    if (this%pilot_points%nppzones /= this%fmodel%get_active_ppzones()) then
       call error_handler(1,opt_msg="Mismatch between Pilot Point Zones assigned to Pilot Points vs Model Grid")
-      ! Doesn't ensure they are the same ID values...
     end if
     
     call this%check_pp_zone_layertype_assignments()
@@ -394,7 +399,7 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     type(t_flow_model),pointer    :: p
     integer                       :: k,i,j, arrid, catid
-    character(3)                  :: iout(2)
+    character(3)                  :: iout(3)
   
       ! Only for IWFM - Do aquitard/aquifer pilot point zones conflict?
     select type(p=>this%fmodel)
@@ -409,8 +414,8 @@ module m_T2P
                 do j=1, this%pilot_points%npp
                   if (this%pilot_points%category(j)==catid) then
                     if (this%pilot_points%is_aquifer(j)) then
-                      write(iout(1),'(i)') this%pilot_points%pp_id(j)
-                      write(iout(1),'(i)') catid
+                      write(iout(1),'(1i3)') this%pilot_points%pp_id(j)
+                      write(iout(2),'(1i3)') catid
                       call error_handler(1,opt_msg="Aquitard Pilot Point "//iout(1)//" assigned to Zone "//iout(2)//", which is in an aquifer layer")
                     end if
                   end if
@@ -423,8 +428,8 @@ module m_T2P
                 do j=1, this%pilot_points%npp
                   if (this%pilot_points%category(j)==catid) then
                     if (this%pilot_points%is_aquitard(j)) then
-                      write(iout(1),'(i)') this%pilot_points%pp_id(j)
-                      write(iout(1),'(i)') catid
+                      write(iout(1),'(1i3)') this%pilot_points%pp_id(j)
+                      write(iout(2),'(1i3)') catid
                       call error_handler(1,opt_msg="Aquifer Pilot Point "//iout(1)//" assigned to Zone "//iout(2)//", which is in an aquitard layer")
                     end if
                   end if
@@ -587,6 +592,17 @@ module m_T2P
     integer                       :: id
     id = vstrlist_search(this%parnames, vstring_toupper(string), exact=.true.)
   end function get_parameter_id
+
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_active_primary_classes(this) result (nprime)
+    ! Returns zero if not found
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    integer                       :: nprime
+    nprime = this%nprimary
+    if (this%opt%INFER_LAST_CLASS) nprime = nprime - 1
+  end function get_active_primary_classes
 
 !-------------------------------------------------------------------------------------------------!
 

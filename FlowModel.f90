@@ -43,6 +43,7 @@ module m_flow_model
       procedure,public            :: write_input_summary
       procedure,public            :: find_in_grid
       procedure,public            :: get_elev_at_point
+      procedure,public            :: get_active_ppzones
       procedure,private           :: alloc_layers
       procedure,private           :: alloc_nodes
       !procedure,private     :: write_model_input
@@ -96,6 +97,7 @@ module m_flow_model
     procedure,public          :: read_model => read_iwfm
     procedure,public          :: find_in_grid => find_in_grid_elem
     procedure,public          :: get_elev_at_point =>  get_elev_at_point_elem
+    procedure,public          :: get_active_ppzones => get_active_ppzones_iwfm
     procedure,private         :: iwfm_elem_elev_idw
     procedure,private         :: alloc_layers => alloc_layers_iwfm
     procedure,private         :: alloc_nodes  => alloc_nodes_iwfm
@@ -253,10 +255,12 @@ module m_flow_model
       type is (t_iwfm_model)
         call log%write_valueline('Number of Model Nodes',    this%nnodes(1))
         call log%write_valueline('Number of Model Elements', this%nelements)
+        call log%write_valueline('Number of Aquifer Layers', count(this%lay_exist .and. .not. this%lay_aqtard))
+        call log%write_valueline('Number of Active Aquitard Layers', count(this%lay_exist .and. this%lay_aqtard))
       type is (t_flow_fdmodel)
         call log%write_valueline('Number of Model Cells (All Layers)', sum(this%nnodes))
+        call log%write_valueline('Number of Model Layers',      this%nlayers)
     end select
-    call log%write_valueline('Number of Model Layers',      this%nlayers)
   
   end subroutine write_input_summary
   
@@ -286,6 +290,16 @@ module m_flow_model
     point_elevs = 0
   
   end subroutine get_elev_at_point
+
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_active_ppzones(this) result(nactive)
+    ! To be overloaded where necessary
+    implicit none
+    class(t_flow_model)     :: this
+    integer                 :: nactive
+    nactive = this%ppzones%ncat
+  end function get_active_ppzones
 
 !-------------------------------------------------------------------------------------------------!
   
@@ -650,6 +664,39 @@ module m_flow_model
     
   end subroutine get_elev_at_point_elem
   
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_active_ppzones_iwfm(this) result(nactive)
+    ! Because aquitards overcomplicate everything
+    implicit none
+    class(t_iwfm_model)     :: this
+    integer                 :: nactive,k,i,arrid,catid
+    logical, allocatable    :: category_seen(:)
+    
+    nactive = 0
+    ! Determine the range of possible categories
+    allocate(category_seen(this%ppzones%ncat))
+    category_seen = .false.  ! Initialize to mark all as unseen
+
+    ! Iterate over layers and count zones for each active layer
+    do k = 1, size(this%lay_exist)
+      if (this%lay_exist(k)) then  ! Layer is active
+        arrid = this%ppzones%lay2arr(k)  ! Get the corresponding array ID
+
+        ! Loop through all categories in this array and mark them
+        do i = 1, this%ppzones%arrncat(arrid)
+          catid = this%ppzones%arrcat(i, arrid)
+
+          ! Only count if this category hasn't been seen yet
+          if (.not. category_seen(catid)) then
+            category_seen(catid) = .true.  ! Mark as seen
+            nactive = nactive + 1  ! Increment the unique category count
+          end if
+        end do
+      end if
+    end do
+  end function get_active_ppzones_iwfm
+
 !-------------------------------------------------------------------------------------------------!
   
   subroutine alloc_elems(this)

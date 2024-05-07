@@ -56,7 +56,7 @@ module m_file_io
                                             ! (so IO errors can be written to it)
   character(500)              :: line       ! For reading in lines from files
   INTEGER, PARAMETER          :: dp = SELECTED_REAL_KIND(15,307)  ! 64-bit real
-  integer, parameter          :: log_width=32   
+  integer, parameter          :: log_width=38   
   
   contains
 

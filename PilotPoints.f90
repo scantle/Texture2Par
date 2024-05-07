@@ -101,7 +101,7 @@ module m_pilotpoints
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine read_pp_line(this, id, pp_type, strings, length, class_names)
+  subroutine read_pp_line(this, id, pp_type, strings, length, class_id)
     use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_index
     use m_file_io, only: item2int, item2dp
     use m_error_handler, only: error_handler
@@ -109,16 +109,15 @@ module m_pilotpoints
     implicit none
     class(t_pilotpoints),intent(inout) :: this
     character(*),intent(in)            :: id, pp_type
-    type(t_vstringlist),intent(in)     :: strings, class_names
-    integer,intent(in)                 :: length
-    integer                            :: pp_index, class_id
+    type(t_vstringlist),intent(in)     :: strings
+    integer,intent(in)                 :: length, class_id
+    integer                            :: pp_index
   
     ! Read line for pp_id and get internal pilot point index
     pp_index = this%get_pp_index(item2int(strings, 1))
     ! Now we react to type
     select case(pp_type)
       case("AQUIFER")
-        class_id = vstrlist_search(class_names, vstrlist_index(strings, 2))
         this%values(pp_index,1,class_id) = item2dp(strings, 3)  ! Kmin
         this%values(pp_index,2,class_id) = item2dp(strings, 4)  ! Kmax
         this%values(pp_index,3,class_id) = item2dp(strings, 5)  ! Ss
@@ -137,7 +136,6 @@ module m_pilotpoints
         if(this%is_aquitard(pp_index)) call error_handler(1,"Cannot assign aquifer parameters to pilot point previously used for aquitard parameters: " // trim(id))
         this%is_aquifer(pp_index) = .true.
       case("AQUITARD")
-        class_id = vstrlist_search(class_names, vstrlist_index(strings, 2))
         this%values(pp_index,1,class_id) = item2dp(strings, 3)  ! Kmin
         this%values(pp_index,2,class_id) = item2dp(strings, 4)  ! Kmax
         this%values(pp_index,5,class_id) = item2dp(strings, 5)  ! Aniso

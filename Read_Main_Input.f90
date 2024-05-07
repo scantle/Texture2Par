@@ -181,6 +181,7 @@ module m_read_main_input
     integer,pointer               :: class_connections(:,:), class_type(:)
     
     allocate(class_names)
+    call vstrlist_new(class_names)
     
     ! Pre-read for number of classes
     !call reader%get_block_dim(n, nclasses)  ! returns primary, total classes, or generally (lines, items)
@@ -244,7 +245,6 @@ module m_read_main_input
     end if
     
     ! Loop over data class lines
-    
     do i=1, nlines
       call reader%next_block_item(status, id, strings, length)
       if (status /= 0) exit  ! exit if end of block or end of file
@@ -264,6 +264,10 @@ module m_read_main_input
         if (cid==0) then
           call vstrlist_append(t2p%class_names, vstring_toupper(vstrlist_index(strings,k)))
           cid = t2p%get_class_id(vstrlist_index(strings, k))
+          ! Important check
+          if (t2p%opt%INFER_LAST_CLASS.and.(cid==t2p%nclasses)) then
+            call error_handler(1,reader%file,"Cannot specify covariate for final class when INFER_LAST_CLASS is TRUE")
+          end if
           nsecondary = nsecondary + 1
         end if
         connections(k,prime_id) = cid
@@ -403,12 +407,12 @@ subroutine read_variogram_block(t2p, reader)
             end if
           end if
           if (iscross) then
-            cross_id = t2p%get_class_id(class_name)
+            cross_id = t2p%get_class_id(cross_name)
             if (cross_id==0) then
               call error_handler(1,reader%file,"Invalid Class Name in Cross Variogram Assignment")
             end if
           else
-            cross_id = 1
+            cross_id = prime_id
           end if
           vario_id = t2p%vario_idx(prime_id, cross_id)
           if (vario_id==0) then
@@ -529,6 +533,7 @@ subroutine read_ppparm_block(t2p, reader)
   implicit none
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
+  integer                         :: class_id
   
   ! Standard file reader variables
   integer                    :: status, length
@@ -555,8 +560,9 @@ subroutine read_ppparm_block(t2p, reader)
             call reader%back(1)
             exit
           end if
-          ! Read the line, save
-          call t2p%pilot_points%read_pp_line(id, value, strings, length, t2p%class_names)
+          ! Read the line, get class, save
+          class_id = t2p%get_class_id(vstrlist_index(strings, 2))
+          call t2p%pilot_points%read_pp_line(id, value, strings, length, class_id)
         end do ! End of pp reading loop
       case DEFAULT
         call error_handler(1,reader%file,"Unknown Pilot Point Parameter option: " // trim(id))
