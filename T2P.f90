@@ -49,6 +49,7 @@ module m_T2P
     logical                          :: has_classes
     logical                          :: has_covar
     logical                          :: has_interp
+    logical                          :: has_vario
     logical                          :: has_fmodel
     logical                          :: has_pplocs
     logical                          :: has_pp
@@ -70,6 +71,7 @@ module m_T2P
     procedure,public   :: check_major_inputs
     procedure,private  :: check_pp_zone_layertype_assignments
     procedure,private  :: nvario_estimator
+    procedure,private  :: no_covariates
     
     ! Main Procedures
     procedure,public   :: predict
@@ -100,7 +102,9 @@ module m_T2P
     ! Initialize Read Trackers
     this%has_opt       = .false.
     this%has_classes   = .false.
+    this%has_covar     = .false.
     this%has_interp    = .false.
+    this%has_vario     = .false.
     this%has_fmodel    = .false.
     this%has_pplocs    = .false.
     this%has_pp        = .false.
@@ -277,6 +281,28 @@ module m_T2P
   end subroutine nvario_estimator
   
 !-------------------------------------------------------------------------------------------------!
+  subroutine no_covariates(this)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    integer                       :: n,i
+    
+    ! Allocate based on interpolation order
+    if (this%opt%INTERP_ORDER=="BEFORE") then
+      n = this%nclasses
+    else ! t2p%opt%INTERP_ORDER=="AFTER")
+      n = this%npar
+    end if
+    allocate(this%connections(1,n))
+    this%nsecondary_by_id(:) = 0
+    
+    ! Setup matrix, values indicate variogram ID. Can start off assuming each class has a variogram (fill diagonal)
+    this%connections = 0
+    do i = 1, n
+      this%connections(1, i) = i
+    end do
+  
+  end subroutine no_covariates
+!-------------------------------------------------------------------------------------------------!
   
   subroutine setup_variograms(this, variograms, nnear, nstruct)
     implicit none
@@ -305,8 +331,9 @@ module m_T2P
     end select
     
     this%has_interp = .true.
-  
+    this%has_vario  = .true.
   end subroutine setup_variograms
+
 !-------------------------------------------------------------------------------------------------!
   
   subroutine setup_pplocs(this, pp_id, nzones, zone_tracker)
@@ -341,6 +368,7 @@ module m_T2P
     if(this%has_pplocs   ==.false.) call error_handler(1,opt_msg="Missing Required PP_LOCS Block")
     if(this%has_pp       ==.false.) call error_handler(1,opt_msg="Missing Required PP_PARAMETERS Block")
     if(this%has_datafiles==.false.) call error_handler(1,opt_msg="Missing Required DATASET Block(s)")
+    if(this%has_covar    ==.false.) call this%no_covariates()  ! Allowable, just needs to be handled
     if(this%has_interp   ==.false.) then
       if (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK") then
         call error_handler(1,opt_msg="Missing Required VARIOGRAMS Block")
