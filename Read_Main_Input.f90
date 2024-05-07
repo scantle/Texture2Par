@@ -225,7 +225,7 @@ module m_read_main_input
     else ! t2p%opt%INTERP_ORDER=="AFTER")
       n = t2p%npar
     end if
-    allocate(connections(n, nitems), t2p%nsecondary_by_id(n))
+    allocate(connections(nitems,n))
     t2p%nsecondary_by_id(:) = 0
     
     ! Setup matrix, values indicate variogram ID. Can start off assuming each class has a variogram (fill diagonal)
@@ -234,7 +234,7 @@ module m_read_main_input
       connections(1, i) = i
     end do
     
-    if (n < 1) then
+    if (nlines < 1) then
       !call error_handler(2,reader%file,"No Covariates Listed")
       ! Instead, early return
       return
@@ -339,7 +339,7 @@ subroutine read_variogram_block(t2p, reader)
   ! Sub variables
   type(t_vgm),pointer        :: vgms(:,:)
   integer,pointer            :: nnear(:), nstruct(:)
-  integer                    :: class_id, cross_id, vario_id, struct_id, vcount
+  integer                    :: prime_id, cross_id, vario_id, struct_id, vcount
   logical                    :: iscross, ispp
   type(t_vstring)            :: class_name, cross_name
   type(t_vstringlist)        :: class_temp
@@ -388,15 +388,29 @@ subroutine read_variogram_block(t2p, reader)
           vario_id = t2p%nvario  ! PP vario is max
         else
         ! Not PP
-          class_id = vstrlist_search(t2p%class_names, class_name)
-          ! TODO if the class name doesn't exist
+          if (t2p%opt%INTERP_ORDER=="BEFORE") then
+            prime_id = t2p%get_class_id(class_name)
+            if (prime_id==0) then
+              call error_handler(1,reader%file,"Invalid Class Name in Variogram Assignment")
+            end if
+          else ! this%opt%INTERP_ORDER=="AFTER")
+            prime_id = t2p%get_parameter_id(class_name)
+            if (prime_id==0) then
+              call error_handler(1,reader%file,"Invalid Hydraulic Parameter Name in Variogram Assignment")
+            end if
+          end if
           if (iscross) then
-            cross_id = vstrlist_search(t2p%class_names, cross_name)
+            cross_id = t2p%get_class_id(class_name)
+            if (cross_id==0) then
+              call error_handler(1,reader%file,"Invalid Class Name in Cross Variogram Assignment")
+            end if
           else
             cross_id = 1
           end if
-          vario_id = 0  ! TODO
-          !TODO Validate vario_id
+          vario_id = t2p%vario_idx(prime_id, cross_id)
+          if (vario_id==0) then
+            call error_handler(1,reader%file,"Invalid (Cross) Variogram Assignment - Check Covariates Block.")
+          end if
         end if
         
         ! Now we know what variogram, loop and read in structures

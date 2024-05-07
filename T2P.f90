@@ -26,21 +26,21 @@ module m_T2P
     integer                          :: nprimary    ! Primary datasets (for which hydraulic properties exist) (one may be inferred)
     integer                          :: nsecondary  ! Number of covariate data classes
     integer                          :: ndatasets   ! Number of dataset objects (one for primary datasets, n for secondary)
+    integer                          :: nvario      ! Number of variograms, eventually passed to interpolator (if kriging)
     integer                          :: ndatafiles  ! Number of data files to read in
     integer                          :: nhsus       ! Number of Hydrostratigraphic Units (HSUs)
                                                     ! (Formerly "geologic zones")
-    integer                          :: nvario      ! Number of variograms
     
     ! Trackers
     ! Naming:
-    ! Class = primary data
+    ! Primary data
     ! Covariates = CVT = secondary data (for cokriging)
-    type(t_vstringlist),pointer      :: class_names           ! Primary data class names
+    type(t_vstringlist),pointer      :: class_names           ! Data class names
     type(t_vstringlist)              :: parnames              ! Names of output parameters calculated
     integer,pointer                  :: nsecondary_by_id(:)   ! Connections (covariates) per [class, hyd property]
     integer,pointer                  :: connections(:,:)      ! (connections, [classes or hyd properties])
+    integer,allocatable              :: vario_idx(:,:)        ! Variogram index given (class_id, class_id)  ! TODO: How to make this part of interpolator? Global?
     integer,allocatable              :: class_dataset(:)      ! Which dataset object each class is stored in
-    integer,allocatable              :: cvt_dataset(:)        ! Which dataset object each covariate is stored in
     type(t_vstringlist)              :: dataset_files         ! dataset filenames
     type(t_vstringlist)              :: dataset_trans         ! dataset transformations
     
@@ -184,11 +184,8 @@ module m_T2P
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer,intent(in)            :: nclasses
-    type(t_vstringlist),pointer   :: class_names
-    
-    integer                       :: i
-    
-    ! TODO needs to store different when INTERP_ORDER: AFTER is passed
+    type(t_vstringlist),pointer   :: class_names   
+    integer                       :: i,n
     
     this%nclasses = nclasses
     this%nprimary = nclasses
@@ -196,7 +193,8 @@ module m_T2P
     this%ndatasets = 1
     
     ! Allocate
-    allocate(this%class_dataset(nclasses))
+    allocate(this%class_dataset(nclasses), this%nsecondary_by_id(nclasses))
+    this%nsecondary_by_id(:) = 0
     
     call this%nvario_estimator()
     
@@ -222,31 +220,56 @@ module m_T2P
     if (maxval(this%nsecondary_by_id) > 1) then
       this%has_covar = .true.
     end if
-    
-  
   end subroutine setup_covariates
 
 !-------------------------------------------------------------------------------------------------!
   
   subroutine nvario_estimator(this)
+    ! Need x(x-1)/2 variograms per class where x is classes involved (prime + secondary)
     ! Called during setup_data_classes AND setup_covariates as more info comes in
+    ! LATER nvario is passed to the interpolator (if kriging)
     implicit none
     class(t_T2P), intent(inout)   :: this
-    integer                       :: i
+    integer                       :: n, i, j, x, vidx
     
+    ! Get problem size
+    if (this%opt%INTERP_ORDER=="BEFORE") then
+      n = this%nclasses
+    else ! this%opt%INTERP_ORDER=="AFTER")
+      n = this%npar
+    end if
+    
+    ! Allocate variogram matrix
+    if (allocated(this%vario_idx)) deallocate(this%vario_idx)
+    allocate(this%vario_idx(n,n))
+    this%vario_idx = 0
+    
+    ! Defaults
+    this%nvario = n
+    do i=1, n
+      this%vario_idx(i,i) = i
+    end do
+      
     if (ASSOCIATED(this%connections)) then
+      vidx = this%nvario + 1
       ! Loop over connections
-      do i=1, size(this%connections,2)
-        ! TODO
+      do i=1, n
+        x = count(this%connections(:,i) > 0)
+        !nvario = nvario + (x*(x-1)/2)
+        ! Fill matrix
+        do j=2, this%nsecondary_by_id(i)
+          this%vario_idx(i,this%connections(j,i)) = vidx
+          this%vario_idx(this%connections(j,i),i) = vidx ! symmetry
+          vidx = vidx + 1
+        end do
       end do
     else
-      this%nvario = this%nclasses
+      
     end if            
 
-    this%nvario = this%nvario + 1  ! Pilot Points
+    this%nvario = vidx + 1  ! Add Pilot Point variogram
 
     ! Subtract one if INFER because we don't krige - last class is the remainder of the other class(es)
-    ! We also don't store it as a dataset
     if (this%opt%INFER_LAST_CLASS) then
       this%nvario    = this%nvario - 1
     end if
@@ -271,7 +294,7 @@ module m_T2P
         ! First n are for classes/properties
         p%nvario     = this%nvario -1
         p%nstruct    => nstruct(1:this%nvario-1)
-        p%variograms => variograms(:,1:this%nvario)    
+        p%variograms => variograms(:,1:this%nvario)
     end select
     ! PP is the last one
     select type(p => this%interp_pp)
