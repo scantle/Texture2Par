@@ -15,6 +15,8 @@ module m_interpolator
     procedure,private      :: initialize_abc
     generic                :: initialize => initialize_abc       ! placeholder
     procedure,public       :: calc_weights
+    procedure,private      :: setup
+    procedure,private      :: predict_point
   end type t_interpolator
 !-------------------------------------------------------------------------------------------------!
   
@@ -57,16 +59,52 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine calc_weights(this, from_grid, to_grid, weights, catid)
-    ! Abstract Base Class Routine - not meant to be used
+  subroutine calc_weights(this, from_grids, to_grid, weights, catlist, from_cats, to_cats)
     implicit none
     class(t_interpolator), intent(in)     :: this
-    type(t_grid),intent(in)               :: from_grid, to_grid
-    type(t_weights)                       :: weights
+    type(t_grid),intent(in)               :: from_grids(:), to_grid
+    real(dp)                              :: weights(:,:)
+    integer,intent(in)                    :: catlist(:), from_cats(:), to_cats(:)
+    integer                               :: i, j, cat
     
-    integer,intent(in)                    :: catid
+    write(*,*) 'meely meely'
+    
+    ! Need to do anything to setup weights?
+    
+    do i=1, size(catlist)
+      ! Setup for each category
+      cat = catlist(i)
+      call this%setup(from_grids, to_grid, weights, cat, from_cats, to_cats)
+      do j=1, to_grid%n
+        ! Interpolate for each point
+        if (to_cats(j)==cat) call this%predict_point(to_grid%coords(:,j), weights(:,j))
+      end do
+    end do
+    
+    !call this%cleanup() needed?
     
   end subroutine calc_weights
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine setup(this, from_grids, to_grid, weights, cat, from_cats, to_cats)
+    implicit none
+    class(t_interpolator), intent(in)     :: this
+    type(t_grid),intent(in)               :: from_grids(:), to_grid
+    real(dp)                              :: weights(:,:)
+    integer,intent(in)                    :: cat
+    integer,intent(in)                    :: from_cats(:), to_cats(:)
+    
+  end subroutine setup
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine predict_point(this, p, in_weights)
+    implicit none
+    class(t_interpolator), intent(in)     :: this
+    real(dp)                              :: p(2), in_weights(:)
+  
+  end subroutine predict_point
   
 !-------------------------------------------------------------------------------------------------!
   

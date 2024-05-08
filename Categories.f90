@@ -15,7 +15,7 @@ module m_categories
     integer,allocatable        :: lay2arr(:)     ! Translation from layer to array
     integer,allocatable        :: array(:,:)     ! Arrays of category values (nvalues, narr)
     integer,allocatable        :: arrncat(:)     ! Number of categories per array
-    integer,allocatable        :: arrcat(:,:)    ! Categories present in each array
+    integer,allocatable        :: arrcat(:,:)    ! Categories present in each array (catlist_size, narr)
     logical                    :: from_file      ! Categories were read from file
     
     contains
