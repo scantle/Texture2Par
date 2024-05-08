@@ -459,8 +459,8 @@ module m_T2P
       ! Uses layer 1 grid
       pp_to => this%fmodel%grid(1)
     else if (this%opt%INTERP_ORDER=="AFTER") then
-      ! Uses first dataset layer 1 grid TODO: Check to ensure they're all the same?
-      ! (dataset 1 always has to be a primary dataset)
+      ! Uses primary dataset layer 1 grid
+      ! Again, assumes uniformity of grid by layer
       pp_to => this%datasets(1,1)%grid
     end if
   
@@ -495,8 +495,11 @@ module m_T2P
     class(t_T2P), intent(inout)     :: this
     type(t_pilotpoints)             :: results
     type(t_grid)                    :: to_grid
-    type(t_weights),pointer         :: weights
+    type(t_weights)                 :: weights
     integer                         :: i,k
+    type(t_grid)                    :: from_grid(1)  ! a little trick to appease calc_weights
+    
+    from_grid(1) = this%pilot_points%grid
     
     ! Go by pilot point zone arrays (up to nlayers)
     do k=1, this%fmodel%ppzones%narr
@@ -505,11 +508,12 @@ module m_T2P
       if (this%opt%READ_PP_WEIGHTS) then
         ! TODO READ
       else
-        do i=1, this%fmodel%ppzones%ncat                                              ! Loop over categories
-          where (this%fmodel%ppzones%array(:,k)== this%fmodel%ppzones%catlist(i))  ! Subset by category array
-            !call this%interp_pp%calc_weights(this%pilot_points%grid%coords, to_grid%coords, weights%values)
-          end where
-        end do
+        call this%interp_pp%calc_weights(from_grid, &
+                                         to_grid, &
+                                         weights%values, &
+                                         this%fmodel%ppzones%arrcat(1:this%fmodel%ppzones%arrncat(k),k), &
+                                         this%pilot_points%category, &
+                                         this%fmodel%ppzones%array(:,k))
       end if
     
       ! Write PP weights
@@ -534,6 +538,8 @@ module m_T2P
     
     ! Loop over model layers
     do k=1, this%fmodel%nlayers
+    
+      ! Check if layer has thickness?
     
       ! Loop over primary classes
       ! Check for identical/shared grids??
