@@ -15,6 +15,7 @@ module m_kriging
     integer,pointer                  :: nnear(:)          ! Number of nearest points used for interpolation
     integer,pointer                  :: nstruct(:)        ! Number of structures for each variogram
     type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)
+    integer,allocatable              :: vario_idx(:,:)        ! Variogram index given (class_id, class_id)
     ! Attributes for KD-tree and search parameters could be added here
   contains
     procedure                 :: intialize => initialize_kriging
@@ -24,15 +25,13 @@ module m_kriging
   
   type, extends(t_krige) :: t_simpkrige
   contains
-    !procedure              :: calc_weights => calc_weights_sk
-    !procedure              :: apply_weights => apply_weights_sk
+
   end type t_simpkrige
 !-------------------------------------------------------------------------------------------------!
   
   type, extends(t_krige) :: t_ordkrige
   contains
-    !procedure              :: calc_weights => calc_weights_ok
-    !procedure              :: apply_weights => apply_weights_ok
+
   end type t_ordkrige
 !-------------------------------------------------------------------------------------------------!
 
@@ -60,13 +59,29 @@ module m_kriging
 ! SIMPLE KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
-    subroutine calc_weights_sk(this, from_grid, to_grid, weights)
+  subroutine setup_sk(this, from_grids, to_grid,  cat, from_cats, to_cats, weights, opt)
     implicit none
-    class(t_simpkrige), intent(in)  :: this
-    type(t_grid),intent(in)         :: from_grid, to_grid
-    type(t_weights)                 :: weights
+    class(t_simpkrige)                    :: this
+    type(t_grid),intent(in)               :: from_grids(:), to_grid
+    real(dp)                              :: weights(:,:)
+    integer,intent(in)                    :: cat
+    integer,intent(in)                    :: from_cats(:), to_cats(:)
+    type(t_options),intent(in)            :: opt
     
-  end subroutine calc_weights_sk
+  end subroutine setup_sk
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine predict_point_sk(this, idx, p, from_grids, cat, from_cats, weights)
+    implicit none
+    class(t_simpkrige), intent(in)    :: this
+    integer,intent(in)                :: idx, cat
+    real(dp),intent(in)               :: p(2)
+    type(t_grid),intent(in)           :: from_grids(:)
+    integer,intent(in)                :: from_cats(:)
+    real(dp)                          :: weights(:)
+  
+  end subroutine predict_point_sk
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -74,13 +89,29 @@ module m_kriging
 ! ORDINARY KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
-    subroutine calc_weights_ok(this, from_grid, to_grid, weights)
+  subroutine setup_ok(this, from_grids, to_grid,  cat, from_cats, to_cats, weights, opt)
     implicit none
-    class(t_ordkrige), intent(in)   :: this
-    type(t_grid),intent(in)         :: from_grid, to_grid
-    type(t_weights)                 :: weights
+    class(t_simpkrige)                    :: this
+    type(t_grid),intent(in)               :: from_grids(:), to_grid
+    real(dp)                              :: weights(:,:)
+    integer,intent(in)                    :: cat
+    integer,intent(in)                    :: from_cats(:), to_cats(:)
+    type(t_options),intent(in)            :: opt
     
-  end subroutine calc_weights_ok
+  end subroutine setup_ok
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine predict_point_ok(this, idx, p, from_grids, cat, from_cats, weights)
+    implicit none
+    class(t_simpkrige), intent(in)    :: this
+    integer,intent(in)                :: idx, cat
+    real(dp),intent(in)               :: p(2)
+    type(t_grid),intent(in)           :: from_grids(:)
+    integer,intent(in)                :: from_cats(:)
+    real(dp)                          :: weights(:)
+  
+  end subroutine predict_point_ok
   
 !-------------------------------------------------------------------------------------------------!
   

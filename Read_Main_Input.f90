@@ -334,6 +334,7 @@ end subroutine read_dataset_block
   
 subroutine read_variogram_block(t2p, reader)
   use m_vario, only: t_vgm, get_vgm_from_line
+  use m_kriging, only: t_krige
   implicit none
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
@@ -395,29 +396,34 @@ subroutine read_variogram_block(t2p, reader)
           vario_id = t2p%nvario  ! PP vario is max
         else
         ! Not PP
-          if (t2p%opt%INTERP_ORDER=="BEFORE") then
-            prime_id = t2p%get_class_id(class_name)
-            if (prime_id==0) then
-              call error_handler(1,reader%file,"Invalid Class Name in Variogram Assignment")
-            end if
-          else ! this%opt%INTERP_ORDER=="AFTER")
-            prime_id = t2p%get_parameter_id(class_name)
-            if (prime_id==0) then
-              call error_handler(1,reader%file,"Invalid Hydraulic Parameter Name in Variogram Assignment")
-            end if
-          end if
-          if (iscross) then
-            cross_id = t2p%get_class_id(cross_name)
-            if (cross_id==0) then
-              call error_handler(1,reader%file,"Invalid Class Name in Cross Variogram Assignment")
-            end if
-          else
-            cross_id = prime_id
-          end if
-          vario_id = t2p%vario_idx(prime_id, cross_id)
-          if (vario_id==0) then
-            call error_handler(1,reader%file,"Invalid (Cross) Variogram Assignment - Check Covariates Block.")
-          end if
+          select type(p => t2p%interp_data)
+            type is(t_krige)
+              if (t2p%opt%INTERP_ORDER=="BEFORE") then
+                prime_id = t2p%get_class_id(class_name)
+                if (prime_id==0) then
+                  call error_handler(1,reader%file,"Invalid Class Name in Variogram Assignment")
+                end if
+              else ! this%opt%INTERP_ORDER=="AFTER")
+                prime_id = t2p%get_parameter_id(class_name)
+                if (prime_id==0) then
+                  call error_handler(1,reader%file,"Invalid Hydraulic Parameter Name in Variogram Assignment")
+                end if
+              end if
+              if (iscross) then
+                cross_id = t2p%get_class_id(cross_name)
+                if (cross_id==0) then
+                  call error_handler(1,reader%file,"Invalid Class Name in Cross Variogram Assignment")
+                end if
+              else
+                cross_id = prime_id
+              end if
+              vario_id = p%vario_idx(prime_id, cross_id)
+              if (vario_id==0) then
+                call error_handler(1,reader%file,"Invalid (Cross) Variogram Assignment - Check Covariates Block.")
+              end if
+            class default
+              call error_handler(4,opt_msg="Variograms cannot be used without kriging as the interpolator")
+          end select
         end if
         
         ! Now we know what variogram, loop and read in structures

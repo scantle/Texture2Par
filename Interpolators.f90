@@ -151,9 +151,6 @@ module m_interpolator
     integer,intent(in)            :: from_cats(:), to_cats(:)
     type(t_options),intent(in)    :: opt
     
-    ! Do elsewhere?
-    if (size(from_grids) > 1) call error_handler(4,opt_msg="IDW recieved multiple grids... covariates not supported")
-    
     this%nobs = from_grids(1)%n
     this%power = opt%IDW_POWER
     

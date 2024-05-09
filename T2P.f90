@@ -39,7 +39,7 @@ module m_T2P
     type(t_vstringlist)              :: parnames              ! Names of output parameters calculated
     integer,pointer                  :: nsecondary_by_id(:)   ! Connections (covariates) per [class, hyd property]
     integer,pointer                  :: connections(:,:)      ! (connections, [classes or hyd properties])
-    integer,allocatable              :: vario_idx(:,:)        ! Variogram index given (class_id, class_id)  ! TODO: How to make this part of interpolator? Global?
+    !integer,allocatable              :: vario_idx(:,:)        ! Variogram index given (class_id, class_id)  ! TODO: How to make this part of interpolator? Global?
     type(t_vstringlist)              :: dataset_files         ! dataset filenames
     type(t_vstringlist)              :: dataset_trans         ! dataset transformations
     
@@ -245,43 +245,53 @@ module m_T2P
       m = this%npar + this%nsecondary
     end if
     
-    ! Allocate variogram matrix
-    if (allocated(this%vario_idx)) deallocate(this%vario_idx)
-    allocate(this%vario_idx(m,m))
-    this%vario_idx = 0
-    
     ! Defaults
     this%nvario = m
     
-    do i=1, this%nvario
-      this%vario_idx(i,i) = i
-    end do
+    ! Allocate variogram matrix for data
+    select type(p => this%interp_data)
+      type is(t_krige)
+        if (allocated(p%vario_idx)) deallocate(p%vario_idx)
+        allocate(p%vario_idx(m,m))
+        p%vario_idx = 0
     
-    ! Subtract one if INFER because we don't krige - last class is the remainder of the other class(es)
-    if (this%opt%INFER_LAST_CLASS.and.this%opt%INTERP_ORDER=="BEFORE") then
-      this%vario_idx(n,n) = 0
-      this%vario_idx(n+1:m,n+1:m) = this%vario_idx(n+1:m,n+1:m) - 1
-      this%nvario = this%nvario - 1
-    end if
-      
-    if (ASSOCIATED(this%connections)) then
-      vidx = this%nvario
-      ! Loop over connections
-      do i=1, n
-        ! Fill matrix
-        do j=1, this%nsecondary_by_id(i)
-          vidx = vidx + 1
-          this%vario_idx(i,this%connections(j+1,i)) = vidx
-          this%vario_idx(this%connections(j+1,i),i) = vidx ! symmetry          
+        do i=1, this%nvario
+          p%vario_idx(i,i) = i
         end do
-      end do
-      this%nvario = vidx
-    else
+    
+        ! Subtract one if INFER because we don't krige - last class is the remainder of the other class(es)
+        if (this%opt%INFER_LAST_CLASS.and.this%opt%INTERP_ORDER=="BEFORE") then
+          p%vario_idx(n,n) = 0
+          p%vario_idx(n+1:m,n+1:m) = p%vario_idx(n+1:m,n+1:m) - 1
+          this%nvario = this%nvario - 1
+        end if
       
-    end if
+        if (ASSOCIATED(this%connections)) then
+          vidx = this%nvario
+          ! Loop over connections
+          do i=1, n
+            ! Fill matrix
+            do j=1, this%nsecondary_by_id(i)
+              vidx = vidx + 1
+              p%vario_idx(i,this%connections(j+1,i)) = vidx
+              p%vario_idx(this%connections(j+1,i),i) = vidx ! symmetry          
+            end do
+          end do
+          this%nvario = vidx
+        end if
+      class default
+        if (m /= n) call error_handler(4,opt_msg="Covariates are not supported for non-kriging options.")
+    end select
     
     ! Add Pilot Point variogram
     this%nvario = this%nvario + 1  
+    
+    ! Allocate variogram matrix for pp
+    select type(p => this%interp_pp)
+      type is(t_krige)
+        if (allocated(p%vario_idx)==.false.) allocate(p%vario_idx(1,1))
+        p%vario_idx(1,1) = 1  ! Is passed only this variogram
+    end select
   
   end subroutine nvario_estimator
   
