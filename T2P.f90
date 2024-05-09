@@ -513,7 +513,8 @@ module m_T2P
                                          weights%values, &
                                          this%fmodel%ppzones%arrcat(1:this%fmodel%ppzones%arrncat(k),k), &
                                          this%pilot_points%category, &
-                                         this%fmodel%ppzones%array(:,k))
+                                         this%fmodel%ppzones%array(:,k),&
+                                         this%opt)
       end if
     
       ! Write PP weights

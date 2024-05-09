@@ -57,6 +57,8 @@ module m_error_handler
         err_msg = trim(err_msg) // " Missing Required Data -"
       case(3) ! Invalid data, unable to convert
         err_msg = trim(err_msg) // " Data Format/Conversion Failure -"
+      case(4) ! Interpolation error... an error that happened during interpolation
+        err_msg = trim(err_msg) // " Interpolator Error -"
       case(9) ! Internal Error ("my bad")
         err_msg = trim(err_msg) // " Internal Error -"
       case DEFAULT

@@ -21,8 +21,13 @@ module m_interpolator
 !-------------------------------------------------------------------------------------------------!
   
   type, extends(t_interpolator) :: t_idw
-    integer                :: p
+    real(dp)               :: power
+    integer                :: nobs
+    logical,allocatable    :: catmask(:)
+    
   contains
+    procedure               :: setup => setup_idw
+    procedure               :: predict_point => predict_point_idw
     !procedure              :: initialize_idw
     !generic                :: initialize => initialize_idw
     !procedure,public       :: calc_weights => calc_weights_idw
@@ -47,6 +52,16 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
+  function dist_2D_vector(p, point_array) result(distances)
+    real(dp), intent(in)                      :: p(2)          
+    real(dp), dimension(:, :), intent(in)     :: point_array
+    real(dp), dimension(size(point_array, 2)) :: distances
+
+    ! Calculate the differences using appropriate indexing
+    distances = sqrt((point_array(1, :) - p(1)) ** 2 + &
+                      (point_array(2, :) - p(2)) ** 2)
+  end function dist_2D_vector
+  
 !-------------------------------------------------------------------------------------------------!
 ! BASE CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -59,25 +74,27 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine calc_weights(this, from_grids, to_grid, weights, catlist, from_cats, to_cats)
+  subroutine calc_weights(this, from_grids, to_grid, weights, catlist, from_cats, to_cats, opt)
     implicit none
     class(t_interpolator), intent(in)     :: this
     type(t_grid),intent(in)               :: from_grids(:), to_grid
     real(dp)                              :: weights(:,:)
     integer,intent(in)                    :: catlist(:), from_cats(:), to_cats(:)
+    type(t_options),intent(in)            :: opt
     integer                               :: i, j, cat
     
     write(*,*) 'meely meely'
     
     ! Need to do anything to setup weights?
+    ! Make sure they're zero'd?
     
     do i=1, size(catlist)
       ! Setup for each category
       cat = catlist(i)
-      call this%setup(from_grids, to_grid, weights, cat, from_cats, to_cats)
+      call this%setup(from_grids, to_grid, cat, from_cats, to_cats, weights, opt)
       do j=1, to_grid%n
         ! Interpolate for each point
-        if (to_cats(j)==cat) call this%predict_point(to_grid%coords(:,j), weights(:,j))
+        if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(1:2,j), from_grids, cat, to_cats, weights(:,j))
       end do
     end do
     
@@ -87,22 +104,27 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine setup(this, from_grids, to_grid, weights, cat, from_cats, to_cats)
+  subroutine setup(this, from_grids, to_grid,  cat, from_cats, to_cats, weights, opt)
     implicit none
-    class(t_interpolator), intent(in)     :: this
+    class(t_interpolator)                 :: this
     type(t_grid),intent(in)               :: from_grids(:), to_grid
     real(dp)                              :: weights(:,:)
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: from_cats(:), to_cats(:)
+    type(t_options),intent(in)            :: opt
     
   end subroutine setup
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine predict_point(this, p, in_weights)
+  subroutine predict_point(this, idx, p, from_grids, cat, from_cats, weights)
     implicit none
-    class(t_interpolator), intent(in)     :: this
-    real(dp)                              :: p(2), in_weights(:)
+    class(t_interpolator), intent(in) :: this
+    integer,intent(in)                :: idx, cat
+    real(dp),intent(in)               :: p(2)
+    type(t_grid),intent(in)           :: from_grids(:)
+    integer,intent(in)                :: from_cats(:)
+    real(dp)                          :: weights(:)
   
   end subroutine predict_point
   
@@ -119,14 +141,64 @@ module m_interpolator
   !end subroutine initialize_idw
   
 !-------------------------------------------------------------------------------------------------!
-
-    subroutine calc_weights_idw(this, from_grid, to_grid, weights)
-    implicit none
-    class(t_idw), intent(in)        :: this
-    type(t_grid),intent(in)         :: from_grid, to_grid
-    type(t_weights)                 :: weights
-    
-  end subroutine calc_weights_idw
   
+  subroutine setup_idw(this, from_grids, to_grid, cat, from_cats, to_cats, weights, opt)
+    implicit none
+    class(t_idw)                  :: this
+    type(t_grid),intent(in)       :: from_grids(:), to_grid
+    real(dp)                      :: weights(:,:)
+    integer,intent(in)            :: cat
+    integer,intent(in)            :: from_cats(:), to_cats(:)
+    type(t_options),intent(in)    :: opt
+    
+    ! Do elsewhere?
+    if (size(from_grids) > 1) call error_handler(4,opt_msg="IDW recieved multiple grids... covariates not supported")
+    
+    this%nobs = from_grids(1)%n
+    this%power = opt%IDW_POWER
+    
+    allocate(this%catmask(this%nobs))
+    this%catmask = (from_cats == cat)
+    
+  end subroutine setup_idw
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine predict_point_idw(this, idx, p, from_grids, cat, from_cats, weights)
+    implicit none
+    class(t_idw), intent(in)      :: this
+    integer,intent(in)            :: idx, cat
+    real(dp),intent(in)           :: p(2)
+    type(t_grid),intent(in)       :: from_grids(:)
+    integer,intent(in)            :: from_cats(:)
+    real(dp)                      :: weights(:)
+    real(dp)                      :: distances(this%nobs)
+    real(dp)                      :: total_weight
+    integer                       :: zero_count
+    
+    ! Calculate distances for points matching the mask
+    distances = huge(dp)
+    distances(this%catmask) = dist_2D_vector(p, from_grids(1)%coords(:, this%catmask))
+    where(this%catmask)
+      weights = 1.0_dp / distances**this%power
+    elsewhere
+      weights = 0.0_dp
+    end where
+    
+     ! Check if there are any zero distances
+    zero_count = count(distances == 0.0_dp)
+    if (zero_count > 0) then
+      ! Assign equal weight to all zero-distance points (TODO should this produce a warning?)
+      weights(:) = 0.0_dp
+      where (distances == 0.0_dp)
+        weights = 1.0_dp / zero_count
+      end where
+    else
+      ! Normalize weights to sum up to 1
+      total_weight = sum(weights)
+      weights = weights / total_weight
+    end if
+    
+  end subroutine predict_point_idw
 !-------------------------------------------------------------------------------------------------!
 end module m_interpolator
