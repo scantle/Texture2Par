@@ -8,7 +8,7 @@ module m_grid
   
     integer                   :: n
     integer                   :: dim
-    real(dp), allocatable     :: coords(:,:)  ! xy by n points
+    real(dp), allocatable     :: coords(:,:)    ! xy by n points
     type(kdtree2),pointer     :: tree           ! Tree for locating model nodes
     
     contains
@@ -17,6 +17,8 @@ module m_grid
       procedure,private        :: build_tree
       procedure,public         :: get_nnear
       procedure,public         :: get_r2near
+      procedure,public         :: get_masked_tree_pointer
+      procedure,public         :: burn_tree
   end type t_Grid
 !-------------------------------------------------------------------------------------------------!
   contains
@@ -58,17 +60,24 @@ module m_grid
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine build_tree(this)
+  subroutine build_tree(this, mask)
+    implicit none
     class(t_Grid), intent(inout) :: this
+    logical,intent(in),optional  :: mask(this%n)
     
     allocate(this%tree)
-    this%tree => kdtree2_create(this%coords, dim=this%dim)
+    if (present(mask)) then
+      this%tree => kdtree2_create(this%coords(:,mask), dim=this%dim)
+    else
+      this%tree => kdtree2_create(this%coords, dim=this%dim)
+    end if
     
   end subroutine build_tree
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine get_nnear(this, qpoint, nnear, idx, dis)
+  subroutine get_nnear(this, qpoint, nnear, idx, dis, mask)
+    implicit none
     ! Uses tree to return n nearest grid indeces and distances
     class(t_Grid), intent(inout) :: this
     real(dp),intent(in)          :: qpoint(this%dim)
@@ -76,9 +85,10 @@ module m_grid
     integer, intent(out)         :: idx(nnear)
     real(dp),intent(out)         :: dis(nnear)
     type(kdtree2_result)         :: res(nnear)
+    logical,intent(in),optional  :: mask(this%n)
     
-    if (associated(this%tree)==.false.) call this%build_tree()
-    
+
+    if (associated(this%tree)==.false.) call this%build_tree(mask=mask)
     call kdtree2_n_nearest(this%tree, qpoint, nnear, res)
     
     ! Worth getting fancier than copying? Pointers?
@@ -89,7 +99,8 @@ module m_grid
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine get_r2near(this, qpoint, r2, idx, dis)
+  subroutine get_r2near(this, qpoint, r2, idx, dis, mask)
+    implicit none
     class(t_Grid), intent(inout)     :: this
     real(dp),intent(in)              :: qpoint(this%dim)
     real(dp),intent(in)              :: r2
@@ -97,8 +108,9 @@ module m_grid
     real(dp),pointer                 :: dis(:)
     integer                          :: nfound
     type(kdtree2_result),allocatable :: res(:)
+    logical,intent(in),optional      :: mask(this%n)
     
-    if (associated(this%tree)==.false.) call this%build_tree()
+    if (associated(this%tree)==.false.) call this%build_tree(mask=mask)
     nfound = kdtree2_r_count(this%tree,qpoint,r2)
     if (associated(idx)) deallocate(idx)
     if (associated(dis)) deallocate(dis)
@@ -111,8 +123,33 @@ module m_grid
   end subroutine get_r2near
   
 !-------------------------------------------------------------------------------------------------!
+  
+  function get_masked_tree_pointer(this, mask) result(tree)
+    implicit none
+    ! The result of realizing that we're almost always (potentially) working with a
+    ! subset of the data due to HSUs and pilot point zones
+    class(t_Grid), intent(inout)     :: this
+    logical,intent(in)               :: mask(this%n)
+    type(kdtree2),pointer            :: tree
+    
+    allocate(tree)
+    tree => kdtree2_create(this%coords(:,mask), dim=this%dim)
+  
+  end function get_masked_tree_pointer
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine burn_tree(this)
+    ! sometimes you have to have a little fun with names
+    implicit none
+    class(t_Grid), intent(inout)     :: this
+    if (associated(this%tree)) deallocate(this%tree)
+  end subroutine burn_tree
+  
+!-------------------------------------------------------------------------------------------------!
 
   subroutine finalize(this)
+    implicit none
     class(t_Grid), intent(inout) :: this
   
     if (allocated(this%coords)) deallocate(this%coords)
