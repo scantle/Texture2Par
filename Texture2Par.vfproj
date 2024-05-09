@@ -58,7 +58,8 @@
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
 		<Filter Name="Data Structures">
 		<File RelativePath=".\Grid.f90"/>
-		<File RelativePath=".\Lists.f90"/></Filter>
+		<File RelativePath=".\Lists.f90"/>
+		<File RelativePath=".\Sparse_Symmetric.f90"/></Filter>
 		<Filter Name="File IO">
 		<File RelativePath=".\FileIO.f90"/>
 		<File RelativePath=".\fpath.f90"/>

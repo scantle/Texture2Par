@@ -10,6 +10,8 @@ module m_interpolator
   implicit none
 !-------------------------------------------------------------------------------------------------!
   type, abstract :: t_interpolator
+  
+    logical,allocatable    :: catmask(:)
   ! Abstract Base Class
   contains
     procedure,private      :: initialize_abc
@@ -23,7 +25,6 @@ module m_interpolator
   type, extends(t_interpolator) :: t_idw
     real(dp)               :: power
     integer                :: nobs
-    logical,allocatable    :: catmask(:)
     
   contains
     procedure               :: setup => setup_idw
@@ -74,12 +75,13 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine calc_weights(this, from_grids, to_grid, weights, catlist, from_cats, to_cats, opt)
+  subroutine calc_weights(this, obs_data, to_grid, weights, catlist, to_cats, opt)
     implicit none
     class(t_interpolator), intent(in)     :: this
-    type(t_grid),intent(in)               :: from_grids(:), to_grid
+    class(t_dataset)                       :: obs_data(:)
+    type(t_grid),intent(in)               :: to_grid
     real(dp)                              :: weights(:,:)
-    integer,intent(in)                    :: catlist(:), from_cats(:), to_cats(:)
+    integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
     integer                               :: i, j, cat
     
@@ -91,10 +93,10 @@ module m_interpolator
     do i=1, size(catlist)
       ! Setup for each category
       cat = catlist(i)
-      call this%setup(from_grids, to_grid, cat, from_cats, to_cats, weights, opt)
+      call this%setup(obs_data, to_grid, cat, to_cats, weights, opt)
       do j=1, to_grid%n
         ! Interpolate for each point
-        if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(1:2,j), from_grids, cat, to_cats, weights(:,j))
+        if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(1:2,j), obs_data, cat, weights(:,j))
       end do
     end do
     
@@ -104,26 +106,26 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine setup(this, from_grids, to_grid,  cat, from_cats, to_cats, weights, opt)
+  subroutine setup(this, obs_data, to_grid, cat, to_cats, weights, opt)
     implicit none
     class(t_interpolator)                 :: this
-    type(t_grid),intent(in)               :: from_grids(:), to_grid
+    class(t_dataset)                       :: obs_data(:)
+    type(t_grid),intent(in)               :: to_grid
     real(dp)                              :: weights(:,:)
     integer,intent(in)                    :: cat
-    integer,intent(in)                    :: from_cats(:), to_cats(:)
+    integer,intent(in)                    :: to_cats(:)
     type(t_options),intent(in)            :: opt
     
   end subroutine setup
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine predict_point(this, idx, p, from_grids, cat, from_cats, weights)
+  subroutine predict_point(this, idx, p, obs_data, cat, weights)
     implicit none
     class(t_interpolator), intent(in) :: this
     integer,intent(in)                :: idx, cat
     real(dp),intent(in)               :: p(2)
-    type(t_grid),intent(in)           :: from_grids(:)
-    integer,intent(in)                :: from_cats(:)
+    class(t_dataset)                   :: obs_data(:)
     real(dp)                          :: weights(:)
   
   end subroutine predict_point
@@ -142,32 +144,32 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine setup_idw(this, from_grids, to_grid, cat, from_cats, to_cats, weights, opt)
+  subroutine setup_idw(this, obs_data, to_grid, cat, to_cats, weights, opt)
     implicit none
     class(t_idw)                  :: this
-    type(t_grid),intent(in)       :: from_grids(:), to_grid
+    class(t_dataset)               :: obs_data(:)
+    type(t_grid),intent(in)       :: to_grid
     real(dp)                      :: weights(:,:)
     integer,intent(in)            :: cat
-    integer,intent(in)            :: from_cats(:), to_cats(:)
+    integer,intent(in)            :: to_cats(:)
     type(t_options),intent(in)    :: opt
     
-    this%nobs = from_grids(1)%n
+    this%nobs = obs_data(1)%grid%n
     this%power = opt%IDW_POWER
     
     allocate(this%catmask(this%nobs))
-    this%catmask = (from_cats == cat)
+    this%catmask = (obs_data(1)%category == cat)
     
   end subroutine setup_idw
 
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine predict_point_idw(this, idx, p, from_grids, cat, from_cats, weights)
+  subroutine predict_point_idw(this, idx, p, obs_data, cat, weights)
     implicit none
     class(t_idw), intent(in)      :: this
     integer,intent(in)            :: idx, cat
     real(dp),intent(in)           :: p(2)
-    type(t_grid),intent(in)       :: from_grids(:)
-    integer,intent(in)            :: from_cats(:)
+    class(t_dataset)              :: obs_data(:)
     real(dp)                      :: weights(:)
     real(dp)                      :: distances(this%nobs)
     real(dp)                      :: total_weight
@@ -175,7 +177,7 @@ module m_interpolator
     
     ! Calculate distances for points matching the mask
     distances = huge(dp)
-    distances(this%catmask) = dist_2D_vector(p, from_grids(1)%coords(:, this%catmask))
+    distances(this%catmask) = dist_2D_vector(p, obs_data(1)%grid%coords(:, this%catmask))
     where(this%catmask)
       weights = 1.0_dp / distances**this%power
     elsewhere

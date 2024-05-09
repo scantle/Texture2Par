@@ -3,7 +3,7 @@ module m_datasets
   use m_grid, only: t_grid, create_grid_object
   implicit none
 !-------------------------------------------------------------------------------------------------!
-  type, abstract  :: t_dataset  ! Abstract Base Class
+  type  :: t_dataset  ! Abstract Base Class
     
     integer,allocatable            :: category(:)      ! Zones, Hydrostratigraphic Units (HSUs)
     type(t_grid),pointer           :: grid             ! Grid

@@ -326,9 +326,6 @@ module m_T2P
     type(t_vgm),pointer           :: variograms(:,:)
     class(*),pointer              :: p
     
-    !this%variograms => variograms
-    !this%nnear      => nnear
-    !this%nstruct    => nstruct
     ! Place directly in the kriging interpolator objects
     select type(p => this%interp_data)
       type is(t_krige)
@@ -336,6 +333,7 @@ module m_T2P
         p%nvario     = this%nvario -1
         p%nstruct    => nstruct(1:this%nvario-1)
         p%variograms => variograms(:,1:this%nvario)
+        p%nnear      => nnear(1:this%nvario)
     end select
     ! PP is the last one
     select type(p => this%interp_pp)
@@ -343,6 +341,7 @@ module m_T2P
         p%nvario     = 1
         p%nstruct    => nstruct(this%nvario:this%nvario)
         p%variograms => variograms(:,this%nvario:this%nvario)
+        p%nnear      => nnear(this%nvario:this%nvario)
     end select
     
     this%has_interp = .true.
@@ -507,9 +506,9 @@ module m_T2P
     type(t_grid)                    :: to_grid
     type(t_weights)                 :: weights
     integer                         :: i,k
-    type(t_grid)                    :: from_grid(1)  ! a little trick to appease calc_weights
+    type(t_pilotpoints)            :: obs_data(1)  ! a little trick to appease calc_weights
     
-    from_grid(1) = this%pilot_points%grid
+    obs_data(1) = this%pilot_points
     
     ! Go by pilot point zone arrays (up to nlayers)
     do k=1, this%fmodel%ppzones%narr
@@ -518,11 +517,10 @@ module m_T2P
       if (this%opt%READ_PP_WEIGHTS) then
         ! TODO READ
       else
-        call this%interp_pp%calc_weights(from_grid, &
+        call this%interp_pp%calc_weights(obs_data, &
                                          to_grid, &
                                          weights%values, &
                                          this%fmodel%ppzones%arrcat(1:this%fmodel%ppzones%arrncat(k),k), &
-                                         this%pilot_points%category, &
                                          this%fmodel%ppzones%array(:,k),&
                                          this%opt)
       end if
