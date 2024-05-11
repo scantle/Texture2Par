@@ -4,6 +4,9 @@
 ! Licensed under the Academic Free License version 1.1 found in file LICENSE
 ! with additional provisions found in that same file.
 !
+! Modfied 5/10/2024 by Leland Scantlebury at SSP&A to accept a rotational
+! matrix for anistropic distance calculations
+!
 module kdtree2_precision_module
   
   integer, parameter :: sp = kind(0.0)
@@ -19,8 +22,8 @@ module kdtree2_precision_module
   ! you get double precision.
   !
 
-  integer, parameter :: kdkind = sp  
-  !integer, parameter :: kdkind = dp  
+  !integer, parameter :: kdkind = sp  
+  integer, parameter :: kdkind = dp  
   public :: kdkind
 
 end module kdtree2_precision_module
@@ -575,6 +578,9 @@ module kdtree2_module
       ! some initial computation and storage cost.
       type (tree_node), pointer :: root => null()
       ! root pointer of the tree
+      ! LS additions for anisotropic  distance
+      integer :: dist_type = 0  ! 0 for Euclidean, 1 for rotated/anisotropic
+      real(kdkind),pointer :: rotmat(:,:) => null()! Rotation Matrix
   end type kdtree2
 
 
@@ -601,6 +607,9 @@ module kdtree2_module
       type(pq) :: pq
       real(kdkind), pointer :: data(:,:)  ! temp pointer to data
       integer, pointer      :: ind(:)     ! temp pointer to indexes
+      ! LS additions for anisotropic  distance
+      integer :: dist_type = 0  ! 0 for Euclidean, 1 for rotated/anisotropic
+      real(kdkind),pointer :: rotmat(:,:) => null()! Rotation Matrix
   end type tree_search_record
 
   private
@@ -610,7 +619,7 @@ module kdtree2_module
 
 contains
 
-  function kdtree2_create(input_data,dim,sort,rearrange) result (mr)
+  function kdtree2_create(input_data,dim,sort,rearrange,rotmat) result (mr)
     !
     ! create the actual tree structure, given an input array of data.
     !
@@ -633,11 +642,13 @@ contains
     !                      default=.true., as it speeds searches, but
     !                      building takes longer, and extra memory is used.
     !
+    ! LS: Added anisotropic  support thru passing rotmatrix
     ! .. Function Return Cut_value ..
     type (kdtree2), pointer :: mr
     integer, intent(in), optional      :: dim
     logical, intent(in), optional      :: sort
     logical, intent(in), optional      :: rearrange
+    real(kdkind), target, optional                     :: rotmat(:,:) ! 3D Rotation Matrix
     ! ..
     ! .. Array Arguments ..
     real(kdkind), target :: input_data(:,:)
@@ -654,6 +665,12 @@ contains
        mr%dimen = size(input_data,1)
     end if
     mr%n = size(input_data,2)
+    
+    mr%dist_type = 0
+    if (present(rotmat)) then
+      mr%dist_type = 1
+      mr%rotmat => rotmat
+    end if
 
     if (mr%dimen > mr%n) then
        !  unlikely to be correct
@@ -1046,6 +1063,10 @@ contains
     sr%centeridx = -1
     sr%correltime = 0
     sr%overflow = .false. 
+    
+    ! LS added for anisotropic  distance
+    sr%dist_type = tp%dist_type
+    sr%rotmat => tp%rotmat
 
     sr%results => results
 
@@ -1536,18 +1557,28 @@ contains
     mainloop: do i = node%l, node%u
        if (rearrange) then
           sd = 0.0
-          do k = 1,dimen
-             sd = sd + (data(k,i) - qv(k))**2
-             if (sd>ballsize) cycle mainloop
-          end do
+          if (sr%dist_type == 0) then
+            do k = 1,dimen
+              sd = sd + (data(k,i) - qv(k))**2
+              if (sd>ballsize) cycle mainloop
+            end do
+          else if (sr%dist_type == 1) then  ! LS - anisotropic  distance
+            sd = sqdist(dimen,sr%rotmat,data(1:,i),qv(1:))
+            if (sd>ballsize) cycle mainloop
+          end if
           indexofi = ind(i)  ! only read it if we have not broken out
        else
           indexofi = ind(i)
           sd = 0.0
-          do k = 1,dimen
-             sd = sd + (data(k,indexofi) - qv(k))**2
-             if (sd>ballsize) cycle mainloop
-          end do
+          if (sr%dist_type == 0) then
+            do k = 1,dimen
+               sd = sd + (data(k,indexofi) - qv(k))**2
+               if (sd>ballsize) cycle mainloop
+            end do
+          else if (sr%dist_type == 1) then  ! LS - anisotropic distance
+            sd = sqdist(dimen,sr%rotmat,data(1:,indexofi),qv(1:))
+            if (sd>ballsize) cycle mainloop
+          end if
        endif
 
        if (centeridx > 0) then ! doing correlation interval?
@@ -1902,5 +1933,56 @@ contains
        a(i)=value
     end do
   end subroutine heapsort_struct
+  
+!-------------------------------------------------------------------------------------------------!
+
+  function sqdist(dim,rotmat,coord1,coord2)
+    implicit none
+    integer,intent(in)          :: dim
+    real(kdkind)                :: sqdist
+    real(kdkind)                :: rotmat(dim,dim) ! Rotation Matrix
+    real(kdkind)                :: coord1(dim),coord2(dim),dd(dim)
+  !
+  !    Squared Anisotropic Distance Calculation Given Matrix Indicator
+  !    ***************************************************************
+  !
+  ! This routine calculates the anisotropic distance between two points
+  !  given the coordinates of each point and a definition of the
+  !  anisotropy.
+  !
+  ! INPUT VARIABLES:
+  !   x1,y1,z1         Coordinates of first point
+  !   x2,y2,z2         Coordinates of second point
+  !   ind              The matrix indicator to initialize
+  !   MAXROT           The maximum number of rotation matrices dimensioned
+  !   rotmat           The rotation matrices
+  !
+  !
+  ! OUTPUT VARIABLES:
+  !   sqdist           The squared distance accounting for the anisotropy
+  !                      and the rotation of coordinates (if any).
+  !
+  !
+  ! Author: C. Deutsch                                Date: September 1989
+        integer       :: i,j
+        real(kdkind)      :: dx,dy,dz,x1,y1,x2,y2,z1,z2,cont
+  !
+  ! Compute component distance vectors and the squared distance:
+  !
+        dd = coord1 - coord2
+
+        sqdist = 0.0
+        do i=1,dim
+          cont = 0.0
+          do j=1, dim
+            cont   = cont + rotmat(i,j) * dd(j)
+          end do
+          sqdist = sqdist + cont * cont
+        end do
+        return
+
+  end function sqdist
+    
+!-------------------------------------------------------------------------------------------------!
 
 end module kdtree2_module
