@@ -46,10 +46,14 @@ x64/**
 mfUSGLib/Release/**
 mfUSGLib/x64/**
 mfUSGLib/Debug/**
+T2PTests/Release/**
+T2PTests/x64/**
+T2PTests/Debug/**
 
 # Extras
 *.vfproj.*
 *.7z
 *.lock
-
+*.pdb
+*.intermediate.manifest
 *.vsidx
