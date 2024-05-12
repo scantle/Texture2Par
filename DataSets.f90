@@ -13,7 +13,7 @@ module m_datasets
     contains
       procedure,nopass             :: initialize_abc
       generic,public               :: initialize => initialize_abc
-  
+      procedure,public             :: build_tree_by_category
   end type t_dataset
 !-------------------------------------------------------------------------------------------------!
 !  type, extends(t_dataset) :: t_intervaldata
@@ -76,6 +76,20 @@ module m_datasets
   
   end subroutine initialize_abc
 
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine build_tree_by_category(this, cat)
+    implicit none
+    class(t_dataset),intent(inout)  :: this
+    integer, intent(in)             :: cat
+    logical                         :: catmask(this%grid%n)
+    
+    call this%grid%burn_tree()  ! Clear out previous tree
+    catmask = (this%category==cat)
+    call this%grid%build_tree(catmask)
+  
+  end subroutine build_tree_by_category
+  
 !-------------------------------------------------------------------------------------------------!
 
 !-------------------------------------------------------------------------------------------------!

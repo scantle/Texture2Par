@@ -25,20 +25,25 @@ module m_kriging
     real(dp),allocatable             :: matA(:,:), rhsB(:)
     ! Attributes for KD-tree and search parameters could be added here
   contains
-    procedure                 :: intialize => initialize_kriging
+    procedure               :: intialize => initialize_kriging
+    procedure               :: setup => setup_krige
 
   end type t_krige
 !-------------------------------------------------------------------------------------------------!
   
   type, extends(t_krige) :: t_simpkrige
   contains
-
+    procedure               :: setup => setup_sk
+    procedure               :: predict_point => predict_point_sk
   end type t_simpkrige
 !-------------------------------------------------------------------------------------------------!
   
   type, extends(t_krige) :: t_ordkrige
+    integer                 :: maxnear
+    integer,allocatable     :: usenear(:)
   contains
-
+    procedure               :: setup => setup_ok
+    procedure               :: predict_point => predict_point_ok
   end type t_ordkrige
 !-------------------------------------------------------------------------------------------------!
 
@@ -65,20 +70,20 @@ module m_kriging
     ! Does everything common to all kriging
     ! Intended to be called by subclasses during their setup
     implicit none
-    class(t_krige)               :: this
+    class(t_krige)              :: this
     class(t_dataset)            :: obs_data(:)
     type(t_grid),intent(in)     :: to_grid
     real(dp)                    :: weights(:,:)
     integer,intent(in)          :: cat
     integer,intent(in)          :: to_cats(:)
     type(t_options),intent(in)  :: opt
-    integer                     :: i, maxnear
+    integer                     :: i
     
     ! Defaults
     this%ndrift = 0  ! Hardcoded out for now
     this%unbias = 0 
     this%nsets  = size(obs_data)
-    this%ngrid  = to_grid%n 
+    this%ngrid  = to_grid%n
     
     !call random_seed_initialize(seed)
     !call set_samples()
@@ -102,7 +107,7 @@ module m_kriging
   subroutine setup_sk(this, obs_data, to_grid, cat, to_cats, weights, opt)
     implicit none
     class(t_simpkrige)          :: this
-    class(t_dataset)             :: obs_data(:)
+    class(t_dataset)            :: obs_data(:)
     type(t_grid),intent(in)     :: to_grid
     real(dp)                    :: weights(:,:)
     integer,intent(in)          :: cat
@@ -148,7 +153,7 @@ module m_kriging
 
   subroutine setup_ok(this, obs_data, to_grid, cat, to_cats, weights, opt)
     implicit none
-    class(t_simpkrige)          :: this
+    class(t_ordkrige)          :: this
     class(t_dataset)            :: obs_data(:)
     type(t_grid),intent(in)     :: to_grid
     real(dp)                    :: weights(:,:)
@@ -156,22 +161,30 @@ module m_kriging
     integer,intent(in)          :: to_cats(:)
     type(t_options),intent(in)  :: opt
     ! Local
-    integer                     :: i,matsize
+    integer                     :: i,matsize,vidx
     
     ! Call super setup
     call setup_krige(this, obs_data, to_grid, cat, to_cats, weights, opt)
     
+    ! Setup nnearest tracker (usenear) (sometimes there is not this%nnear(i) values in the dataset)
+    allocate(this%usenear(this%nsets))
+    
+    ! Build search trees in observed grid objects
+    ! Also, figure out number of datasets in each category
+    do i=1, this%nsets
+      vidx = this%vario_idx(i,i)              ! Should always equal i, but to be safe
+      call obs_data(i)%build_tree_by_category(cat)   ! rotmat passed during n_nearest call
+      this%usenear(i) = min(this%nnear(i), obs_data(i)%grid%tree%n)
+      ! TODO Warn that there is so little data? Do we even have enough information to warn?
+      ! Warnings only get printed before the calculations
+      ! In this scope we don't if it's pp or data...
+    end do
+    
+    this%maxnear = maxval(this%nnear)
+    
     matsize = sum(this%nnear)+this%unbias+this%ndrift
     allocate(this%w(matsize))
     allocate(this%matA(matsize, matsize), this%rhsB(matsize))
-    
-    ! Burn down and replant the forest
-    ! Ahem, the trees are used to locate nearest points & distances
-    do i=1, this%nsets
-      call obs_data(i)%grid%burn_tree()
-      !this%catmask = this%from_
-      !this%
-    end do
     
   end subroutine setup_ok
   
@@ -179,11 +192,22 @@ module m_kriging
   
   subroutine predict_point_ok(this, idx, p, obs_data, cat, weights)
     implicit none
-    class(t_simpkrige), intent(in)    :: this
+    class(t_ordkrige), intent(in)     :: this
     integer,intent(in)                :: idx, cat
     real(dp),intent(in)               :: p(2)
     type(t_dataset)                   :: obs_data(:)
     real(dp)                          :: weights(:)
+    ! local
+    integer                           :: i
+    integer                           :: inear(this%maxnear,this%nsets)
+    real(dp)                          :: dist(this%maxnear,this%nsets)
+    
+    ! Get nearest for each dataset
+    do i=1, this%nsets
+      call obs_data(i)%grid%get_nnear(p, this%usenear(i), inear(:,i), dist(:,i))
+    end do
+    
+    
   
   end subroutine predict_point_ok
   

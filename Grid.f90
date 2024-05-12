@@ -14,7 +14,7 @@ module m_grid
     contains
       procedure,private        :: initialize
       procedure,private        :: finalize
-      procedure,private        :: build_tree
+      procedure,public         :: build_tree
       procedure,public         :: get_nnear
       procedure,public         :: get_r2near
       procedure,public         :: get_masked_tree_pointer
@@ -60,16 +60,18 @@ module m_grid
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine build_tree(this, mask)
+  subroutine build_tree(this, mask, rotmat)
     implicit none
     class(t_Grid), intent(inout) :: this
     logical,intent(in),optional  :: mask(this%n)
+    real(dp),optional            :: rotmat(:,:) ! Rotation Matrix
     
     allocate(this%tree)
+    
     if (present(mask)) then
-      this%tree => kdtree2_create(this%coords(:,mask), dim=this%dim)
+      this%tree => kdtree2_create(this%coords(:,mask), dim=this%dim, rotmat=rotmat)
     else
-      this%tree => kdtree2_create(this%coords, dim=this%dim)
+      this%tree => kdtree2_create(this%coords, dim=this%dim, rotmat=rotmat)
     end if
     
   end subroutine build_tree
