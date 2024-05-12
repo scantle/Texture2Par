@@ -1046,7 +1046,7 @@ contains
 
   end subroutine kdtree2_destroy
 
-  subroutine kdtree2_n_nearest(tp,qv,nn,results)
+  subroutine kdtree2_n_nearest(tp,qv,nn,results, rotmat)
     ! Find the 'nn' vectors in the tree nearest to 'qv' in euclidean norm
     ! returning their indexes and distances in 'indexes' and 'distances'
     ! arrays already allocated passed to this subroutine.
@@ -1054,7 +1054,7 @@ contains
     real(kdkind), target, intent (In)    :: qv(:)
     integer, intent (In)         :: nn
     type(kdtree2_result), target :: results(:)
-
+    real(kdkind), target, optional  :: rotmat(:,:) ! 3D Rotation Matrix
 
     sr%ballsize = huge(1.0)
     sr%qv => qv
@@ -1067,6 +1067,11 @@ contains
     ! LS added for anisotropic  distance
     sr%dist_type = tp%dist_type
     sr%rotmat => tp%rotmat
+    ! Overwrite rotmat if new one passed
+    if(present(rotmat)) then
+      sr%dist_type = 1
+      sr%rotmat => rotmat
+    end if
 
     sr%results => results
 

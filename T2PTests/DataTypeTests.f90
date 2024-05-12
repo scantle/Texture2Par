@@ -111,7 +111,7 @@ module DataTypeTests
     type(kdtree2), pointer :: tree
     real(8), dimension(2, 4) :: set
     real(8), dimension(2) :: query
-    real(8), dimension(2, 2) :: rotmat
+    real(8), dimension(2, 2) :: rotmat, rotmat_update
     real(8)               :: expected_distance
     type(kdtree2_result), dimension(3) :: results
 
@@ -151,6 +151,15 @@ module DataTypeTests
     call assert_true(results(3)%idx == 2, "Failed anisotropic nearest neighbor test", errors)
     expected_distance = 148
     call assert_true(abs(results(3)%dis - expected_distance) < 1.0e-5, "Failed anisotropic nearest neighbor distance test", errors)
+    
+    ! Test when a new rotmat is passed
+    rotmat_update(1, :) = [0.707106781, -0.707106781]
+    rotmat_update(2, :) = [0.707106781, 0.707106781]
+    
+    call kdtree2_n_nearest(tree, query, 1, results, rotmat=rotmat_update)
+    call assert_true(results(1)%idx == 3, "Failed Euclidean nearest neighbor test", errors)
+    expected_distance = (1.0 - 5)**2 + (10 - 6)**2
+    call assert_true(abs(results(1)%dis - expected_distance) < 1.0e-5, "Failed Euclidean nearest neighbor distance test", errors)
 
   end subroutine test_kdtree2_anisotropic
   !-----------------------------------------------------------------------------------------------!
