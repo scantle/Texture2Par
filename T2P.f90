@@ -23,7 +23,8 @@ module m_T2P
     ! Counters
     integer                          :: npar        ! Kh, Kv, Ss, Sy (what about aquitards?) (Attach to fmodel?)
     integer                          :: nclasses    ! Number of data classes
-    integer                          :: nprimary    ! Primary datasets (for which hydraulic properties exist) (one may be inferred)
+    integer                          :: ntexclasses ! Texture datasets (for which hydraulic properties exist) (one may be inferred)
+    integer                          :: nprimary    ! Number of active primary datasets for kriging (texture or parameter, see opt%INTERP_ORDER
     integer                          :: nsecondary  ! Number of covariate data classes
     integer                          :: ndatasets   ! Number of dataset objects (one for primary datasets, n for secondary)
     integer                          :: nvario      ! Number of variograms, eventually passed to interpolator (if kriging)
@@ -82,7 +83,9 @@ module m_T2P
     procedure, public  :: get_class_id
     !procedure, public  :: get_covariate_id
     procedure, public  :: get_parameter_id
-    procedure, public  :: get_active_primary_classes
+    procedure, public  :: get_primary_id
+    procedure, public  :: get_active_texture_classes
+    procedure, public  :: get_connection_list
   
   end type t_T2P
 !-------------------------------------------------------------------------------------------------!
@@ -192,7 +195,7 @@ module m_T2P
     integer                       :: i,n
     
     this%nclasses = nclasses
-    this%nprimary = nclasses
+    this%ntexclasses = nclasses
     this%class_names => class_names
     this%ndatasets = 1
     
@@ -238,7 +241,7 @@ module m_T2P
     
     ! Get problem size
     if (this%opt%INTERP_ORDER=="BEFORE") then
-      n = this%nprimary
+      n = this%ntexclasses
       m = this%nclasses 
     else ! this%opt%INTERP_ORDER=="AFTER")
       n = this%npar
@@ -246,35 +249,39 @@ module m_T2P
     end if
     
     ! Defaults
+    this%nprimary = n
     this%nvario = m
     
     ! Allocate variogram matrix for data
+    ! TODO move to kriging class, call directly using p%
+    ! (Requires lots of revising, t2p is setup to manage all of the connections/nvario stuff and only later pass it)
     select type(p => this%interp_data)
-      type is(t_krige)
-        if (allocated(p%vario_idx)) deallocate(p%vario_idx)
-        allocate(p%vario_idx(m,m))
-        p%vario_idx = 0
+      class is(t_krige)
+        if (allocated(p%global_vario_idx)) deallocate(p%global_vario_idx)
+        allocate(p%global_vario_idx(m,m))
+        p%global_vario_idx = 0
     
         do i=1, this%nvario
-          p%vario_idx(i,i) = i
+          p%global_vario_idx(i,i) = i
         end do
     
         ! Subtract one if INFER because we don't krige - last class is the remainder of the other class(es)
         if (this%opt%INFER_LAST_CLASS.and.this%opt%INTERP_ORDER=="BEFORE") then
-          p%vario_idx(n,n) = 0
-          p%vario_idx(n+1:m,n+1:m) = p%vario_idx(n+1:m,n+1:m) - 1
+          p%global_vario_idx(n,n) = 0
+          p%global_vario_idx(n+1:m,n+1:m) = p%global_vario_idx(n+1:m,n+1:m) - 1
+          this%nprimary = this%nprimary - 1
           this%nvario = this%nvario - 1
         end if
       
         if (ASSOCIATED(this%connections)) then
           vidx = this%nvario
           ! Loop over connections
-          do i=1, n
+          do i=1, this%nprimary
             ! Fill matrix
             do j=1, this%nsecondary_by_id(i)
               vidx = vidx + 1
-              p%vario_idx(i,this%connections(j+1,i)) = vidx
-              p%vario_idx(this%connections(j+1,i),i) = vidx ! symmetry          
+              p%global_vario_idx(i,this%connections(j+1,i)) = vidx
+              p%global_vario_idx(this%connections(j+1,i),i) = vidx ! symmetry          
             end do
           end do
           this%nvario = vidx
@@ -288,9 +295,9 @@ module m_T2P
     
     ! Allocate variogram matrix for pp
     select type(p => this%interp_pp)
-      type is(t_krige)
-        if (allocated(p%vario_idx)==.false.) allocate(p%vario_idx(1,1))
-        p%vario_idx(1,1) = 1  ! Is passed only this variogram
+      class is(t_krige)
+        if (allocated(p%global_vario_idx)==.false.) allocate(p%global_vario_idx(1,1))
+        p%global_vario_idx(1,1) = 1  ! Is passed only this variogram
     end select
   
   end subroutine nvario_estimator
@@ -299,20 +306,14 @@ module m_T2P
   subroutine no_covariates(this)
     implicit none
     class(t_T2P), intent(inout)   :: this
-    integer                       :: n,i
+    integer                       :: i
     
-    ! Allocate based on interpolation order
-    if (this%opt%INTERP_ORDER=="BEFORE") then
-      n = this%nclasses
-    else ! t2p%opt%INTERP_ORDER=="AFTER")
-      n = this%npar
-    end if
-    allocate(this%connections(1,n))
+    allocate(this%connections(1,this%nprimary))
     this%nsecondary_by_id(:) = 0
     
     ! Setup matrix, values indicate variogram ID. Can start off assuming each class has a variogram (fill diagonal)
     this%connections = 0
-    do i = 1, n
+    do i = 1, this%nprimary
       this%connections(1, i) = i
     end do
   
@@ -325,23 +326,26 @@ module m_T2P
     integer, pointer              :: nnear(:), nstruct(:)
     type(t_vgm),pointer           :: variograms(:,:)
     class(*),pointer              :: p
+    integer                       :: nsets
+    
+    nsets = this%nprimary+this%nsecondary
     
     ! Place directly in the kriging interpolator objects
     select type(p => this%interp_data)
-      type is(t_krige)
+      class is(t_krige)
         ! First n are for classes/properties
         p%nvario     = this%nvario -1
         p%nstruct    => nstruct(1:this%nvario-1)
         p%variograms => variograms(:,1:this%nvario)
-        p%nnear      => nnear(1:this%nvario)
+        p%nnear      => nnear(1:nsets)
     end select
     ! PP is the last one
     select type(p => this%interp_pp)
-      type is(t_krige)
+      class is(t_krige)
         p%nvario     = 1
         p%nstruct    => nstruct(this%nvario:this%nvario)
         p%variograms => variograms(:,this%nvario:this%nvario)
-        p%nnear      => nnear(this%nvario:this%nvario)
+        p%nnear      => nnear(nsets+1:nsets+1)
     end select
     
     this%has_interp = .true.
@@ -506,9 +510,11 @@ module m_T2P
     type(t_grid)                    :: to_grid
     type(t_weights)                 :: weights
     integer                         :: i,k
-    type(t_pilotpoints)            :: obs_data(1)  ! a little trick to appease calc_weights
+    integer                         :: obs_idx(1)
+    type(t_pilotpoints)             :: obs_data(1)  ! a little trick to appease calc_weights
     
     obs_data(1) = this%pilot_points
+    obs_idx(1) = 1
     
     ! Go by pilot point zone arrays (up to nlayers)
     do k=1, this%fmodel%ppzones%narr
@@ -518,7 +524,8 @@ module m_T2P
         ! TODO READ
       else
         call this%interp_pp%calc_weights(obs_data, &
-                                         to_grid, &
+                                         obs_idx,  &
+                                         to_grid,  &
                                          weights%values, &
                                          this%fmodel%ppzones%arrcat(1:this%fmodel%ppzones%arrncat(k),k), &
                                          this%fmodel%ppzones%array(:,k),&
@@ -540,10 +547,13 @@ module m_T2P
   
   subroutine interpolate_model(this)
     use m_grid, only: t_grid
+    use m_weights, only: t_weights
     
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer                       :: k, i
+    integer,allocatable           :: obs_idx(:)
+    type(t_weights)               :: weights
     
     ! Loop over model layers
     do k=1, this%fmodel%nlayers
@@ -551,17 +561,26 @@ module m_T2P
       ! Check if layer has thickness?
     
       ! Loop over primary classes
-      ! Check for identical/shared grids??
+      ! Check for same covariates?
       do i=1, this%nclasses
     
-        ! Check if we have precalculated weights for the pilot point interpolation
+        ! Check if we have precalculated weights for the model grid interpolation
         if (this%opt%READ_GRID_WEIGHTS) then
           ! TODO READ
         else
-          ! CALCULATE WEIGHTS
+          ! Interpolate
+          obs_idx = this%get_connection_list(i)
+          !allocate(obs_data)
+          call this%interp_pp%calc_weights(this%datasets(obs_idx,k), &
+                                            obs_idx,  &
+                                            this%fmodel%grid(1),  &
+                                            weights%values, &
+                                            this%fmodel%hsus%arrcat(1:this%fmodel%hsus%arrncat(k),k), &
+                                            this%fmodel%hsus%array(:,k),&
+                                            this%opt)
         end if
     
-        ! Write PP weights
+        ! Write weights
         if (this%opt%WRITE_GRID_WEIGHTS) then
           ! TODO WRITE
         end if
@@ -588,13 +607,19 @@ module m_T2P
 ! ACCESS PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  function get_class_id(this, string) result (id)
+  function get_class_id(this, string, adjust_for_infer) result (id)
     ! Returns zero if not found
     implicit none
     class(t_T2P), intent(inout)   :: this
     type(t_vstring),intent(in)    :: string
     integer                       :: id
+    logical,optional,intent(in)   :: adjust_for_infer
     id = vstrlist_search(this%class_names, vstring_toupper(string), exact=.true.)
+    if (present(adjust_for_infer)) then
+      ! If you're inferring the last class, it gets off past one after ntexclasses
+      if (adjust_for_infer.and.this%opt%INFER_LAST_CLASS.and.(id>this%ntexclasses)) id = id -1
+    end if
+    return
   end function get_class_id
 
 !-------------------------------------------------------------------------------------------------!
@@ -606,19 +631,50 @@ module m_T2P
     type(t_vstring),intent(in)    :: string
     integer                       :: id
     id = vstrlist_search(this%parnames, vstring_toupper(string), exact=.true.)
+    return
   end function get_parameter_id
 
 !-------------------------------------------------------------------------------------------------!
   
-  function get_active_primary_classes(this) result (nprime)
+  function get_primary_id(this, string) result(prime_id)
     ! Returns zero if not found
     implicit none
     class(t_T2P), intent(inout)   :: this
-    integer                       :: nprime
-    nprime = this%nprimary
-    if (this%opt%INFER_LAST_CLASS) nprime = nprime - 1
-  end function get_active_primary_classes
-
+    type(t_vstring),intent(in)    :: string
+    integer                       :: prime_id
+    
+    if (this%opt%INTERP_ORDER=="BEFORE") then
+      prime_id = this%get_class_id(string, adjust_for_infer=.true.)
+    else ! this%opt%INTERP_ORDER=="AFTER")
+      prime_id = this%get_parameter_id(string)
+    end if
+  
+  end function get_primary_id
+  
 !-------------------------------------------------------------------------------------------------!
+  
+  function get_connection_list(this,prime) result(connlist)
+    implicit none
+    class(t_T2P)            :: this
+    integer,intent(in)      :: prime
+    integer,allocatable     :: connlist(:)
+    
+    allocate(connlist(this%nsecondary_by_id(prime)))
+    connlist = this%connections(1:this%nsecondary_by_id(prime),prime) 
+    return
+  end function
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_active_texture_classes(this) result(n)
+    implicit none
+    class(t_T2P)            :: this
+    integer                 :: n
+    n = this%ntexclasses
+    if (this%opt%INFER_LAST_CLASS) n = n-1
+    return
+  end function get_active_texture_classes
 
+  !-------------------------------------------------------------------------------------------------!
+  
 end module m_T2P

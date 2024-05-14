@@ -78,15 +78,16 @@ module m_datasets
 
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine build_tree_by_category(this, cat)
+  subroutine build_tree_by_category(this, cat, rotmat)
     implicit none
     class(t_dataset),intent(inout)  :: this
     integer, intent(in)             :: cat
     logical                         :: catmask(this%grid%n)
+    real(dp),optional               :: rotmat(:,:) ! Rotation Matrix
     
     call this%grid%burn_tree()  ! Clear out previous tree
     catmask = (this%category==cat)
-    call this%grid%build_tree(catmask)
+    call this%grid%build_tree(catmask, rotmat=rotmat)
   
   end subroutine build_tree_by_category
   

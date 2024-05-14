@@ -1,6 +1,6 @@
 module m_kriging
   use m_global, only: dp
-  use m_interpolator
+  use m_interpolator, only: t_interpolator
   use m_weights, only: t_weights, create_weight_object
   use m_grid, only: t_grid, create_grid_object
   use m_vario, only: t_vgm
@@ -13,21 +13,22 @@ module m_kriging
 
   type, extends(t_interpolator) :: t_krige
     integer                          :: nvario            ! Number of variograms stored for interpolator
-    integer,pointer                  :: nnear(:)          ! Number of nearest points used for interpolation
+    integer                          :: maxnear           ! Maximum number of nearest points used for interpolation for all classes
+    integer,pointer                  :: nnear(:)          ! Number of nearest points used for interpolation, for each dataset/class
     integer,pointer                  :: nstruct(:)        ! Number of structures for each variogram
+    integer,pointer                  :: obs_idx(:)        ! Indices of datasets
     type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)
-    integer,allocatable              :: vario_idx(:,:)    ! Variogram index given (class_id, class_id)
+    integer,allocatable              :: global_vario_idx(:,:)    ! Variogram index given (class_id, class_id) for ALL classes
+    integer,allocatable              :: vario_idx(:,:)    ! Variogram index given (class_id, class_id) for local classes passed to setup/point
     integer                          :: nsets             ! Number of datasets involved
     real(dp),allocatable             :: w(:)              ! Internally calculated weights
-    ! Variables from PPSGS (slightly adjusted)
     integer                          :: ndim, ngrid, ndrift, seed, unbias, nsim
-    integer,allocatable              :: nobs(:), nmax(:), near_idx(:)
-    real(dp),allocatable             :: matA(:,:), rhsB(:)
+    integer,allocatable              :: nobs(:), nmax(:), near_idx(:), pset_id(:)
     ! Attributes for KD-tree and search parameters could be added here
   contains
     procedure               :: intialize => initialize_kriging
     procedure               :: setup => setup_krige
-
+    procedure               :: predict_point => predict_point_krige
   end type t_krige
 !-------------------------------------------------------------------------------------------------!
   
@@ -39,11 +40,12 @@ module m_kriging
 !-------------------------------------------------------------------------------------------------!
   
   type, extends(t_krige) :: t_ordkrige
-    integer                 :: maxnear
-    integer,allocatable     :: usenear(:)
+    integer,allocatable     :: usenear(:)                 ! Number of nearest points used for interpolation, given mask, for each dataset/class
+    real(dp),allocatable    :: matA(:), rhsB(:)
   contains
     procedure               :: setup => setup_ok
     procedure               :: predict_point => predict_point_ok
+    procedure               :: pset_cok
   end type t_ordkrige
 !-------------------------------------------------------------------------------------------------!
 
@@ -51,6 +53,79 @@ module m_kriging
 
 !-------------------------------------------------------------------------------------------------!
 ! MODULE PROCEDURES
+!-------------------------------------------------------------------------------------------------!
+
+subroutine decomp(p,id,ntot,ier)
+    implicit none
+!*** DECOMPOSITION TO GET LOWER TRIANGULAR S MATRIX
+    integer                :: id,ier,ks,jm1,k,js,is,is1,j,i,i1,ntot
+    real                   :: p,sum,p1,p2
+    dimension              :: p(1),id(1)
+
+          IER=0
+          P(1)=1./P(1)
+          DO 65 J=2,NTOT
+          DO 65 I=J,NTOT
+            KS=ID(I)
+            JM1=J-1
+            SUM=0.
+            DO 55 K=1,JM1
+              JS=ID(K)
+              IS=JS+I-K
+              IS1=JS+J-K
+              P1=P(IS)
+              P2=P(IS1)
+              IF (P1) 39,55,39
+   39         IF (P2) 50,55,50
+   50         SUM=SUM+P1*P2*P(JS)
+   55         CONTINUE
+            I1=ID(J)+I-J
+            P(I1)=P(I1)-SUM
+            IF (I-J) 65,70,65
+   70       IF(P(KS)) 90,91,90
+   90       P(KS)=1./P(KS)
+   65       CONTINUE
+          GOTO 92
+   91     IER=1
+   92     CONTINUE
+      return
+end subroutine decomp
+
+!-------------------------------------------------------------------------------------------------!
+
+subroutine doolittle(r,p,id,w,ntot)
+
+    implicit none
+          integer   :: id,ntot,i,is,js,im1,j,ii,iip1,iis
+          real      :: r,p,w,sum
+      dimension     :: r(1),p(1),w(1),id(1)
+!***  START OF DOOLITTLE ***
+!***  FORWARD SUBSTITUTION FOR SYSTEM S*W = R
+          W(1)=R(1)*P(1)
+          DO 130 I=2,NTOT
+            IS=ID(I)
+            SUM=0.
+            IM1=I-1
+            DO 120 J=1,IM1
+              JS=ID(J)+I-J
+  120       SUM=SUM+W(J)*P(JS)
+  130     W(I)=(R(I)-SUM)*P(IS)
+!***  BACKWARD SUBSTITUTION FOR SYSTEM T*V = W
+!***  WHERE V IS STORED IN W
+          DO 150 I=2,NTOT
+            SUM=0.
+            II=NTOT-I+1
+            JS=ID(II)
+            IIP1=II+1
+            DO 140 J=IIP1,NTOT
+              IIS=JS+J-II
+  140       SUM=SUM+W(J)*P(IIS)
+  150     W(II)=W(II)-SUM*P(JS)
+!*** END OF DOOLITTLE ****
+      return
+
+end subroutine doolittle
+
 !-------------------------------------------------------------------------------------------------!
 
 !-------------------------------------------------------------------------------------------------!
@@ -63,61 +138,68 @@ module m_kriging
     
     
   end subroutine initialize_kriging
-  
+
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine setup_krige(this, obs_data, to_grid, cat, to_cats, weights, opt)
-    ! Does everything common to all kriging
-    ! Intended to be called by subclasses during their setup
+  subroutine setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+  !  ! Does everything common to all kriging
+  !  ! Intended to be called by subclasses during their setup
     implicit none
-    class(t_krige)              :: this
-    class(t_dataset)            :: obs_data(:)
-    type(t_grid),intent(in)     :: to_grid
-    real(dp)                    :: weights(:,:)
-    integer,intent(in)          :: cat
-    integer,intent(in)          :: to_cats(:)
-    type(t_options),intent(in)  :: opt
+    class(t_krige),intent(inout)   :: this
+    class(t_dataset)                      :: obs_data(:)
+    integer,intent(in)                    :: obs_idx(:)
+    type(t_grid),intent(in)               :: to_grid
+    real(dp)                              :: weights(:,:)
+    integer,intent(in)                    :: cat
+    integer,intent(in)                    :: to_cats(:)
+    type(t_options),intent(in)            :: opt
     integer                     :: i
     
     ! Defaults
+    this%ndim   = opt%INTERP_DIM
     this%ndrift = 0  ! Hardcoded out for now
     this%unbias = 0 
     this%nsets  = size(obs_data)
     this%ngrid  = to_grid%n
     
-    !call random_seed_initialize(seed)
-    !call set_samples()
-    
-    !if (nsim>0) then
-    !  call set_randpath()
-    !  grid = grid(:, irandpath)
-    !else
-    !  irandpath=[(ig, ig=1, ngrid)]
-    !end if
-    
+    allocate(this%vario_idx(this%nsets,this%nsets))
+    this%vario_idx(:,:) = this%global_vario_idx(obs_idx(:),obs_idx(:))  ! subset to local datasets
     
   end subroutine setup_krige
   
 !-------------------------------------------------------------------------------------------------!
-    
+  
+  subroutine predict_point_krige(this, idx, p, obs_data, cat, weights)
+    implicit none
+    class(t_krige),intent(inout)  :: this
+    integer,intent(in)                   :: idx, cat
+    real(dp),intent(in)                  :: p(2)
+    class(t_dataset)                     :: obs_data(:)
+    real(dp)                             :: weights(:)
+  
+  end subroutine predict_point_krige
+  
+!-------------------------------------------------------------------------------------------------!
+  
 !-------------------------------------------------------------------------------------------------!
 ! SIMPLE KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine setup_sk(this, obs_data, to_grid, cat, to_cats, weights, opt)
+  subroutine setup_sk(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
     implicit none
-    class(t_simpkrige)          :: this
-    class(t_dataset)            :: obs_data(:)
-    type(t_grid),intent(in)     :: to_grid
-    real(dp)                    :: weights(:,:)
-    integer,intent(in)          :: cat
-    integer,intent(in)          :: to_cats(:)
-    type(t_options),intent(in)  :: opt
+    class(t_simpkrige),intent(inout)   :: this
+    class(t_dataset)                      :: obs_data(:)
+    integer,intent(in)                    :: obs_idx(:)
+    type(t_grid),intent(in)               :: to_grid
+    real(dp)                              :: weights(:,:)
+    integer,intent(in)                    :: cat
+    integer,intent(in)                    :: to_cats(:)
+    type(t_options),intent(in)            :: opt
     ! Local
     integer                     :: i,matsize
     
     ! Call super setup
-    call setup_krige(this, obs_data, to_grid, cat, to_cats, weights, opt)
+    call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
     
     matsize = 0
     do i=1, this%nsets
@@ -126,7 +208,10 @@ module m_kriging
     
     matsize = to_grid%n+matsize+this%unbias+this%ndrift
     allocate(this%w(matsize))
-    allocate(this%matA(matsize, matsize), this%rhsB(matsize))
+    !allocate(this%matA(matsize, matsize), this%rhsB(matsize))
+    
+    !this%matA = 0.0
+    !this%rhsB = 0.0
     
     !pre-calculate distances
     !call setdist()
@@ -137,11 +222,11 @@ module m_kriging
   
   subroutine predict_point_sk(this, idx, p, obs_data, cat, weights)
     implicit none
-    class(t_simpkrige), intent(in)    :: this
-    integer,intent(in)                :: idx, cat
-    real(dp),intent(in)               :: p(2)
-    type(t_dataset)                   :: obs_data(:)
-    real(dp)                          :: weights(:)
+    class(t_simpkrige),intent(inout)  :: this
+    integer,intent(in)                   :: idx, cat
+    real(dp),intent(in)                  :: p(2)
+    class(t_dataset)                     :: obs_data(:)
+    real(dp)                             :: weights(:)
   
   end subroutine predict_point_sk
   
@@ -151,20 +236,21 @@ module m_kriging
 ! ORDINARY KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine setup_ok(this, obs_data, to_grid, cat, to_cats, weights, opt)
+  subroutine setup_ok(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
     implicit none
-    class(t_ordkrige)          :: this
-    class(t_dataset)            :: obs_data(:)
-    type(t_grid),intent(in)     :: to_grid
-    real(dp)                    :: weights(:,:)
-    integer,intent(in)          :: cat
-    integer,intent(in)          :: to_cats(:)
-    type(t_options),intent(in)  :: opt
+    class(t_ordkrige),intent(inout)   :: this
+    class(t_dataset)                      :: obs_data(:)
+    integer,intent(in)                    :: obs_idx(:)
+    type(t_grid),intent(in)               :: to_grid
+    real(dp)                              :: weights(:,:)
+    integer,intent(in)                    :: cat
+    integer,intent(in)                    :: to_cats(:)
+    type(t_options),intent(in)            :: opt
     ! Local
-    integer                     :: i,matsize,vidx
+    integer                     :: i,matsize,vidx, mat_tot
     
     ! Call super setup
-    call setup_krige(this, obs_data, to_grid, cat, to_cats, weights, opt)
+    call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
     
     ! Setup nnearest tracker (usenear) (sometimes there is not this%nnear(i) values in the dataset)
     allocate(this%usenear(this%nsets))
@@ -172,19 +258,19 @@ module m_kriging
     ! Build search trees in observed grid objects
     ! Also, figure out number of datasets in each category
     do i=1, this%nsets
-      vidx = this%vario_idx(i,i)              ! Should always equal i, but to be safe
-      call obs_data(i)%build_tree_by_category(cat)   ! rotmat passed during n_nearest call
+      call obs_data(i)%build_tree_by_category(cat, this%variograms(1,i)%rotmat(1:this%ndim,1:this%ndim))
       this%usenear(i) = min(this%nnear(i), obs_data(i)%grid%tree%n)
       ! TODO Warn that there is so little data? Do we even have enough information to warn?
       ! Warnings only get printed before the calculations
       ! In this scope we don't if it's pp or data...
     end do
     
-    this%maxnear = maxval(this%nnear)
+    this%maxnear = this%nnear(1)
+    if (this%nsets > 1) this%maxnear = this%maxnear + maxval(this%nnear)
+    matsize = sum(this%nnear(obs_idx))+this%unbias+this%ndrift
+    mat_tot = matsize * (matsize + 1) / 2
     
-    matsize = sum(this%nnear)+this%unbias+this%ndrift
-    allocate(this%w(matsize))
-    allocate(this%matA(matsize, matsize), this%rhsB(matsize))
+    allocate(this%matA(mat_tot), this%rhsB(matsize), this%pset_id(matsize), this%w(matsize))
     
   end subroutine setup_ok
   
@@ -192,24 +278,131 @@ module m_kriging
   
   subroutine predict_point_ok(this, idx, p, obs_data, cat, weights)
     implicit none
-    class(t_ordkrige), intent(in)     :: this
-    integer,intent(in)                :: idx, cat
-    real(dp),intent(in)               :: p(2)
-    type(t_dataset)                   :: obs_data(:)
-    real(dp)                          :: weights(:)
+    class(t_ordkrige),intent(inout)  :: this
+    integer,intent(in)                   :: idx, cat
+    real(dp),intent(in)                  :: p(2)
+    class(t_dataset)                     :: obs_data(:)
+    real(dp)                             :: weights(:)
     ! local
-    integer                           :: i
+    integer                           :: i, j, d, vidx, cidx, matsize, mat_tot, ier, rcount
     integer                           :: inear(this%maxnear,this%nsets)
+    real(dp)                          :: value
     real(dp)                          :: dist(this%maxnear,this%nsets)
     
-    ! Get nearest for each dataset
+    ! Get nearest for each obs dataset
     do i=1, this%nsets
-      call obs_data(i)%grid%get_nnear(p, this%usenear(i), inear(:,i), dist(:,i))
+      vidx = this%vario_idx(i,i)              ! Should always equal i, but to be safe
+      call obs_data(i)%grid%get_nnear(p, this%usenear(i), inear(:,i), dist(:,vidx))
     end do
     
+    matsize = sum(this%nnear(this%obs_idx))+this%unbias+this%ndrift
+    mat_tot = matsize * (matsize + 1) / 2
     
+    ! Create obs-obs matrix
+    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, inear, this%usenear, this%ndim)
+    call decomp(this%matA, this%pset_id, matsize, ier)
+    
+    if (ier == 1) call error_handler(4,opt_msg="Kriging Matrix Decomposition Failure. This is often caused by co-located wells")
+    
+    ! Create RHS
+    this%rhsB = 0.d0
+    weights = 0.d0
+    if (this%unbias) this%rhsB(matsize) = 1.0d0
+    rcount = 1
+    ! Loop over datasets
+    do d = 1, this%nsets
+      vidx = this%vario_idx(1,d)
+      ! loop over data points
+      do i=1, this%usenear(d)
+        do j=1, this%nstruct(vidx)
+          value = this%variograms(j,vidx)%cov(p,obs_data(d)%grid%coords(1:,inear(i,d)))
+          this%rhsB(rcount) = this%rhsB(rcount) + value
+        end do
+        rcount = rcount + 1
+      end do
+    end do
+      
+    ! Solve & Out
+    call doolittle(this%rhsB,p,this%pset_id,weights,matsize)
   
   end subroutine predict_point_ok
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine pset_cok(this, obs_data, ntot, p, id, maxpt, inear, nnear,  dim)
+    implicit none
+    ! Rewrite of PSET routine for ordinary cokriging
+    ! Author Leland Scantlebury
+    !
+    ! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
+    
+    ! Inputs
+    class(t_ordkrige),intent(inout) :: this
+    type(t_dataset)        :: obs_data(:)
+    integer,intent(in)     :: maxpt, ntot, dim
+    integer,intent(in)     :: inear(this%maxnear,this%nsets), nnear(this%nsets)
+    integer,intent(inout)  :: id(ntot)
+    real(dp),intent(inout) :: p(maxpt)
+    
+    ! Subroutine variables
+    integer             :: i,ii,j,jj,n,ind,JS, rowcount, nobs
+    integer,allocatable :: colcount(:)
+    real(dp)            :: coordi(dim),coordj(dim),value,value_sum
+    
+    nobs = this%nsets
+    allocate(colcount(nobs))
+    
+    colcount = 0
+    do i=1, (nobs-1)
+      colcount(i+1) = colcount(i) + obs_data(i)%grid%n
+    end do
+    
+!***  ZERO OUT ELEMENTS OF P-MATRIX NEEDED FOR KRIGING
+    P=0.0
+!***  CALCULATE THE POINTERS FOR ID
+    ID(1)=1
+    DO I=2,NTOT
+      ID(I)=ID(I-1)+NTOT+2-I
+    END DO
+    ! Outer Loop over datasets (columns)
+    do j=1, nobs
+      ! Inner loop over datasets (rows)
+      rowcount = 0
+      do i=j, nobs
+        ! Variogram index for section
+        ind = this%vario_idx(j,i)
+        ! Outer loop over column points
+        do jj=1, nnear(j)
+          JS=ID(colcount(j)+jj)-(colcount(j)+jj)
+          coordj=obs_data(j)%grid%coords(1:,inear(jj,j))
+          ! Inner loop over row points
+          ii = jj
+          if (i/=j) ii=1
+          do while (ii <= nnear(i))
+            coordi=obs_data(i)%grid%coords(1:,inear(ii,i))
+            value_sum=0.0d0
+            do n=1, this%nstruct(ind)
+              value = this%variograms(n,ind)%cov(coordi,coordj)
+              value_sum = value_sum + value
+            end do
+            P(JS+rowcount+colcount(j)+ii)=value_sum
+            ii = ii + 1
+          end do
+        end do
+        rowcount = rowcount + (ii-1)
+      end do
+    end do
+    ! Fill last row with unbias
+    if (this%unbias > 1) then
+      DO I=1,ntot-1
+        P(ID(I)+ntot-I)=1
+      END DO
+    end if
+      
+    deallocate(colcount)
+    RETURN
+
+  end subroutine pset_cok
   
 !-------------------------------------------------------------------------------------------------!
   

@@ -2,6 +2,8 @@ module m_vario
   use m_global, only: dp
 !-------------------------------------------------------------------------------------------------!
 
+  real(dp), parameter   :: pi = 3.141592653589793d0
+  
 type :: t_vgm
 ! Variogram or cross variogram structure
   integer                 :: itype       ! Variogram model (0-linear, 1-spherical, 2-exponential)
@@ -19,9 +21,11 @@ type :: t_vgm
 
   contains
     procedure,public        :: initialize
-    procedure,public        :: cov
     procedure,private       :: setrot
     procedure,private       :: sqdist
+    procedure,public        :: sqdist_vec
+    procedure,public        :: cov
+    procedure,public        :: cov_vec
 end type t_vgm
 
 !-------------------------------------------------------------------------------------------------!
@@ -32,19 +36,21 @@ end type t_vgm
 ! MODULE PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
-  function get_vgm_from_line(strings, struct_id) result(vgm)
+  function get_vgm_from_line(strings, struct_id,interp_dim,maxread) result(vgm)
     use m_file_io
     use m_vstringlist, only: t_vstringlist
     use m_error_handler, only: error_handler
     implicit none
     
     type(t_vstringlist),intent(in)   :: strings
-    integer, intent(in)              :: struct_id
+    integer, intent(in)              :: struct_id, interp_dim
+    integer, intent(out)             :: maxread
     class(t_vgm),pointer             :: vgm
     
     allocate(vgm)
+    maxread = 0
     
-    vgm%itype  = find_string_index_in_list(strings, 2, "LIN,SPH,EXP", toupper=.true.)
+    vgm%itype  = find_string_index_in_list(strings, 2, "SPH,EXP,HOL,GAU,POW,CIR,LIN", toupper=.true.)
     if (vgm%itype==0) then
       call error_handler(1,"Invalid variogram type - must be one of Lin, Sph, Exp")
     else
@@ -52,15 +58,33 @@ end type t_vgm
       vgm%itype = vgm%itype - 1
     end if
     
-    vgm%nugget = item2real(strings, 3)
-    vgm%sill   = item2real(strings, 4)
-    vgm%a_hmin = item2real(strings, 5)
-    vgm%a_hmax = item2real(strings, 6)
-    vgm%a_vert = item2real(strings, 7)
-    vgm%ang1   = item2real(strings, 8)
-    vgm%ang2   = item2real(strings, 9)
-    vgm%ang3   = item2real(strings,10)
-    !nnear read outside of routine
+    ! TODO implement different reading for nonstandard variograms (e.g. power)
+    if (interp_dim==2) then
+      vgm%nugget = item2real(strings, 3)
+      vgm%sill   = item2real(strings, 4)
+      vgm%a_hmin = item2real(strings, 5)
+      vgm%a_hmax = item2real(strings, 6)
+      vgm%ang1   = item2real(strings, 7)
+      maxread = 7
+      ! Sanitize unused variables
+      vgm%a_vert = vgm%a_hmin
+      vgm%ang2   = 0.0
+      vgm%ang3   = 0.0
+      !nnear read outside of routine
+    else if (interp_dim==3) then
+      vgm%nugget = item2real(strings, 3)
+      vgm%sill   = item2real(strings, 4)
+      vgm%a_hmin = item2real(strings, 5)
+      vgm%a_hmax = item2real(strings, 6)
+      vgm%a_vert = item2real(strings, 7)
+      vgm%ang1   = item2real(strings, 8)
+      vgm%ang2   = item2real(strings, 9)
+      vgm%ang3   = item2real(strings,10)
+      maxread = 10
+      !nnear read outside of routine
+    end if
+    
+    ! TODO - more parameters for search ellipsoid? Read elsewhere?
     
     ! initialize
     call vgm%initialize(struct_id)
@@ -176,87 +200,171 @@ end type t_vgm
 
 !-------------------------------------------------------------------------------------------------!
 
-  real function sqdist(this,x1,y1,z1,x2,y2,z2)
+  real function sqdist(this,dim,p1,p2)
     implicit none
-    class(t_vgm)         :: this
-  !
-  !    Squared Anisotropic Distance Calculation Given Matrix Indicator
-  !    ***************************************************************
-  !
-  ! This routine calculates the anisotropic distance between two points
-  !  given the coordinates of each point and a definition of the
-  !  anisotropy.
-  !
-  ! INPUT VARIABLES:
-  !   x1,y1,z1         Coordinates of first point
-  !   x2,y2,z2         Coordinates of second point
-  !   ind              The matrix indicator to initialize
-  !   MAXROT           The maximum number of rotation matrices dimensioned
-  !   rotmat           The rotation matrices
-  !
-  !
-  ! OUTPUT VARIABLES:
-  !   sqdist           The squared distance accounting for the anisotropy
-  !                      and the rotation of coordinates (if any).
-  !
-  !
-  ! Author: C. Deutsch                                Date: September 1989
-        integer       :: i
-        real(dp)      :: dx,dy,dz,x1,y1,x2,y2,z1,z2,cont
+    class(t_vgm)            :: this
+    integer, intent(in)     :: dim
+    real(dp), intent(in)    :: p1(dim), p2(dim)
   !
   ! Compute component distance vectors and the squared distance:
-  !
-        dx = x1 - x2
-        dy = y1 - y2
-        dz = z1 - z2
-        sqdist = 0.0d0
-        do i=1,3
-          cont   = this%rotmat(i,1) * dx &
-                 + this%rotmat(i,2) * dy &
-                 + this%rotmat(i,3) * dz
-          sqdist = sqdist + cont * cont
-        end do
-        return
+    !dd = p1 - p2
 
+    ! Perform the matrix-vector multiplication using the rotation matrix:
+    ! Calculate the squared distance:
+    sqdist = sum(matmul(this%rotmat(1:dim, 1:dim), (p1 - p2))**2)
+    return
   end function sqdist
-    
+  
 !-------------------------------------------------------------------------------------------------!
   
-  function cov(this, x1, y1, z1, x2, y2, z2) result(value)
+  function sqdist_vec(this, dim, p, points, n)
     implicit none
-    class(t_vgm)         :: this
-!      common block/vario/slope,sill,a
-    real(dp)                 :: x1,y1,z1,x2,y2,z2,h,tmp
+    class(t_vgm)            :: this
+    integer, intent(in)     :: dim, n
+    real(dp), intent(in)    :: p(dim)
+    real(dp)                :: sqdist_vec(n)
+    real(dp), intent(in)    :: points(dim, n)
+    real(dp)                :: dd(dim, n)
+
+    dd = points - spread(p, 2, n)
+    sqdist_vec = sum(matmul(this%rotmat(1:dim, 1:dim), dd)**2, dim=1)
+
+  end function sqdist_vec
+    
+!-------------------------------------------------------------------------------------------------!
+
+  function cov(this, p1,p2) result(cov_value)
+    implicit none
+    
     real(dp),parameter       :: epsilon=1.e-10
-    real(dp)                 :: value
+    class(t_vgm)          :: this
+    real(dp), intent(in)  :: p1(:), p2(:)
+    real(dp)              :: dist
+    real(dp)              :: cov_value
+    real(dp)              :: hr
 
-    h = this%sqdist(x1,y1,z1,x2,y2,z2)
+    dist = this%sqdist(size(p1,1),p1,p2)
+    cov_value = 0.0
+    hr = dist / this%a_hmax
 
-    ! Check for "zero" distance, return with maximum value
-    if (h < epsilon) then
-      value = this%nugget + this%sill
-      return  ! EARLY RETURN
-    ! linear variogram
-    else if(this%itype.eq.1) then
-      h=sqrt(h)*this%sill
-      !write(11,*) 'Linear', h
-    ! spherical variogram
-    else if(this%itype.eq.2) then
-      H=SQRT(h)
-      tmp=h/this%a_hmax
-      if(tmp.ge.1.) then
-        h=this%sill
-      else
-        h=this%sill*(1.5*tmp-0.5*tmp*tmp*tmp)
-      endif
-    ! exponential variogram
-    else if (this%itype.eq.3) then
-      H=SQRT(h)
-      h=this%sill*(1.d0-exp(-3.d0*h/this%a_hmax))
-    endif
-    value=this%sill-h
+    select case (this%itype)
+      case(1)  ! Spherical model
+        if (dist < this%a_hmax) then
+          cov_value = 1.0 - 1.5 * hr + 0.5 * hr**3
+        end if
+
+      case(2)  ! Exponential model
+        cov_value = exp(-3.0 * hr)
+
+      case(3)  ! Hole effect model
+        cov_value = cos(pi * hr)
+
+      case(4)  ! Gaussian model
+        cov_value = exp(-49.0 / 16.0 * hr**2)
+
+      case(5)  ! Power model
+        cov_value = dist**this%a_hmax
+
+      case(6)  ! Circular model
+        if (dist < this%a_hmax) cov_value = (2 * hr * sqrt(1.0 - hr**2) + 2 * asin(hr)) / pi
+
+      case(7)  ! Linear model
+        cov_value = this%sill - hr
+    end select
+
+    if (this%itype /= 7) cov_value = this%sill * cov_value
+
+    if (this%nugget > 0.0_dp) then
+      if (dist < epsilon) cov_value = cov_value + this%nugget
+    end if
   
   end function cov
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  function cov_vec(this, dist, n) result(cov)
+    implicit none
+    real(dp),parameter    :: epsilon=1.e-10
+    class(t_vgm)          :: this
+    integer               :: n
+    real(dp)              :: dist(n)
+    real(dp)              :: cov(n)
+    real(dp)              :: hr(n)
+
+    cov = 0.0
+    hr = dist / this%a_hmax
+
+    select case (this%itype)
+      ! Spherical model
+      case(1); where (dist < this%a_hmax) cov = 1.0 - 1.5 * hr + 0.5 * hr**3
+
+      ! Exponential model
+      case(2); cov = exp(-3.0 * hr)
+
+      ! Hole effect model
+      case(3); cov = cos(pi * hr)
+
+      ! Gaussian model
+      case(4); cov = exp(-49.0 / 16.0 * hr**2)
+
+      ! Power model
+      case(5); cov = dist**this%a_hmax
+
+      ! Circular model
+      case(6); where(dist < this%a_hmax) cov = (2 * hr * sqrt(1.0 - hr**2) + 2 * asin(hr)) / pi
+
+      ! Linear model
+      case(7); cov = this%sill - hr
+
+      ! Default case for unknown model type
+    case default
+      print*, 'Unknown variogram model.'
+      stop
+    end select
+
+    if (this%itype /= 7) cov = this%sill * cov
+    if (this%nugget > 0.0_dp) then
+      where (dist < epsilon) cov = cov + this%nugget
+    end if
+
+  end function cov_vec
+!-------------------------------------------------------------------------------------------------!
+  
+  !function cov(this, x1, y1, z1, x2, y2, z2) result(value)
+  !  implicit none
+  !  class(t_vgm)         :: this
+! !     common block/vario/slope,sill,a
+  !  real(dp)                 :: x1,y1,z1,x2,y2,z2,h,tmp
+  !  real(dp),parameter       :: epsilon=1.e-10
+  !  real(dp)                 :: value
+  !
+  !  h = this%sqdist(x1,y1,z1,x2,y2,z2)
+  !
+  !  ! Check for "zero" distance, return with maximum value
+  !  if (h < epsilon) then
+  !    value = this%nugget + this%sill
+  !    return  ! EARLY RETURN
+  !  ! linear variogram
+  !  else if(this%itype.eq.1) then
+  !    h=sqrt(h)*this%sill
+  !    !write(11,*) 'Linear', h
+  !  ! spherical variogram
+  !  else if(this%itype.eq.2) then
+  !    H=SQRT(h)
+  !    tmp=h/this%a_hmax
+  !    if(tmp.ge.1.) then
+  !      h=this%sill
+  !    else
+  !      h=this%sill*(1.5*tmp-0.5*tmp*tmp*tmp)
+  !    endif
+  !  ! exponential variogram
+  !  else if (this%itype.eq.3) then
+  !    H=SQRT(h)
+  !    h=this%sill*(1.d0-exp(-3.d0*h/this%a_hmax))
+  !  endif
+  !  value=this%sill-h
+  !
+  !end function cov
   
 !-------------------------------------------------------------------------------------------------!
 end module m_vario

@@ -1054,7 +1054,7 @@ contains
     real(kdkind), target, intent (In)    :: qv(:)
     integer, intent (In)         :: nn
     type(kdtree2_result), target :: results(:)
-    real(kdkind), target, optional  :: rotmat(:,:) ! 3D Rotation Matrix
+    real(kdkind), target, optional  :: rotmat(:,:) ! Rotation Matrix
 
     sr%ballsize = huge(1.0)
     sr%qv => qv

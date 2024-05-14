@@ -9,29 +9,26 @@ module m_interpolator
   use m_categories, only: t_category
   implicit none
 !-------------------------------------------------------------------------------------------------!
-  type, abstract :: t_interpolator
+  type, abstract:: t_interpolator
   
-    logical,allocatable    :: catmask(:)
   ! Abstract Base Class
   contains
     procedure,private      :: initialize_abc
     generic                :: initialize => initialize_abc       ! placeholder
     procedure,public       :: calc_weights
-    procedure,private      :: setup
-    procedure,private      :: predict_point
+    procedure     :: setup
+    procedure      :: predict_point
   end type t_interpolator
 !-------------------------------------------------------------------------------------------------!
   
   type, extends(t_interpolator) :: t_idw
     real(dp)               :: power
     integer                :: nobs
+    logical,allocatable    :: catmask(:)
     
   contains
     procedure               :: setup => setup_idw
     procedure               :: predict_point => predict_point_idw
-    !procedure              :: initialize_idw
-    !generic                :: initialize => initialize_idw
-    !procedure,public       :: calc_weights => calc_weights_idw
   end type t_idw
   
 !-------------------------------------------------------------------------------------------------!
@@ -75,10 +72,11 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine calc_weights(this, obs_data, to_grid, weights, catlist, to_cats, opt)
+  subroutine calc_weights(this, obs_data, obs_idx, to_grid, weights, catlist, to_cats, opt)
     implicit none
-    class(t_interpolator), intent(in)     :: this
-    class(t_dataset)                       :: obs_data(:)
+    class(t_interpolator),intent(inout)   :: this
+    class(t_dataset)                      :: obs_data(:)
+    integer,intent(in)                    :: obs_idx(:)
     type(t_grid),intent(in)               :: to_grid
     real(dp)                              :: weights(:,:)
     integer,intent(in)                    :: catlist(:), to_cats(:)
@@ -93,7 +91,7 @@ module m_interpolator
     do i=1, size(catlist)
       ! Setup for each category
       cat = catlist(i)
-      call this%setup(obs_data, to_grid, cat, to_cats, weights, opt)
+      call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
       do j=1, to_grid%n
         ! Interpolate for each point
         if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(1:2,j), obs_data, cat, weights(:,j))
@@ -106,10 +104,11 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine setup(this, obs_data, to_grid, cat, to_cats, weights, opt)
+  subroutine setup(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
     implicit none
-    class(t_interpolator)                 :: this
-    class(t_dataset)                       :: obs_data(:)
+    class(t_interpolator),intent(inout)   :: this
+    class(t_dataset)                      :: obs_data(:)
+    integer,intent(in)                    :: obs_idx(:)
     type(t_grid),intent(in)               :: to_grid
     real(dp)                              :: weights(:,:)
     integer,intent(in)                    :: cat
@@ -122,11 +121,11 @@ module m_interpolator
   
   subroutine predict_point(this, idx, p, obs_data, cat, weights)
     implicit none
-    class(t_interpolator), intent(in) :: this
-    integer,intent(in)                :: idx, cat
-    real(dp),intent(in)               :: p(2)
-    class(t_dataset)                   :: obs_data(:)
-    real(dp)                          :: weights(:)
+    class(t_interpolator),intent(inout)  :: this
+    integer,intent(in)                   :: idx, cat
+    real(dp),intent(in)                  :: p(2)
+    class(t_dataset)                     :: obs_data(:)
+    real(dp)                             :: weights(:)
   
   end subroutine predict_point
   
@@ -144,10 +143,11 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine setup_idw(this, obs_data, to_grid, cat, to_cats, weights, opt)
+  subroutine setup_idw(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
     implicit none
-    class(t_idw)                  :: this
-    class(t_dataset)               :: obs_data(:)
+    class(t_idw),intent(inout)    :: this
+    class(t_dataset)              :: obs_data(:)
+    integer,intent(in)            :: obs_idx(:)
     type(t_grid),intent(in)       :: to_grid
     real(dp)                      :: weights(:,:)
     integer,intent(in)            :: cat
@@ -166,7 +166,7 @@ module m_interpolator
   
   subroutine predict_point_idw(this, idx, p, obs_data, cat, weights)
     implicit none
-    class(t_idw), intent(in)      :: this
+    class(t_idw),intent(inout)    :: this
     integer,intent(in)            :: idx, cat
     real(dp),intent(in)           :: p(2)
     class(t_dataset)              :: obs_data(:)

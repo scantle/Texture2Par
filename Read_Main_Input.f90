@@ -178,7 +178,6 @@ module m_read_main_input
     ! sub variables
     integer                       :: i, j, k, n, nclasses, prime_id, class_id
     type(t_vstringlist),pointer   :: class_names
-    integer,pointer               :: class_connections(:,:), class_type(:)
     
     allocate(class_names)
     call vstrlist_new(class_names)
@@ -209,7 +208,7 @@ module m_read_main_input
     implicit none
     type(t_t2p),intent(inout)       :: t2p
     type(t_file_reader), pointer    :: reader
-    integer                         :: i,k,n,nlines,nitems,cid,nsecondary,prime_id
+    integer                         :: i,k,nlines,nitems,cid,nsecondary,prime_id
     integer,pointer                 :: connections(:,:)
     character(30)                   :: temp
     
@@ -224,17 +223,17 @@ module m_read_main_input
     call reader%get_block_dim(nlines, nitems)  ! returns nlines, total items
     
     ! Allocate based on interpolation order
-    if (t2p%opt%INTERP_ORDER=="BEFORE") then
-      n = t2p%nclasses
-    else ! t2p%opt%INTERP_ORDER=="AFTER")
-      n = t2p%npar
-    end if
-    allocate(connections(nitems,n))
+    !if (t2p%opt%INTERP_ORDER=="BEFORE") then
+    !  n = t2p%nclasses
+    !else ! t2p%opt%INTERP_ORDER=="AFTER")
+    !  n = t2p%npar
+    !end if
+    allocate(connections(nitems,t2p%nprimary))
     t2p%nsecondary_by_id(:) = 0
     
     ! Setup matrix, values indicate variogram ID. Can start off assuming each class has a variogram (fill diagonal)
     connections = 0
-    do i = 1, n
+    do i = 1, t2p%nprimary
       connections(1, i) = i
     end do
     
@@ -347,7 +346,7 @@ subroutine read_variogram_block(t2p, reader)
   ! Sub variables
   type(t_vgm),pointer        :: vgms(:,:)
   integer,pointer            :: nnear(:), nstruct(:)
-  integer                    :: prime_id, cross_id, vario_id, struct_id, vcount
+  integer                    :: prime_id, prime_vidx, cross_id, vario_id, struct_id, vcount, maxread
   logical                    :: iscross, ispp
   type(t_vstring)            :: class_name, cross_name
   type(t_vstringlist)        :: class_temp
@@ -355,7 +354,7 @@ subroutine read_variogram_block(t2p, reader)
   
   ! Allocate variograms
   ! nvario is currently set during the class block read, max structures in settings
-  allocate(vgms(t2p%opt%max_vstruct,t2p%nvario), nnear(t2p%nvario), nstruct(t2p%nvario))
+  allocate(vgms(t2p%opt%max_vstruct,t2p%nvario), nnear(t2p%nprimary+t2p%nsecondary+1), nstruct(t2p%nvario))
   vcount = 0
   nnear = 0
   nstruct = 0
@@ -394,12 +393,17 @@ subroutine read_variogram_block(t2p, reader)
         if (vstring_match(class_name,"PilotPoints",nocase=.true.)) then
           ispp = .true.
           vario_id = t2p%nvario  ! PP vario is max
+          prime_id = size(nnear,1)
         else
         ! Not PP
           select type(p => t2p%interp_data)
-            type is(t_krige)
+            class is(t_krige)
               if (t2p%opt%INTERP_ORDER=="BEFORE") then
-                prime_id = t2p%get_class_id(class_name)
+                prime_id = t2p%get_class_id(class_name, adjust_for_infer=.true.)
+                prime_vidx = t2p%get_class_id(class_name)
+                ! If you're wondering -
+                ! nnear and connections are indexed by prime_id, which aligns with the active class number
+                ! global_vario_idx,vgms,and nstruct is indexed by prime_vidx, which aligns with the class number
                 if (prime_id==0) then
                   call error_handler(1,reader%file,"Invalid Class Name in Variogram Assignment")
                 end if
@@ -415,9 +419,9 @@ subroutine read_variogram_block(t2p, reader)
                   call error_handler(1,reader%file,"Invalid Class Name in Cross Variogram Assignment")
                 end if
               else
-                cross_id = prime_id
+                cross_id = prime_vidx
               end if
-              vario_id = p%vario_idx(prime_id, cross_id)
+              vario_id = p%global_vario_idx(prime_vidx, cross_id)
               if (vario_id==0) then
                 call error_handler(1,reader%file,"Invalid (Cross) Variogram Assignment - Check Covariates Block.")
               end if
@@ -439,13 +443,13 @@ subroutine read_variogram_block(t2p, reader)
           nstruct(vario_id) = struct_id
           !TODO validate struct_id
           ! Get full variogram item from the rest of the line
-          vgms(struct_id,vario_id) = get_vgm_from_line(strings, struct_id)
+          vgms(struct_id,vario_id) = get_vgm_from_line(strings, struct_id, t2p%OPT%INTERP_DIM, maxread)
           ! NNear on first struct read, if not cross, advance vcount
           if (struct_id == 1) then
             if (iscross) then
-              nnear(vario_id) = 0 ! Can't get n cross points...
+              ! Can't get n cross points...
             else
-              nnear(vario_id) = item2int(strings, 11)
+              nnear(prime_id) = item2int(strings, maxread+1)
             end if
             vcount = vcount + 1
           end if

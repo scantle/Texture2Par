@@ -10,6 +10,7 @@ module m_grid
     integer                   :: dim
     real(dp), allocatable     :: coords(:,:)    ! xy by n points
     type(kdtree2),pointer     :: tree           ! Tree for locating model nodes
+    integer, allocatable      :: true_idx(:)    ! Mapping of indices from masked to full dataset
     
     contains
       procedure,private        :: initialize
@@ -17,7 +18,6 @@ module m_grid
       procedure,public         :: build_tree
       procedure,public         :: get_nnear
       procedure,public         :: get_r2near
-      procedure,public         :: get_masked_tree_pointer
       procedure,public         :: burn_tree
   end type t_Grid
 !-------------------------------------------------------------------------------------------------!
@@ -65,20 +65,25 @@ module m_grid
     class(t_Grid), intent(inout) :: this
     logical,intent(in),optional  :: mask(this%n)
     real(dp),optional            :: rotmat(:,:) ! Rotation Matrix
+    integer                      :: j
     
     allocate(this%tree)
     
     if (present(mask)) then
-      this%tree => kdtree2_create(this%coords(:,mask), dim=this%dim, rotmat=rotmat)
+      allocate(this%true_idx(count(mask)))
+      this%true_idx = pack([(j, j = 1, this%n)], mask)
+      this%tree => kdtree2_create(this%coords(:,this%true_idx), dim=this%dim, rotmat=rotmat)
     else
       this%tree => kdtree2_create(this%coords, dim=this%dim, rotmat=rotmat)
+      allocate(this%true_idx(this%n))
+      this%true_idx = [(j, j = 1, this%n)]
     end if
     
   end subroutine build_tree
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine get_nnear(this, qpoint, nnear, idx, dis, mask)
+  subroutine get_nnear(this, qpoint, nnear, idx, dis, mask, rotmat)
     implicit none
     ! Uses tree to return n nearest grid indeces and distances
     class(t_Grid), intent(inout) :: this
@@ -88,13 +93,18 @@ module m_grid
     real(dp),intent(out)         :: dis(nnear)
     type(kdtree2_result)         :: res(nnear)
     logical,intent(in),optional  :: mask(this%n)
-    
+    real(kdkind), target, optional  :: rotmat(:,:) ! Rotation Matrix
 
     if (associated(this%tree)==.false.) call this%build_tree(mask=mask)
-    call kdtree2_n_nearest(this%tree, qpoint, nnear, res)
+    call kdtree2_n_nearest(this%tree, qpoint, nnear, res, rotmat)
     
     ! Worth getting fancier than copying? Pointers?
-    idx = res(:)%idx
+    if (allocated(this%true_idx)) then
+      ! Map indices back to original dataset
+      idx = this%true_idx(res(:)%idx)
+    else
+      idx = res(:)%idx
+    end if
     dis = res(:)%dis
     
   end subroutine get_nnear
@@ -119,25 +129,16 @@ module m_grid
     allocate(idx(nfound), dis(nfound), res(nfound))
     call kdtree2_r_nearest(this%tree, qpoint, r2, nfound, nfound, res)
     
-    idx = res(:)%idx
+    ! Worth getting fancier than copying? Pointers?
+    if (allocated(this%true_idx)) then
+      ! Map indices back to original dataset
+      idx = this%true_idx(res(:)%idx)
+    else
+      idx = res(:)%idx
+    end if
     dis = res(:)%dis
     
   end subroutine get_r2near
-  
-!-------------------------------------------------------------------------------------------------!
-  
-  function get_masked_tree_pointer(this, mask) result(tree)
-    implicit none
-    ! The result of realizing that we're almost always (potentially) working with a
-    ! subset of the data due to HSUs and pilot point zones
-    class(t_Grid), intent(inout)     :: this
-    logical,intent(in)               :: mask(this%n)
-    type(kdtree2),pointer            :: tree
-    
-    allocate(tree)
-    tree => kdtree2_create(this%coords(:,mask), dim=this%dim)
-  
-  end function get_masked_tree_pointer
   
 !-------------------------------------------------------------------------------------------------!
   

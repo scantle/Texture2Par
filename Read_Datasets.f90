@@ -65,7 +65,7 @@ module m_read_datasets
       grid => create_grid_object(2, npoints)
       ! Allocate dataset(s) for all layers, set default value
       do k=1, t2p%fmodel%nlayers
-        call t2p%datasets(didx,k)%initialize(npoints, t2p%nprimary)
+        call t2p%datasets(didx,k)%initialize(npoints, nsets)
         t2p%datasets(didx,k)%values = NODATA
         t2p%datasets(didx,k)%grid => grid
       end do
@@ -192,9 +192,9 @@ module m_read_datasets
     
     ! Validate datasets either (1) are all the primary datasets or (2) are a secondary dataset
     ! Return index of t2p dataset object to store them in
-    if (maxval(class_ids) <= t2p%get_active_primary_classes()) then
+    if (maxval(class_ids) <= t2p%get_active_texture_classes()) then
       ! is primary...
-      if (nsets==t2p%get_active_primary_classes()) then
+      if (nsets==t2p%get_active_texture_classes()) then
         dataset_idx = 1
       else
         call error_handler(1,file,"All primary datasets must be in same dataset file")
@@ -203,7 +203,7 @@ module m_read_datasets
       ! Secondary: we adjust all indexes relative to the secondary datasets
       ! (Each in their own dataset)
       if (nsets==1) then
-        dataset_idx = class_ids(1) - t2p%get_active_primary_classes()
+        dataset_idx = class_ids(1) - t2p%get_active_texture_classes()
         class_ids(:) = 1
       else
         call error_handler(1,file,"Each secondary dataset must have their own dataset file")

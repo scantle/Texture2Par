@@ -15,7 +15,7 @@ module m_options
     ! "Optional" Options - Default Value and Settings
     real                     :: NO_DATA_VALUE         !
     real                     :: IDW_POWER             ! Inverse Distance Weighting Power Parameter
-    character(10)            :: INTERP_DIM            ! 2D, 3D
+    integer                  :: INTERP_DIM            ! 2D, 3D, stored as integer, read as string
     character(10)            :: INTERP_METHOD         ! KRIGING, IDW
     character(10)            :: INTERP_ORDER          ! Interpolate to grid: [BEFORE, AFTER] upscaling/aggegating?
     character(60)            :: MAIN_OUTPUT           ! 
@@ -57,7 +57,7 @@ module m_options
     !this%DATA_CLASSES         = -1
     this%NO_DATA_VALUE        = -999.0
     this%IDW_POWER            =  2.0
-    this%INTERP_DIM           = '2D'
+    this%INTERP_DIM           = 2
     this%INTERP_METHOD        = 'OK'
     this%INTERP_ORDER         = 'BEFORE'
     this%MAIN_OUTPUT          = 't2p_log.txt'
@@ -89,7 +89,7 @@ subroutine read_options(this, reader)
   class(t_options)           :: this
   type(t_file_reader), pointer :: reader
   integer                    :: status, length
-  character(30)              :: id
+  character(30)              :: id, temp
   type(t_vstringlist)        :: strings
 
   do
@@ -101,11 +101,19 @@ subroutine read_options(this, reader)
       !case("DATA_CLASSES")
       !  this%DATA_CLASSES         = item2int(strings, 2)
       case("INTERP_DIM")
-        call item2char(strings, 2, this%INTERP_DIM)
+        call item2char(strings, 2, temp,toupper=.true.)
+        select case (trim(temp))
+          case("2","2D")
+            this%INTERP_DIM = 2
+          case("3","3D")
+            this%INTERP_DIM = 3
+          case DEFAULT
+            call error_handler(1,reader%file,"Invalid INTERP_DIM: " // trim(id))
+        end select
       case("INTERP_METHOD")
-        call item2char(strings, 2, this%INTERP_METHOD)
+        call item2char(strings, 2, this%INTERP_METHOD,toupper=.true.)
       case("INTERP_ORDER")
-        call item2char(strings, 2, this%INTERP_ORDER)
+        call item2char(strings, 2, this%INTERP_ORDER,toupper=.true.)
       case("MAIN_OUTPUT")
         call item2char(strings, 2, this%MAIN_OUTPUT)
       !case("OUTPUT_DIR")

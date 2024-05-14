@@ -72,7 +72,8 @@ module m_log
 
     ! T2P
     call log%write_valueline('Total Data Classes:',   t2p%nclasses)
-    call log%write_valueline('Primary Data Classes:',   t2p%nprimary)
+    !TODO texture classes
+    call log%write_valueline('Texture Data Classes:',   t2p%ntexclasses)
     call log%write_valueline('Covariate Data Classes:', t2p%nsecondary)
     call log%write_valueline('Number of Dataset Files:',t2p%ndatafiles)
     call log%write_valueline('Number of HSUs:',         t2p%nhsus)
