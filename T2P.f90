@@ -1,4 +1,5 @@
 module m_T2P
+  use m_global, only: dp
   use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_append
   use m_vstring, only: t_vstring, vstring_toupper
   use m_error_handler, only: error_handler,warnings
@@ -8,6 +9,7 @@ module m_T2P
   use m_pilotpoints, only: t_pilotpoints
   use m_interpolator, only: t_interpolator, t_idw
   use m_kriging, only: t_krige, t_simpkrige, t_ordkrige
+  use m_categories, only: t_category
   use m_vario, only: t_vgm
 !-------------------------------------------------------------------------------------------------!
   type t_T2P
@@ -33,9 +35,6 @@ module m_T2P
                                                     ! (Formerly "geologic zones")
     
     ! Trackers
-    ! Naming:
-    ! Primary data
-    ! Covariates = CVT = secondary data (for cokriging)
     type(t_vstringlist),pointer      :: class_names           ! Data class names
     type(t_vstringlist)              :: parnames              ! Names of output parameters calculated
     integer,pointer                  :: nsecondary_by_id(:)   ! Connections (covariates) per [class, hyd property]
@@ -43,6 +42,7 @@ module m_T2P
     !integer,allocatable              :: vario_idx(:,:)        ! Variogram index given (class_id, class_id)  ! TODO: How to make this part of interpolator? Global?
     type(t_vstringlist)              :: dataset_files         ! dataset filenames
     type(t_vstringlist)              :: dataset_trans         ! dataset transformations
+    type(t_category),pointer         :: dataset_ppzones        ! Pilot point zone dataset grid arrays & tracking (when INTERP_ORDER=AFTER)
     
     ! Read trackers - used to check if a block has been read (and make sure it exists)
     logical                          :: has_opt
@@ -68,6 +68,7 @@ module m_T2P
     procedure,public   :: setup_covariates
     procedure,public   :: setup_variograms
     procedure,public   :: setup_pplocs
+    procedure,public   :: setup_dataset_ppzones
     procedure,public   :: check_major_inputs
     procedure,private  :: check_pp_zone_layertype_assignments
     procedure,private  :: nvario_estimator
@@ -228,6 +229,29 @@ module m_T2P
       this%has_covar = .true.
     end if
   end subroutine setup_covariates
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine setup_dataset_ppzones(this)
+    ! Some copying b/c we need PPZONE data at dataset points when opt%INTERP_ORDER=="AFTER"
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    integer :: nlayers, nnodes, i, j, idx
+    
+    ! Initialize...
+    call this%dataset_ppzones%initialize(this%fmodel%ppzones%narr, this%fmodel%nlayers, this%fmodel%nnodes(1), 0)
+    
+    ! Copy over all categories
+    this%dataset_ppzones%lay2arr = this%fmodel%ppzones%lay2arr
+    this%dataset_ppzones%from_file = this%fmodel%ppzones%from_file
+    ! Loop over each array and add each category stored in arrcat
+    do i = 1, this%fmodel%ppzones%narr
+      do j = 1, this%fmodel%ppzones%arrncat(i)
+        call this%dataset_ppzones%add_category_int(this%fmodel%ppzones%arrcat(j, i), i, idx)
+      end do
+    end do
+  
+  end subroutine setup_dataset_ppzones
 
 !-------------------------------------------------------------------------------------------------!
   
@@ -464,6 +488,7 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     class(t_grid),pointer         :: pp_to
     type(t_pilotpoints)           :: pp_intermediate
+    type(t_category),pointer      :: cat_to
     integer                       :: i,j
     
     ! Assign PPTO_grid (data or fmodel)
@@ -471,14 +496,16 @@ module m_T2P
       ! T2P 1.0 Method
       ! Uses layer 1 grid
       pp_to => this%fmodel%grid(1)
+      cat_to => this%fmodel%ppzones
     else if (this%opt%INTERP_ORDER=="AFTER") then
       ! Uses primary dataset layer 1 grid
       ! Again, assumes uniformity of grid by layer
       pp_to => this%datasets(1,1)%grid
+      cat_to => this%dataset_ppzones
     end if
   
     ! Interpolate PP to PPTO_grid
-    call this%interpolate_pp(pp_to, pp_intermediate)
+    call this%interpolate_pp(pp_to, cat_to, pp_intermediate)
     
     ! TODO I'm not sure the above is more readable than just including it below in the if statement.
   
@@ -500,21 +527,26 @@ module m_T2P
   end subroutine predict
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine interpolate_pp(this, to_grid, results)
+  subroutine interpolate_pp(this, to_grid, to_categories, results)
     use m_grid, only: t_grid
     use m_weights, only: t_weights
     ! Pilot Point type in, Pilot Point type out
     implicit none
     class(t_T2P), intent(inout)     :: this
     type(t_pilotpoints)             :: results
-    type(t_grid)                    :: to_grid
+    class(t_grid),pointer            :: to_grid
+    type(t_category)                :: to_categories
     type(t_weights)                 :: weights
     integer                         :: i,k
     integer                         :: obs_idx(1)
     type(t_pilotpoints)             :: obs_data(1)  ! a little trick to appease calc_weights
     
+    call results%init_pilotpoint(to_grid%n, to_grid)
+    allocate(results%values(to_grid%n, size(this%pilot_points%values,2), this%ntexclasses))
+    
     obs_data(1) = this%pilot_points
     obs_idx(1) = 1
+    call weights%initialize(this%pilot_points%grid%n, to_grid%n)  !input_n, output_n
     
     ! Go by pilot point zone arrays (up to nlayers)
     do k=1, this%fmodel%ppzones%narr
@@ -527,8 +559,8 @@ module m_T2P
                                          obs_idx,  &
                                          to_grid,  &
                                          weights%values, &
-                                         this%fmodel%ppzones%arrcat(1:this%fmodel%ppzones%arrncat(k),k), &
-                                         this%fmodel%ppzones%array(:,k),&
+                                         to_categories%arrcat(1:to_categories%arrncat(k),k), &
+                                         to_categories%array(:,k),&
                                          this%opt)
       end if
     
@@ -538,7 +570,8 @@ module m_T2P
       end if
     
       ! Apply weights and create results
-      
+      ! APPLY TO MULTIPLE CLASSES & PARAMETERS
+      results%values(:,1,1) = matmul(weights%values,this%pilot_points%values(:,1,1))
     end do
     
   end subroutine interpolate_pp

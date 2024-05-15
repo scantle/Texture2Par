@@ -20,7 +20,7 @@ module m_categories
     
     contains
       procedure, public        :: read_file
-      procedure, private       :: initialize
+      procedure, public        :: initialize
       procedure, private       :: no_category_setup
       procedure, pass          :: add_category_int
       procedure, pass          :: add_category_str

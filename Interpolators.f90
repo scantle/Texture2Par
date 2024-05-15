@@ -1,6 +1,6 @@
 module m_interpolator
   use m_global, only: dp
-  use m_weights, only: t_weights, create_weight_object
+  use m_weights, only: t_weights
   use m_grid, only: t_grid, create_grid_object
   use m_datasets, only: t_dataset, t_layerdata
   use m_error_handler, only: error_handler
@@ -94,7 +94,7 @@ module m_interpolator
       call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
       do j=1, to_grid%n
         ! Interpolate for each point
-        if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(1:2,j), obs_data, cat, weights(:,j))
+        if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(1:2,j), obs_data, cat, weights(j,:))
       end do
     end do
     

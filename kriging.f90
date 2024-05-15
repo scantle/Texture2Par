@@ -1,7 +1,7 @@
 module m_kriging
   use m_global, only: dp
   use m_interpolator, only: t_interpolator
-  use m_weights, only: t_weights, create_weight_object
+  use m_weights, only: t_weights
   use m_grid, only: t_grid, create_grid_object
   use m_vario, only: t_vgm
   use m_datasets, only: t_dataset, t_layerdata
@@ -251,6 +251,8 @@ end subroutine doolittle
     
     ! Call super setup
     call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+    ! OK uses unbias
+    this%unbias = 1
     
     ! Setup nnearest tracker (usenear) (sometimes there is not this%nnear(i) values in the dataset)
     allocate(this%usenear(this%nsets))
@@ -295,7 +297,7 @@ end subroutine doolittle
       call obs_data(i)%grid%get_nnear(p, this%usenear(i), inear(:,i), dist(:,vidx))
     end do
     
-    matsize = sum(this%nnear(this%obs_idx))+this%unbias+this%ndrift
+    matsize = sum(this%usenear)+this%unbias+this%ndrift
     mat_tot = matsize * (matsize + 1) / 2
     
     ! Create obs-obs matrix
@@ -306,7 +308,7 @@ end subroutine doolittle
     
     ! Create RHS
     this%rhsB = 0.d0
-    weights = 0.d0
+    this%w = 0
     if (this%unbias) this%rhsB(matsize) = 1.0d0
     rcount = 1
     ! Loop over datasets
@@ -323,7 +325,8 @@ end subroutine doolittle
     end do
       
     ! Solve & Out
-    call doolittle(this%rhsB,p,this%pset_id,weights,matsize)
+    call doolittle(this%rhsB,this%matA,this%pset_id,this%w,matsize)
+    weights(inear(1:this%usenear(1),1)) = this%w(1:this%usenear(1))  ! TODO test if copying can be avoided (direct pass, pointer)
   
   end subroutine predict_point_ok
   
@@ -393,7 +396,7 @@ end subroutine doolittle
       end do
     end do
     ! Fill last row with unbias
-    if (this%unbias > 1) then
+    if (this%unbias > 0) then
       DO I=1,ntot-1
         P(ID(I)+ntot-I)=1
       END DO

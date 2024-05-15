@@ -70,6 +70,11 @@ module m_read_datasets
         t2p%datasets(didx,k)%grid => grid
       end do
       
+      ! For texture classes, if opt%INTERP_ORDER=AFTER we need to store ppzones for these points, too!
+      if (didx==1.and.t2p%opt%INTERP_ORDER=="AFTER") then
+        call t2p%setup_dataset_ppzones()
+      end if
+      
       ! Rewind
       rewind(reader%unit)
       ! Skip header this time...
@@ -98,6 +103,10 @@ module m_read_datasets
           grid%coords(2,idx) = y
           ! Get location in model, get elevation at model layers in model
           fmodel_loc = t2p%fmodel%find_in_grid(grid%coords(:,idx))
+          ! If using, get ppzone in model
+          if (t2p%opt%INTERP_ORDER=="AFTER") then
+            t2p%dataset_ppzones%array(idx,1:) = t2p%dataset_ppzones%array(fmodel_loc,1:)
+          end if
           ! Store HSUs for each layer
           do k=1, ncats
             do l=1, nsets

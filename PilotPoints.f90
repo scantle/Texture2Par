@@ -53,6 +53,7 @@ module m_pilotpoints
     call object%initialize(npoints)
     
     ! Have to allocate this seperately, since init cannot take more than npoints (inheritance)
+    ! TODO that didn't have to be true
     allocate(object%values(npoints, nproperties, nclasses))
     object%values   = NODATA
   
@@ -62,10 +63,11 @@ module m_pilotpoints
 ! LAYER CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine init_pilotpoint(this, npoints)
+  subroutine init_pilotpoint(this, npoints, grid)
     implicit none
     class(t_pilotpoints),intent(inout) :: this
     integer,intent(in)                 :: npoints
+    class(t_grid),pointer,optional      :: grid 
     
     allocate(this%category   (npoints), &
              this%is_aquifer (npoints), &
@@ -81,7 +83,11 @@ module m_pilotpoints
     this%is_aquifer      = .false.
     this%is_aquitard     = .false.
     
-    this%grid => create_grid_object(2, npoints)  ! X,Y coords by n 
+    if (present(grid)) then
+      this%grid => grid
+    else
+      this%grid => create_grid_object(2, npoints)  ! X,Y coords by n 
+    end if
   
   end subroutine init_pilotpoint
   

@@ -8,9 +8,9 @@ module m_weights
       real, allocatable      :: values(:,:)  ! The weights (input points, output points)
       
   contains
-      procedure,private :: initialize
-      procedure,public :: save_to_file
-      procedure,public :: load_from_file
+      procedure,public :: initialize
+      procedure,public  :: save_to_file
+      procedure,public  :: load_from_file
       procedure,private :: finalize
   end type t_weights
 !-------------------------------------------------------------------------------------------------!  
@@ -19,16 +19,6 @@ contains
 !-------------------------------------------------------------------------------------------------!
 ! MODULE PROCEDURES
 !-------------------------------------------------------------------------------------------------!
-
-function create_weight_object(input_n, output_n) result(object)
-  implicit none
-  integer,intent(in)       :: input_n, output_n
-  type(t_weights), pointer :: object
-  
-  allocate(object)
-  call object%initialize(output_n,input_n)
-
-end function create_weight_object
 
 !-------------------------------------------------------------------------------------------------!
 ! WEIGHT CLASS PROCEDURES

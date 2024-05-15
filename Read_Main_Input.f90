@@ -494,7 +494,7 @@ subroutine read_pploc_block(t2p, reader)
   ! Allocate & setup PP object
   allocate(pp_id       (npp), &
            zone_tracker(npp)  )
-  t2p%pilot_points => create_pilotpoint_object(npp, t2p%nclasses)
+  t2p%pilot_points => create_pilotpoint_object(npp, t2p%ntexclasses)
   nzones = 0
   zone_tracker = 0
   

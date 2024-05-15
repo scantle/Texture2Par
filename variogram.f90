@@ -52,10 +52,7 @@ end type t_vgm
     
     vgm%itype  = find_string_index_in_list(strings, 2, "SPH,EXP,HOL,GAU,POW,CIR,LIN", toupper=.true.)
     if (vgm%itype==0) then
-      call error_handler(1,"Invalid variogram type - must be one of Lin, Sph, Exp")
-    else
-      ! Convert to zero index (see itype definiton in t_vgm type)
-      vgm%itype = vgm%itype - 1
+      call error_handler(1,"Invalid variogram type - must be one of Exp, Sph, Hol, Gau, Cir, Lin")
     end if
     
     ! TODO implement different reading for nonstandard variograms (e.g. power)
@@ -243,14 +240,14 @@ end type t_vgm
     real(dp)              :: cov_value
     real(dp)              :: hr
 
-    dist = this%sqdist(size(p1,1),p1,p2)
+    dist = sqrt(this%sqdist(size(p1,1),p1,p2))
     cov_value = 0.0
     hr = dist / this%a_hmax
 
     select case (this%itype)
       case(1)  ! Spherical model
         if (dist < this%a_hmax) then
-          cov_value = 1.0 - 1.5 * hr + 0.5 * hr**3
+          cov_value = 1.0 - 1.5 * hr + 0.5 * hr**3.0
         end if
 
       case(2)  ! Exponential model
@@ -273,7 +270,6 @@ end type t_vgm
     end select
 
     if (this%itype /= 7) cov_value = this%sill * cov_value
-
     if (this%nugget > 0.0_dp) then
       if (dist < epsilon) cov_value = cov_value + this%nugget
     end if
@@ -296,7 +292,7 @@ end type t_vgm
 
     select case (this%itype)
       ! Spherical model
-      case(1); where (dist < this%a_hmax) cov = 1.0 - 1.5 * hr + 0.5 * hr**3
+      case(1); where (dist < this%a_hmax) cov = 1.0 - 1.5 * hr + 0.5 * hr**3.0
 
       ! Exponential model
       case(2); cov = exp(-3.0 * hr)
