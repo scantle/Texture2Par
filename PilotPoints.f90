@@ -6,6 +6,10 @@ module m_pilotpoints
   
   ! Module Variables                              !    1     2   3   4      5   6    7    8    9
   integer,parameter           :: nproperties = 9  ! Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, STp
+  integer,parameter           :: global_props(3) = (/7,8,9/)
+  integer,parameter           :: nglobal_props = size(global_props)
+  integer,parameter           :: aquitard_props(4) = (/1,2,5,6/)
+  integer,parameter           :: naquitard_props = size(aquitard_props)
   
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_dataset) :: t_pilotpoints
@@ -20,11 +24,6 @@ module m_pilotpoints
     ! Counters
     integer                        :: npp              ! Number of pilot points
     integer                        :: nppzones         ! Number of pilot point zones
-    
-    ! Flags
-    logical                        :: has_aquitard_pp  ! True if aquitard pilot points were read
-    logical,allocatable            :: is_aquifer (:)
-    logical,allocatable            :: is_aquitard(:)
     
     contains
     
@@ -69,9 +68,7 @@ module m_pilotpoints
     integer,intent(in)                 :: npoints
     class(t_grid),pointer,optional      :: grid 
     
-    allocate(this%category   (npoints), &
-             this%is_aquifer (npoints), &
-             this%is_aquitard(npoints)  )
+    allocate(this%category   (npoints))
     allocate(this%grid)
     
     this%npp            = npoints
@@ -79,9 +76,6 @@ module m_pilotpoints
     ! Intialize with default values
     this%nppzones        = 1
     this%category        = 1
-    this%has_aquitard_pp = .false.
-    this%is_aquifer      = .false.
-    this%is_aquitard     = .false.
     
     if (present(grid)) then
       this%grid => grid
@@ -138,9 +132,6 @@ module m_pilotpoints
           ! Store this value as a difference
           this%values(pp_index,2,class_id) = this%values(pp_index,2,class_id) - this%values(pp_index,1,class_id)
         end if
-        ! PP type handling - has this previously been used as a aquiTARD pp?
-        if(this%is_aquitard(pp_index)) call error_handler(1,"Cannot assign aquifer parameters to pilot point previously used for aquitard parameters: " // trim(id))
-        this%is_aquifer(pp_index) = .true.
       case("AQUITARD")
         this%values(pp_index,1,class_id) = item2dp(strings, 3)  ! Kmin
         this%values(pp_index,2,class_id) = item2dp(strings, 4)  ! Kmax
@@ -154,16 +145,13 @@ module m_pilotpoints
           ! Store this value as a difference
           this%values(pp_index,2,class_id) = this%values(pp_index,2,class_id) - this%values(pp_index,1,class_id)
         end if
-        ! PP type handling - has this previously been used as a aquiFER pp?
-        if(this%is_aquifer(pp_index)) call error_handler(1,opt_msg="Cannot assign aquitard parameters to pilot point previously used for aquifer parameters: " // trim(id))
-        this%is_aquitard(pp_index) = .true.
-        this%has_aquitard_pp = .true.
       case("GLOBAL")
         ! Set for ALL classes
         this%values(pp_index,7, :) = item2dp(strings, 2)  ! KHp
         this%values(pp_index,8, :) = item2dp(strings, 3)  ! KVp
         this%values(pp_index,9, :) = item2dp(strings, 4)  ! STp
       case DEFAULT
+        ! Outer routine prevents us from getting here
         call error_handler(1,"Unknown Pilot Point Type: " // trim(pp_type))
     end select
   

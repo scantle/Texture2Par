@@ -7,7 +7,6 @@ module m_read_main_input
   implicit none
 
   type(t_file_reader), pointer :: reader
-  
   contains
 
 !-------------------------------------------------------------------------------------------------!
@@ -63,10 +62,13 @@ module m_read_main_input
         CALL read_variogram_block(t2p, reader)
       case("PP_LOCS")
         call pre_block_read_check(t2p, id)
-        CALL read_pploc_block(t2p, reader)
+        CALL read_pploc_block(t2p, reader, t2p%pilot_points)
       case("PP_PARAMETERS")
         call pre_block_read_check(t2p, id)
         CALL read_ppparm_block(t2p, reader)
+      case("PP_AQUITARD_LOCS")
+        call pre_block_read_check(t2p, id)
+        CALL read_pploc_block(t2p, reader, t2p%pilot_points_aquitard)
       case ("END")
         ! Do nothing - errant line? Block reader ended early?
       case DEFAULT
@@ -96,6 +98,8 @@ module m_read_main_input
         if (t2p%has_classes==.false.) call error_handler(2,reader%file,"CLASSES block must be declared before PP_LOCS")
       case("PP_PARAMETERS")
         if (t2p%has_pplocs==.false.) call error_handler(2,reader%file,"PP_LOCS block must be declared before PP_PARAMETERS")
+      case("PP_AQUITARD_LOCS")
+        if (t2p%has_classes==.false.) call error_handler(2,reader%file,"CLASSES block must be declared before PP_AQUITARD_LOCS")
       case DEFAULT
       ! Do nothing
     end select
@@ -471,11 +475,12 @@ end subroutine read_variogram_block
 
 !-------------------------------------------------------------------------------------------------!
 
-subroutine read_pploc_block(t2p, reader)
+subroutine read_pploc_block(t2p, reader, p)
   use m_pilotpoints, only: t_pilotpoints, create_pilotpoint_object
   implicit none
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
+  type(t_pilotpoints),pointer     :: p
   
   ! Standard file reader variables
   integer                    :: status, length
@@ -494,7 +499,7 @@ subroutine read_pploc_block(t2p, reader)
   ! Allocate & setup PP object
   allocate(pp_id       (npp), &
            zone_tracker(npp)  )
-  t2p%pilot_points => create_pilotpoint_object(npp, t2p%ntexclasses)
+  p => create_pilotpoint_object(npp, t2p%ntexclasses)
   nzones = 0
   zone_tracker = 0
   
@@ -503,10 +508,10 @@ subroutine read_pploc_block(t2p, reader)
     call reader%next_block_item(status, id, strings, length)
     if (status /= 0) exit  ! exit if end of block or end of file
     ! Should this be read with it's own function?
-    pp_id(i)                           = item2int(strings, 1)
-    t2p%pilot_points%grid%coords(1,i)  = item2dp (strings, 2)
-    t2p%pilot_points%grid%coords(2,i)  = item2dp (strings, 3)
-    t2p%pilot_points%category(i)       = item2int(strings, 4)
+    pp_id(i)            = item2int(strings, 1)
+    p%grid%coords(1,i)  = item2dp (strings, 2)
+    p%grid%coords(2,i)  = item2dp (strings, 3)
+    p%category(i)       = item2int(strings, 4)
     !t2p%pilot_points%lay_type(i)       = find_string_index_in_list(strings, 5, "A,T", .true.)
     
     ! Early input checking & handling
@@ -517,11 +522,11 @@ subroutine read_pploc_block(t2p, reader)
     ! Zone tracking
     zone_counted = .false.
     do j=1, nzones
-      if (zone_tracker(j) == t2p%pilot_points%category(i)) zone_counted = .true.
+      if (zone_tracker(j) == p%category(i)) zone_counted = .true.
     end do
     if (zone_counted == .false.) then
       nzones = nzones + 1
-      zone_tracker(nzones) = t2p%pilot_points%category(i)
+      zone_tracker(nzones) = p%category(i)
     end if
   end do
   
@@ -570,9 +575,18 @@ subroutine read_ppparm_block(t2p, reader)
             call reader%back(1)
             exit
           end if
-          ! Read the line, get class, save
-          class_id = t2p%get_class_id(vstrlist_index(strings, 2))
-          call t2p%pilot_points%read_pp_line(id, value, strings, length, class_id)
+          select case(value)
+            case("AQUIFER")
+              class_id = t2p%get_class_id(vstrlist_index(strings, 2))
+              call t2p%pilot_points%read_pp_line(id, value, strings, length, class_id)
+            case("GLOBAL")
+              call t2p%pilot_points%read_pp_line(id, value, strings, length, class_id)  
+            case("AQUITARD")
+              class_id = t2p%get_class_id(vstrlist_index(strings, 2))
+              call t2p%pilot_points_aquitard%read_pp_line(id, value, strings, length, class_id)
+            case DEFAULT
+              call error_handler(1,reader%file,"Unknown Pilot Point Parameter Type: " // trim(value))
+          end select
         end do ! End of pp reading loop
       case DEFAULT
         call error_handler(1,reader%file,"Unknown Pilot Point Parameter option: " // trim(id))

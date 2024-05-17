@@ -162,6 +162,7 @@ end subroutine doolittle
     this%nsets  = size(obs_data)
     this%ngrid  = to_grid%n
     
+    if (allocated(this%vario_idx)) deallocate(this%vario_idx)
     allocate(this%vario_idx(this%nsets,this%nsets))
     this%vario_idx(:,:) = this%global_vario_idx(obs_idx(:),obs_idx(:))  ! subset to local datasets
     
@@ -255,6 +256,7 @@ end subroutine doolittle
     this%unbias = 1
     
     ! Setup nnearest tracker (usenear) (sometimes there is not this%nnear(i) values in the dataset)
+    if (allocated(this%usenear)) deallocate(this%usenear)
     allocate(this%usenear(this%nsets))
     
     ! Build search trees in observed grid objects
@@ -272,6 +274,10 @@ end subroutine doolittle
     matsize = sum(this%nnear(obs_idx))+this%unbias+this%ndrift
     mat_tot = matsize * (matsize + 1) / 2
     
+    if (allocated(this%matA)) deallocate(this%matA)
+    if (allocated(this%rhsB)) deallocate(this%rhsB)
+    if (allocated(this%pset_id)) deallocate(this%pset_id)
+    if (allocated(this%w)) deallocate(this%w)
     allocate(this%matA(mat_tot), this%rhsB(matsize), this%pset_id(matsize), this%w(matsize))
     
   end subroutine setup_ok

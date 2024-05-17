@@ -32,6 +32,7 @@ contains
     
     self%nin  = input_n
     self%nout = output_n
+    if (allocated(self%values)) deallocate(self%values)
     allocate(self%values (output_n, input_n))
              
     ! Set default group

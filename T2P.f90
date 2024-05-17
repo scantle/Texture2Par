@@ -21,6 +21,7 @@ module m_T2P
     type(t_layerdata),pointer        :: par(:,:)          ! Final model hydraulic parameters (parameters, layers)
     !type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)  ! Moved to interpolator
     type(t_pilotpoints),pointer      :: pilot_points
+    type(t_pilotpoints),pointer      :: pilot_points_aquitard
     
     ! Counters
     integer                          :: npar        ! Kh, Kv, Ss, Sy (what about aquitards?) (Attach to fmodel?)
@@ -52,6 +53,7 @@ module m_T2P
     logical                          :: has_vario
     logical                          :: has_fmodel
     logical                          :: has_pplocs
+    logical                          :: has_pplocs_aquitards
     logical                          :: has_pp
     logical                          :: has_datafiles
     
@@ -70,7 +72,7 @@ module m_T2P
     procedure,public   :: setup_pplocs
     procedure,public   :: setup_dataset_ppzones
     procedure,public   :: check_major_inputs
-    procedure,private  :: check_pp_zone_layertype_assignments
+    !procedure,private  :: check_pp_zone_layertype_assignments
     procedure,private  :: nvario_estimator
     procedure,private  :: no_covariates
     
@@ -104,18 +106,19 @@ module m_T2P
     class(t_T2P), intent(inout)      :: this
     
     ! Initialize Read Trackers
-    this%has_opt       = .false.
-    this%has_classes   = .false.
-    this%has_covar     = .false.
-    this%has_interp    = .false.
-    this%has_vario     = .false.
-    this%has_fmodel    = .false.
-    this%has_pplocs    = .false.
-    this%has_pp        = .false.
-    this%has_datafiles = .false.
+    this%has_opt          = .false.
+    this%has_classes      = .false.
+    this%has_covar        = .false.
+    this%has_interp       = .false.
+    this%has_vario        = .false.
+    this%has_fmodel       = .false.
+    this%has_pplocs       = .false.
+    this%has_pp           = .false.
+    this%has_datafiles    = .false.
+    this%has_pplocs_aquitards = .false.
     ! And group trackers...
-    this%has_hsus      = .false.
-    this%has_ppzones   = .false.
+    this%has_hsus         = .false.
+    this%has_ppzones      = .false.
     
     ! Initialize Elements
     call this%opt%initialize()
@@ -385,15 +388,32 @@ module m_T2P
     integer, intent(in)           :: nzones, zone_tracker(:)
     integer                       :: i
     
-    this%pilot_points%pp_id => pp_id
-    allocate(this%pilot_points%zonelist(nzones))
+    ! Called for both aquifer & aquitard pilot points
     
-    this%pilot_points%nppzones = nzones
-    do i=1, nzones
-      this%pilot_points%zonelist(i) = zone_tracker(i)
-    end do
+    ! AQUIFER
+    if (associated(this%pilot_points)) then
+      this%pilot_points%pp_id => pp_id
+      allocate(this%pilot_points%zonelist(nzones))
     
-    this%has_pplocs = .true.
+      this%pilot_points%nppzones = nzones
+      do i=1, nzones
+        this%pilot_points%zonelist(i) = zone_tracker(i)
+      end do
+    
+      this%has_pplocs = .true.
+      
+    ! AQUITARD
+    elseif (associated(this%pilot_points_aquitard)) then
+      this%pilot_points_aquitard%pp_id => pp_id
+      allocate(this%pilot_points_aquitard%zonelist(nzones))
+    
+      this%pilot_points_aquitard%nppzones = nzones
+      do i=1, nzones
+        this%pilot_points_aquitard%zonelist(i) = zone_tracker(i)
+      end do
+    
+      this%has_pplocs_aquitards = .true.
+    end if
   
   end subroutine setup_pplocs
   
@@ -425,58 +445,64 @@ module m_T2P
       call error_handler(1,opt_msg="Mismatch between Pilot Point Zones assigned to Pilot Points vs Model Grid")
     end if
     
-    call this%check_pp_zone_layertype_assignments()
+    ! Make sure pilot points and flow model agree on existance of aquitards
+    ! TODO - more robust? Nothing checks to ensure values at this points
+    if (this%has_pplocs_aquitards /= this%fmodel%has_aquitards) then
+      call error_handler(1,opt_msg="Mismatch in aquitard existance between Pilot Points and Model")
+    end if
+    
+    !call this%check_pp_zone_layertype_assignments()
     
   end subroutine check_major_inputs
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine check_pp_zone_layertype_assignments(this)
-    implicit none
-    class(t_T2P), intent(inout)   :: this
-    type(t_flow_model),pointer    :: p
-    integer                       :: k,i,j, arrid, catid
-    character(3)                  :: iout(3)
-  
-      ! Only for IWFM - Do aquitard/aquifer pilot point zones conflict?
-    select type(p=>this%fmodel)
-      type is(t_iwfm_model)
-        if (this%pilot_points%has_aquitard_pp .or. count(p%lay_aqtard) > 0) then
-          do k=1, p%nlayers
-            arrid = this%fmodel%ppzones%lay2arr(k)
-            if (p%lay_aqtard(k)) then  ! Aquitard
-              do i=1, this%fmodel%ppzones%arrncat(arrid)
-                catid = this%fmodel%ppzones%arrcat(i,arrid)
-                ! Loop over pilot points in this zone and see if they're aquitard pilot points
-                do j=1, this%pilot_points%npp
-                  if (this%pilot_points%category(j)==catid) then
-                    if (this%pilot_points%is_aquifer(j)) then
-                      write(iout(1),'(1i3)') this%pilot_points%pp_id(j)
-                      write(iout(2),'(1i3)') catid
-                      call error_handler(1,opt_msg="Aquitard Pilot Point "//iout(1)//" assigned to Zone "//iout(2)//", which is in an aquifer layer")
-                    end if
-                  end if
-                end do
-              end do
-            else                    ! Aquifer
-              do i=1, this%fmodel%ppzones%arrncat(arrid)
-                catid = this%fmodel%ppzones%arrcat(i,arrid)
-                ! Loop over pilot points in this zone and see if they're aquitard pilot points
-                do j=1, this%pilot_points%npp
-                  if (this%pilot_points%category(j)==catid) then
-                    if (this%pilot_points%is_aquitard(j)) then
-                      write(iout(1),'(1i3)') this%pilot_points%pp_id(j)
-                      write(iout(2),'(1i3)') catid
-                      call error_handler(1,opt_msg="Aquifer Pilot Point "//iout(1)//" assigned to Zone "//iout(2)//", which is in an aquitard layer")
-                    end if
-                  end if
-                end do
-              end do  
-            end if
-          end do
-        end if
-    end select
-  end subroutine
+  !subroutine check_pp_zone_layertype_assignments(this)
+  !  implicit none
+  !  class(t_T2P), intent(inout)   :: this
+  !  type(t_flow_model),pointer    :: p
+  !  integer                       :: k,i,j, arrid, catid
+  !  character(3)                  :: iout(3)
+  !
+  !    ! Only for IWFM - Do aquitard/aquifer pilot point zones conflict?
+  !  select type(p=>this%fmodel)
+  !    type is(t_iwfm_model)
+  !      if (this%pilot_points%has_aquitard_pp .or. count(p%lay_aqtard) > 0) then
+  !        do k=1, p%nlayers
+  !          arrid = this%fmodel%ppzones%lay2arr(k)
+  !          if (p%lay_aqtard(k)) then  ! Aquitard
+  !            do i=1, this%fmodel%ppzones%arrncat(arrid)
+  !              catid = this%fmodel%ppzones%arrcat(i,arrid)
+  !              ! Loop over pilot points in this zone and see if they're aquitard pilot points
+  !              do j=1, this%pilot_points%npp
+  !                if (this%pilot_points%category(j)==catid) then
+  !                  if (this%pilot_points%is_aquifer(j)) then
+  !                    write(iout(1),'(1i3)') this%pilot_points%pp_id(j)
+  !                    write(iout(2),'(1i3)') catid
+  !                    call error_handler(1,opt_msg="Aquitard Pilot Point "//iout(1)//" assigned to Zone "//iout(2)//", which is in an aquifer layer")
+  !                  end if
+  !                end if
+  !              end do
+  !            end do
+  !          else                    ! Aquifer
+  !            do i=1, this%fmodel%ppzones%arrncat(arrid)
+  !              catid = this%fmodel%ppzones%arrcat(i,arrid)
+  !              ! Loop over pilot points in this zone and see if they're aquitard pilot points
+  !              do j=1, this%pilot_points%npp
+  !                if (this%pilot_points%category(j)==catid) then
+  !                  if (this%pilot_points%is_aquitard(j)) then
+  !                    write(iout(1),'(1i3)') this%pilot_points%pp_id(j)
+  !                    write(iout(2),'(1i3)') catid
+  !                    call error_handler(1,opt_msg="Aquifer Pilot Point "//iout(1)//" assigned to Zone "//iout(2)//", which is in an aquitard layer")
+  !                  end if
+  !                end if
+  !              end do
+  !            end do  
+  !          end if
+  !        end do
+  !      end if
+  !  end select
+  !end subroutine
   
 !-------------------------------------------------------------------------------------------------!
 ! MAIN PROCEDURES
@@ -530,6 +556,7 @@ module m_T2P
   subroutine interpolate_pp(this, to_grid, to_categories, results)
     use m_grid, only: t_grid
     use m_weights, only: t_weights
+    use m_pilotpoints, only: nproperties, naquitard_props, aquitard_props
     ! Pilot Point type in, Pilot Point type out
     implicit none
     class(t_T2P), intent(inout)     :: this
@@ -537,7 +564,7 @@ module m_T2P
     class(t_grid),pointer            :: to_grid
     type(t_category)                :: to_categories
     type(t_weights)                 :: weights
-    integer                         :: i,k
+    integer                         :: i,j,k
     integer                         :: obs_idx(1)
     type(t_pilotpoints)             :: obs_data(1)  ! a little trick to appease calc_weights
     
@@ -570,9 +597,47 @@ module m_T2P
       end if
     
       ! Apply weights and create results
-      ! APPLY TO MULTIPLE CLASSES & PARAMETERS
-      results%values(:,1,1) = matmul(weights%values,this%pilot_points%values(:,1,1))
+      do i=1, this%ntexclasses
+        do j=1, nproperties
+          results%values(:,j,i) = matmul(weights%values,this%pilot_points%values(:,j,i))
+        end do
+      end do
     end do
+    
+    ! Aquitards
+    if (this%fmodel%has_aquitards) then
+      obs_data(1) = this%pilot_points_aquitard
+      call weights%initialize(this%pilot_points%grid%n, to_grid%n)  !input_n, output_n
+    
+      ! Go by pilot point zone arrays (up to nlayers)
+      do k=1, this%fmodel%ppzones%narr
+    
+        ! Check if we have precalculated weights for the pilot point interpolation
+        if (this%opt%READ_PP_WEIGHTS) then
+          ! TODO READ
+        else
+          call this%interp_pp%calc_weights(obs_data, &
+                                           obs_idx,  &
+                                           to_grid,  &
+                                           weights%values, &
+                                           to_categories%arrcat(1:to_categories%arrncat(k),k), &
+                                           to_categories%array(:,k),&
+                                           this%opt)
+        end if
+    
+        ! Write PP weights
+        if (this%opt%WRITE_PP_WEIGHTS) then
+          ! TODO WRITE
+        end if
+    
+        ! Apply weights and create results - subset of properties
+        do i=1, this%ntexclasses
+          do j=1, naquitard_props
+            results%values(:,aquitard_props(j),i) = matmul(weights%values,this%pilot_points%values(:,j,i))
+          end do
+        end do
+      end do
+    end if
     
   end subroutine interpolate_pp
 

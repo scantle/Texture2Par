@@ -35,6 +35,7 @@ module m_flow_model
     type(t_grid),pointer          :: grid(:)        ! xy grids for layers
     type(t_category)              :: ppzones        ! Pilot point zone fmodel grid arrays & tracking
     type(t_category)              :: hsus           ! HSU fmodel grid arrays & tracking
+    logical                       :: has_aquitards  ! For now, only in IWFM - but helps T2P w/ aquitard pilot points
   
     contains
       procedure,public            :: initialize
@@ -97,7 +98,7 @@ module m_flow_model
     procedure,public          :: read_model => read_iwfm
     procedure,public          :: find_in_grid => find_in_grid_elem
     procedure,public          :: get_elev_at_point =>  get_elev_at_point_elem
-    procedure,public          :: get_active_ppzones => get_active_ppzones_iwfm
+    !procedure,public          :: get_active_ppzones => get_active_ppzones_iwfm
     procedure,private         :: iwfm_elem_elev_idw
     procedure,private         :: alloc_layers => alloc_layers_iwfm
     procedure,private         :: alloc_nodes  => alloc_nodes_iwfm
@@ -196,6 +197,7 @@ module m_flow_model
     this%template_file = ''
     this%output_file   = ''
     this%grd_file      = ''
+    this%has_aquitards = .false.
     
   end subroutine initialize
   
@@ -243,7 +245,7 @@ module m_flow_model
     end do
     
   end subroutine alloc_nodes
-
+  
 !-------------------------------------------------------------------------------------------------!
   
   subroutine write_input_summary(this)
@@ -599,7 +601,7 @@ module m_flow_model
     this%nodenelem = 0
     
   end subroutine alloc_nodes_iwfm
-
+  
 !-------------------------------------------------------------------------------------------------!
   
   function find_in_grid_elem(this, coords) result(element)
@@ -666,36 +668,36 @@ module m_flow_model
   
 !-------------------------------------------------------------------------------------------------!
   
-  function get_active_ppzones_iwfm(this) result(nactive)
-    ! Because aquitards overcomplicate everything
-    implicit none
-    class(t_iwfm_model)     :: this
-    integer                 :: nactive,k,i,arrid,catid
-    logical, allocatable    :: category_seen(:)
-    
-    nactive = 0
-    ! Determine the range of possible categories
-    allocate(category_seen(this%ppzones%ncat))
-    category_seen = .false.  ! Initialize to mark all as unseen
-
-    ! Iterate over layers and count zones for each active layer
-    do k = 1, size(this%lay_exist)
-      if (this%lay_exist(k)) then  ! Layer is active
-        arrid = this%ppzones%lay2arr(k)  ! Get the corresponding array ID
-
-        ! Loop through all categories in this array and mark them
-        do i = 1, this%ppzones%arrncat(arrid)
-          catid = this%ppzones%arrcat(i, arrid)
-
-          ! Only count if this category hasn't been seen yet
-          if (.not. category_seen(catid)) then
-            category_seen(catid) = .true.  ! Mark as seen
-            nactive = nactive + 1  ! Increment the unique category count
-          end if
-        end do
-      end if
-    end do
-  end function get_active_ppzones_iwfm
+  !function get_active_ppzones_iwfm(this) result(nactive)
+  !  ! Because aquitards overcomplicate everything
+  !  implicit none
+  !  class(t_iwfm_model)     :: this
+  !  integer                 :: nactive,k,i,arrid,catid
+  !  logical, allocatable    :: category_seen(:)
+  !  
+  !  nactive = 0
+  !  ! Determine the range of possible categories
+  !  allocate(category_seen(this%ppzones%ncat))
+  !  category_seen = .false.  ! Initialize to mark all as unseen
+  !
+  !  ! Iterate over layers and count zones for each active layer
+  !  do k = 1, size(this%lay_exist)
+  !    if (this%lay_exist(k)) then  ! Layer is active
+  !      arrid = this%ppzones%lay2arr(k)  ! Get the corresponding array ID
+  !
+  !      ! Loop through all categories in this array and mark them
+  !      do i = 1, this%ppzones%arrncat(arrid)
+  !        catid = this%ppzones%arrcat(i, arrid)
+  !
+  !        ! Only count if this category hasn't been seen yet
+  !        if (.not. category_seen(catid)) then
+  !          category_seen(catid) = .true.  ! Mark as seen
+  !          nactive = nactive + 1  ! Increment the unique category count
+  !        end if
+  !      end do
+  !    end if
+  !  end do
+  !end function get_active_ppzones_iwfm
 
 !-------------------------------------------------------------------------------------------------!
   
@@ -743,6 +745,11 @@ module m_flow_model
     ! Calculate maximum thickness (differences) between consecutive layers
     ! Determine if layer exists based on max thickness > 0.0
     this%lay_exist = maxval(abs(this%elev(:, 1:this%nlayers) - this%elev(:, 0:this%nlayers-1)), dim=1) > 0.0_dp
+    
+    ! See if any of these are aquitard layers
+    do i=1, this%nlayers
+      if (this%lay_exist(i).and.this%lay_aqtard(i)) this%has_aquitards = .true.
+    end do
     
   end subroutine process_iwfm_layers
   

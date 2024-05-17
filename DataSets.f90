@@ -33,7 +33,7 @@ module m_datasets
     ! Intended for input data
     character(30)                  :: name             ! Class Name
     integer                        :: class_id         ! Class ID
-    real(dp),allocatable           :: values(:,:)        ! Data values associated with each grid point for each class (nclasses, npoints)
+    real(dp),allocatable           :: values(:,:)      ! Data values associated with each grid point for each class (nclasses, npoints)
     integer,allocatable            :: fmodel_loc(:)    ! Containing model element/cell
     
     contains
