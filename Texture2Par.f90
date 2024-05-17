@@ -47,7 +47,6 @@ program Texture2Par
   call read_datasets(t2p)
   call write_elapsed_time(log)
   ! Check Major Inputs, write input summary, write warnings
-  ! TODO check aquitard/aquifer zones do not conflict
   call t2p%check_major_inputs()
   call write_input_summary(log, t2p)
   call write_warnings(log)

@@ -24,7 +24,7 @@ module m_T2P
     type(t_pilotpoints),pointer      :: pilot_points_aquitard
     
     ! Counters
-    integer                          :: npar        ! Kh, Kv, Ss, Sy (what about aquitards?) (Attach to fmodel?)
+    integer                          :: npar        ! Kh, Kv, Ss, Sy
     integer                          :: nclasses    ! Number of data classes
     integer                          :: ntexclasses ! Texture datasets (for which hydraulic properties exist) (one may be inferred)
     integer                          :: nprimary    ! Number of active primary datasets for kriging (texture or parameter, see opt%INTERP_ORDER
@@ -228,7 +228,7 @@ module m_T2P
 
     call this%nvario_estimator()
     
-    if (maxval(this%nsecondary_by_id) > 1) then
+    if (maxval(this%nsecondary_by_id) > 0) then
       this%has_covar = .true.
     end if
   end subroutine setup_covariates
@@ -457,53 +457,6 @@ module m_T2P
   
 !-------------------------------------------------------------------------------------------------!
   
-  !subroutine check_pp_zone_layertype_assignments(this)
-  !  implicit none
-  !  class(t_T2P), intent(inout)   :: this
-  !  type(t_flow_model),pointer    :: p
-  !  integer                       :: k,i,j, arrid, catid
-  !  character(3)                  :: iout(3)
-  !
-  !    ! Only for IWFM - Do aquitard/aquifer pilot point zones conflict?
-  !  select type(p=>this%fmodel)
-  !    type is(t_iwfm_model)
-  !      if (this%pilot_points%has_aquitard_pp .or. count(p%lay_aqtard) > 0) then
-  !        do k=1, p%nlayers
-  !          arrid = this%fmodel%ppzones%lay2arr(k)
-  !          if (p%lay_aqtard(k)) then  ! Aquitard
-  !            do i=1, this%fmodel%ppzones%arrncat(arrid)
-  !              catid = this%fmodel%ppzones%arrcat(i,arrid)
-  !              ! Loop over pilot points in this zone and see if they're aquitard pilot points
-  !              do j=1, this%pilot_points%npp
-  !                if (this%pilot_points%category(j)==catid) then
-  !                  if (this%pilot_points%is_aquifer(j)) then
-  !                    write(iout(1),'(1i3)') this%pilot_points%pp_id(j)
-  !                    write(iout(2),'(1i3)') catid
-  !                    call error_handler(1,opt_msg="Aquitard Pilot Point "//iout(1)//" assigned to Zone "//iout(2)//", which is in an aquifer layer")
-  !                  end if
-  !                end if
-  !              end do
-  !            end do
-  !          else                    ! Aquifer
-  !            do i=1, this%fmodel%ppzones%arrncat(arrid)
-  !              catid = this%fmodel%ppzones%arrcat(i,arrid)
-  !              ! Loop over pilot points in this zone and see if they're aquitard pilot points
-  !              do j=1, this%pilot_points%npp
-  !                if (this%pilot_points%category(j)==catid) then
-  !                  if (this%pilot_points%is_aquitard(j)) then
-  !                    write(iout(1),'(1i3)') this%pilot_points%pp_id(j)
-  !                    write(iout(2),'(1i3)') catid
-  !                    call error_handler(1,opt_msg="Aquifer Pilot Point "//iout(1)//" assigned to Zone "//iout(2)//", which is in an aquitard layer")
-  !                  end if
-  !                end if
-  !              end do
-  !            end do  
-  !          end if
-  !        end do
-  !      end if
-  !  end select
-  !end subroutine
-  
 !-------------------------------------------------------------------------------------------------!
 ! MAIN PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -532,8 +485,6 @@ module m_T2P
   
     ! Interpolate PP to PPTO_grid
     call this%interpolate_pp(pp_to, cat_to, pp_intermediate)
-    
-    ! TODO I'm not sure the above is more readable than just including it below in the if statement.
   
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! Krige textures to fmodel grid
@@ -568,7 +519,7 @@ module m_T2P
     integer                         :: obs_idx(1)
     type(t_pilotpoints)             :: obs_data(1)  ! a little trick to appease calc_weights
     
-    call results%init_pilotpoint(to_grid%n, to_grid)
+    call results%init_pilotpoint(to_grid%n, to_grid) ! Copies grid over
     allocate(results%values(to_grid%n, size(this%pilot_points%values,2), this%ntexclasses))
     
     obs_data(1) = this%pilot_points
@@ -659,7 +610,6 @@ module m_T2P
       ! Check if layer has thickness?
     
       ! Loop over primary classes
-      ! Check for same covariates?
       do i=1, this%nclasses
     
         ! Check if we have precalculated weights for the model grid interpolation
@@ -696,6 +646,8 @@ module m_T2P
     implicit none
     class(t_T2P), intent(inout)   :: this
     type(t_pilotpoints)           :: pp_obj
+    
+    write(*,*) 'here'
   
   end subroutine calc_block_parameters
   
@@ -757,8 +709,9 @@ module m_T2P
     integer,intent(in)      :: prime
     integer,allocatable     :: connlist(:)
     
+    if (allocated(connlist)) deallocate(connlist)
     allocate(connlist(this%nsecondary_by_id(prime)))
-    connlist = this%connections(1:this%nsecondary_by_id(prime),prime) 
+    connlist = this%connections(1:1+this%nsecondary_by_id(prime),prime) 
     return
   end function
   

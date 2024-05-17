@@ -665,39 +665,6 @@ module m_flow_model
     call this%iwfm_elem_elev_idw(coords,elemid,point_elevs)
     
   end subroutine get_elev_at_point_elem
-  
-!-------------------------------------------------------------------------------------------------!
-  
-  !function get_active_ppzones_iwfm(this) result(nactive)
-  !  ! Because aquitards overcomplicate everything
-  !  implicit none
-  !  class(t_iwfm_model)     :: this
-  !  integer                 :: nactive,k,i,arrid,catid
-  !  logical, allocatable    :: category_seen(:)
-  !  
-  !  nactive = 0
-  !  ! Determine the range of possible categories
-  !  allocate(category_seen(this%ppzones%ncat))
-  !  category_seen = .false.  ! Initialize to mark all as unseen
-  !
-  !  ! Iterate over layers and count zones for each active layer
-  !  do k = 1, size(this%lay_exist)
-  !    if (this%lay_exist(k)) then  ! Layer is active
-  !      arrid = this%ppzones%lay2arr(k)  ! Get the corresponding array ID
-  !
-  !      ! Loop through all categories in this array and mark them
-  !      do i = 1, this%ppzones%arrncat(arrid)
-  !        catid = this%ppzones%arrcat(i, arrid)
-  !
-  !        ! Only count if this category hasn't been seen yet
-  !        if (.not. category_seen(catid)) then
-  !          category_seen(catid) = .true.  ! Mark as seen
-  !          nactive = nactive + 1  ! Increment the unique category count
-  !        end if
-  !      end do
-  !    end if
-  !  end do
-  !end function get_active_ppzones_iwfm
 
 !-------------------------------------------------------------------------------------------------!
   
