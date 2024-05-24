@@ -77,7 +77,7 @@ function count_fragments(line) result(count)
   DO WHILE (i<= length)
     IF (line(i:i) == ' ' .OR. ICHAR(line(i:i)) == 9) THEN  ! .OR. line(i:i) == ','
       i = i + 1
-      CONTINUE
+      CYCLE
     END IF
     count = count + 1
 

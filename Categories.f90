@@ -67,6 +67,8 @@ module m_categories
     
     this%ncat = 1
     this%catlist(1) = 1
+    this%arrncat(:) = 1
+    this%arrcat(:,1) = 1
     if (this%dtype==1) then
       call vstrlist_append(this%strlist, '')  ! Necessary?
     end if

@@ -239,7 +239,7 @@ end subroutine doolittle
 
   subroutine setup_ok(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
     implicit none
-    class(t_ordkrige),intent(inout)   :: this
+    class(t_ordkrige),intent(inout)       :: this
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
     type(t_grid),intent(in)               :: to_grid
@@ -248,7 +248,7 @@ end subroutine doolittle
     integer,intent(in)                    :: to_cats(:)
     type(t_options),intent(in)            :: opt
     ! Local
-    integer                     :: i,matsize,vidx, mat_tot
+    integer                     :: i,class_id,matsize,vidx, mat_tot
     
     ! Call super setup
     call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
@@ -258,20 +258,23 @@ end subroutine doolittle
     ! Setup nnearest tracker (usenear) (sometimes there is not this%nnear(i) values in the dataset)
     if (allocated(this%usenear)) deallocate(this%usenear)
     allocate(this%usenear(this%nsets))
+    this%usenear = 0.0
     
     ! Build search trees in observed grid objects
     ! Also, figure out number of datasets in each category
     do i=1, this%nsets
-      call obs_data(i)%build_tree_by_category(cat, this%variograms(1,i)%rotmat(1:this%ndim,1:this%ndim))
+      class_id = obs_idx(i)
+      if (i>1) class_id = 1
+      call obs_data(i)%build_tree_by_category(cat,class_id) !this%variograms(1,i)%rotmat(1:this%ndim,1:this%ndim))
       this%usenear(i) = min(this%nnear(i), obs_data(i)%grid%tree%n)
       ! TODO Warn that there is so little data? Do we even have enough information to warn?
       ! Warnings only get printed before the calculations
       ! In this scope we don't if it's pp or data...
     end do
     
-    this%maxnear = this%nnear(1)
-    if (this%nsets > 1) this%maxnear = this%maxnear + maxval(this%nnear)
-    matsize = sum(this%nnear(obs_idx))+this%unbias+this%ndrift
+    this%maxnear =  maxval(this%nnear)  !this%nnear(1)
+    !if (this%nsets > 1) this%maxnear = this%maxnear + maxval(this%nnear)
+    matsize = sum(this%nnear)+this%unbias+this%ndrift
     mat_tot = matsize * (matsize + 1) / 2
     
     if (allocated(this%matA)) deallocate(this%matA)
@@ -363,7 +366,7 @@ end subroutine doolittle
     
     colcount = 0
     do i=1, (nobs-1)
-      colcount(i+1) = colcount(i) + obs_data(i)%grid%n
+      colcount(i+1) = colcount(i) + nnear(i)  !obs_data(i)%grid%n
     end do
     
 !***  ZERO OUT ELEMENTS OF P-MATRIX NEEDED FOR KRIGING

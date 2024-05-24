@@ -51,7 +51,7 @@ module m_read_datasets
       allocate(wvalues      (nsets), &
               total_thick   (nsets,t2p%fmodel%nlayers), &
               wv_accumulator(nsets,t2p%fmodel%nlayers), &
-              hsus(ncats))  ! TODO handle nlayers of hsus when active
+              hsus(ncats))
       if (allocated(local_elevs)==.false.) allocate(local_elevs(0:t2p%fmodel%nlayers))
       
       ! Get data length (not file length, since we've gone past the header)
@@ -205,6 +205,7 @@ module m_read_datasets
       ! is primary...
       if (nsets==t2p%get_active_texture_classes()) then
         dataset_idx = 1
+        t2p%class_dataset(class_ids) = dataset_idx
       else
         call error_handler(1,file,"All primary datasets must be in same dataset file")
       end if
@@ -213,6 +214,7 @@ module m_read_datasets
       ! (Each in their own dataset)
       if (nsets==1) then
         dataset_idx = class_ids(1) - t2p%get_active_texture_classes()
+        t2p%class_dataset(class_ids(1)) = dataset_idx
         class_ids(:) = 1
       else
         call error_handler(1,file,"Each secondary dataset must have their own dataset file")

@@ -101,7 +101,7 @@ module m_grid
     ! Worth getting fancier than copying? Pointers?
     if (allocated(this%true_idx)) then
       ! Map indices back to original dataset
-      idx = this%true_idx(res(:)%idx)
+      idx = this%true_idx(res(1:)%idx)
     else
       idx = res(:)%idx
     end if

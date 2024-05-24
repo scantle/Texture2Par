@@ -45,6 +45,8 @@ module m_flow_model
       procedure,public            :: find_in_grid
       procedure,public            :: get_elev_at_point
       procedure,public            :: get_active_ppzones
+      procedure,public            :: is_active_layer
+      procedure,public            :: is_aquitard_layer
       procedure,private           :: alloc_layers
       procedure,private           :: alloc_nodes
       !procedure,private     :: write_model_input
@@ -98,6 +100,8 @@ module m_flow_model
     procedure,public          :: read_model => read_iwfm
     procedure,public          :: find_in_grid => find_in_grid_elem
     procedure,public          :: get_elev_at_point =>  get_elev_at_point_elem
+    procedure,public          :: is_active_layer => is_active_layer_iwfm
+    procedure,public          :: is_aquitard_layer => is_aquitard_layer_iwfm
     !procedure,public          :: get_active_ppzones => get_active_ppzones_iwfm
     procedure,private         :: iwfm_elem_elev_idw
     procedure,private         :: alloc_layers => alloc_layers_iwfm
@@ -254,12 +258,12 @@ module m_flow_model
     class(t_flow_model)     :: this
     
     select type (this)
-      type is (t_iwfm_model)
+      class is (t_iwfm_model)
         call log%write_valueline('Number of Model Nodes',    this%nnodes(1))
         call log%write_valueline('Number of Model Elements', this%nelements)
         call log%write_valueline('Number of Aquifer Layers', count(this%lay_exist .and. .not. this%lay_aqtard))
         call log%write_valueline('Number of Active Aquitard Layers', count(this%lay_exist .and. this%lay_aqtard))
-      type is (t_flow_fdmodel)
+      class is (t_flow_fdmodel)
         call log%write_valueline('Number of Model Cells (All Layers)', sum(this%nnodes))
         call log%write_valueline('Number of Model Layers',      this%nlayers)
     end select
@@ -320,6 +324,32 @@ module m_flow_model
     
   end subroutine read_category_files
   
+!-------------------------------------------------------------------------------------------------!
+  
+  function is_active_layer(this, k)
+    ! To be overloaded where necessary (IWFM has zero-thickness layers, typically aquitards)
+    implicit none
+    class(t_flow_model)     :: this
+    integer,intent(in)      :: k
+    logical                 :: is_active_layer
+    
+    is_active_layer = .true.
+    
+  end function is_active_layer
+
+!-------------------------------------------------------------------------------------------------!
+  
+  function is_aquitard_layer(this, k)
+    ! To be overloaded where necessary (IWFM has aquitards)
+    implicit none
+    class(t_flow_model)     :: this
+    integer,intent(in)      :: k
+    logical                 :: is_aquitard_layer
+    
+    is_aquitard_layer = .false.
+    
+  end function is_aquitard_layer
+
 !-------------------------------------------------------------------------------------------------!
   
   !subroutine add_node2vert2node(this, node, nvert)
@@ -719,6 +749,32 @@ module m_flow_model
     end do
     
   end subroutine process_iwfm_layers
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  function is_active_layer_iwfm(this, k)
+    ! To be overloaded where necessary (IWFM has zero-thickness layers, typically aquitards)
+    implicit none
+    class(t_iwfm_model)     :: this
+    integer,intent(in)      :: k
+    logical                 :: is_active_layer_iwfm
+    
+    is_active_layer_iwfm = this%lay_exist(k)
+    
+  end function is_active_layer_iwfm
+
+!-------------------------------------------------------------------------------------------------!
+  
+  function is_aquitard_layer_iwfm(this, k)
+    ! To be overloaded where necessary (IWFM has aquitards)
+    implicit none
+    class(t_iwfm_model)     :: this
+    integer,intent(in)      :: k
+    logical                 :: is_aquitard_layer_iwfm
+    
+    is_aquitard_layer_iwfm = this%lay_aqtard(k)
+    
+  end function is_aquitard_layer_iwfm
   
 !-------------------------------------------------------------------------------------------------!
   

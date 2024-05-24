@@ -298,7 +298,7 @@ module m_file_io
       else if ((line(1:1) == '#').or.(line(1:1) == '*').or.(line(1:1) == '')) then
         ! Comment line, blank line
         i = i + 1
-        continue
+        cycle
       else if (index(line, 'EXTERNAL')>0) then
         ! External command, continue reading in new file
         call multisplit(ierr,2,left,right,line)
@@ -341,7 +341,7 @@ module m_file_io
            .or.(line(1:1) == '')) then
         ! Comment line, blank line
         i = i + 1
-        continue
+        cycle
       else
         ! Data
         backspace(this%unit)

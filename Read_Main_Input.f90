@@ -72,7 +72,6 @@ module m_read_main_input
       case ("END")
         ! Do nothing - errant line? Block reader ended early?
       case DEFAULT
-        ! TODO! Raise error!
         call error_handler(1,reader%file,"Unknown Block Name: " // trim(id))
     end select
 

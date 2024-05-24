@@ -78,16 +78,22 @@ module m_datasets
 
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine build_tree_by_category(this, cat, rotmat)
+  subroutine build_tree_by_category(this, cat, class_idx, rotmat)
     implicit none
     class(t_dataset),intent(inout)  :: this
-    integer, intent(in)             :: cat
-    logical                         :: catmask(this%grid%n)
+    integer, intent(in)             :: cat, class_idx
+    logical                         :: catmask(this%grid%n), na_mask(this%grid%n)
     real(dp),optional               :: rotmat(:,:) ! Rotation Matrix
     
     call this%grid%burn_tree()  ! Clear out previous tree
     catmask = (this%category==cat)
-    call this%grid%build_tree(catmask, rotmat=rotmat)
+    na_mask = .true.
+    ! For dataset, ignore all NA values
+    select type(this)
+      class is (t_layerdata)
+        na_mask = (this%values(class_idx,1:) > -999.0)
+    end select
+    call this%grid%build_tree(catmask.and.na_mask, rotmat=rotmat)
   
   end subroutine build_tree_by_category
   
@@ -106,6 +112,9 @@ module m_datasets
              this%values    (nclasses, npoints))
     allocate(this%grid)
 
+    ! By default
+    this%category = 1
+    
     !this%grid = create_grid_object(2, npoints)  ! X,Y,Z coords by n 
   
   end subroutine init_layerdata
