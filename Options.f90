@@ -23,6 +23,7 @@ module m_options
     !character(100)           :: INPUT_DIR             ! Direction where input gets read
     logical                  :: SILENT_MODE           !
     logical                  :: DEBUG_MODE            !
+    logical                  :: ONLY_TEXTURE          ! Stops after calculating texture
     logical                  :: WRITE_MATRIX          !
     logical                  :: WRITE_PP_WEIGHTS      !
     logical                  :: WRITE_GRID_WEIGHTS    !
@@ -65,6 +66,7 @@ module m_options
     !this%INPUT_DIR            = './'
     this%SILENT_MODE          = .false.
     this%DEBUG_MODE           = .false.
+    this%ONLY_TEXTURE         = .false.
     this%WRITE_MATRIX         = .false.
     this%WRITE_PP_WEIGHTS     = .false.
     this%WRITE_GRID_WEIGHTS   = .false.
@@ -128,6 +130,8 @@ subroutine read_options(this, reader)
         this%SILENT_MODE          = .true.
       case("DEBUG_MODE")
         this%DEBUG_MODE           = .true.
+      case("ONLY_TEXTURE")
+        this%ONLY_TEXTURE         = .true.
       case("WRITE_MATRIX")
         this%WRITE_MATRIX         = .true.
       case("WRITE_PP_WEIGHTS")
@@ -197,6 +201,7 @@ subroutine write_input_summary(this)
     
     if (this%SILENT_MODE        ) logic_true = trim(logic_true) // "SILENT_MODE"
     if (this%DEBUG_MODE         ) logic_true = trim(logic_true) // "DEBUG_MODE"
+    if (this%ONLY_TEXTURE       ) logic_true = trim(logic_true) // "ONLY_TEXTURE"
     if (this%WRITE_MATRIX       ) logic_true = trim(logic_true) // "WRITE_MATRIX"
     if (this%WRITE_PP_WEIGHTS   ) logic_true = trim(logic_true) // "WRITE_PP_WEIGHTS"
     if (this%WRITE_GRID_WEIGHTS ) logic_true = trim(logic_true) // "WRITE_GRID_WEIGHTS"
