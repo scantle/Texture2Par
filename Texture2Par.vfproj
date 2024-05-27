@@ -106,6 +106,7 @@
 		<File RelativePath=".\Str_Module.f90"/>
 		<File RelativePath=".\time.f90"/>
 		<File RelativePath=".\Tools.f90"/></Filter>
+		<File RelativePath=".\data_transformer.f90"/>
 		<File RelativePath=".\global.f90"/>
 		<File RelativePath=".\Texture2Par.f90"/></Filter>
 	</Files>

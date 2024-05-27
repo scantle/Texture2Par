@@ -7,6 +7,7 @@ module m_read_datasets
   use m_file_io, only: t_file_reader, open_file_reader, item2int, item2char
   use m_error_handler, only: error_handler, warning_handler
   use m_grid, only: t_grid, create_grid_object
+  use m_data_transformer, only: t_data_transformer
   implicit none
 
   type(t_file_reader), pointer :: reader
@@ -26,6 +27,7 @@ module m_read_datasets
     real(dp)                      :: x, y, z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
     real(dp),allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:)
     type(t_grid),pointer          :: grid
+    type(t_data_transformer)      :: data_transformer
     
     ! Allocate datasets (is this the right place for this to happen?)
     allocate(t2p%datasets(t2p%ndatasets, t2p%fmodel%nlayers))
@@ -42,6 +44,10 @@ module m_read_datasets
     do i=1, t2p%ndatafiles
       call item2char(t2p%dataset_files, i, file)
       reader => open_file_reader(file)
+      
+      ! Setup data transformer based on information passed to main input file
+      ! TODO implement additional parameter(s)
+      call data_transformer%set_transform(vstrlist_index(t2p%dataset_trans,i))
       
       ! Read in header
       call reader%next_item(eof, strings)
@@ -83,6 +89,7 @@ module m_read_datasets
       ! The real work begins
       do j=1, nlines
         read(reader%unit, *) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
+        
         if (iint==1) then
           ! Store previous log values...
           if (j>1) then
@@ -121,7 +128,11 @@ module m_read_datasets
         else
           thick = depth - prev_depth
           intv_top = z - prev_depth
-        end if
+        end if  ! End of new log hanlding
+        
+        ! Start of accumulator
+        ! Transform values
+        call data_transformer%apply(wvalues)
         intv_bot = z - depth
         ! Accumulate wvalues * interval values for averaging... by layer. It's fun.
         do k=1, t2p%fmodel%nlayers
@@ -221,9 +232,6 @@ module m_read_datasets
       end if
     end if
   end subroutine process_header
-  
-!-------------------------------------------------------------------------------------------------!
-  
   
 !-------------------------------------------------------------------------------------------------!
   

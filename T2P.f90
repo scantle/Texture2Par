@@ -43,7 +43,8 @@ module m_T2P
     integer,allocatable              :: class_dataset(:)      ! Translation from class id to dataset_id, ie datasets(dataset_id, layer)
     !integer,allocatable              :: vario_idx(:,:)        ! Variogram index given (class_id, class_id)  ! TODO: How to make this part of interpolator? Global?
     type(t_vstringlist)              :: dataset_files         ! dataset filenames
-    type(t_vstringlist)              :: dataset_trans         ! dataset transformations
+    type(t_vstringlist)              :: dataset_trans         ! dataset transformations (same order as filenames)
+    type(t_vstringlist)              :: dataset_trans_params  ! dataset transformation parameters (same order as filenames) (unimplemented)
     type(t_category),pointer         :: dataset_ppzones       ! Pilot point zone dataset grid arrays & tracking (when INTERP_ORDER=AFTER)
     
     ! Read trackers - used to check if a block has been read (and make sure it exists)
