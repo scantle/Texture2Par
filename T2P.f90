@@ -471,9 +471,11 @@ module m_T2P
     use m_grid, only: t_grid
     implicit none
     class(t_T2P), intent(inout)   :: this
-    class(t_grid),pointer         :: pp_to
-    type(t_pilotpoints)           :: pp_intermediate
-    type(t_category),pointer      :: cat_to
+    class(t_grid),pointer         :: pp_to                               ! Where we interpolate the pilot points to
+    type(t_category),pointer      :: cat_to                              ! Categories the pilot points are interpolated using
+    type(t_pilotpoints)           :: pp_intermediate                     ! The pilot point data interpolated to pp_to
+    type(t_layerdata)             :: mgrid_dataset(this%fmodel%nlayers)  ! The primary data interpolated to model grid
+                                                                         ! (texture classes or parameters)
     integer                       :: i,j
     
     ! Assign PPTO_grid (data or fmodel)
@@ -494,7 +496,7 @@ module m_T2P
   
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! Krige textures to fmodel grid
-      call this%interpolate_model(this%datasets)
+      call this%interpolate_model(this%datasets, mgrid_dataset)
       ! Write weights 
       ! Calc parameters at fmodel grid locations
       call this%calc_block_parameters(pp_intermediate)
@@ -503,7 +505,7 @@ module m_T2P
       ! Calc parameters at data locations
       call this%calc_block_parameters(pp_intermediate)
       ! Krige parameters to fmodel grid
-      call this%interpolate_model(this%par)
+      call this%interpolate_model(this%par, mgrid_dataset)
       ! Write weights
     end if
     
@@ -600,24 +602,30 @@ module m_T2P
 
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine interpolate_model(this, datasets)
+  subroutine interpolate_model(this, datasets, mgrid_datasets)
     use m_grid, only: t_grid
     use m_weights, only: t_weights
     
     implicit none
     class(t_T2P), intent(inout)   :: this
-    class(t_dataset)              :: datasets(:,:)
-    integer                       :: k, i, x
+    class(t_dataset)              :: datasets(:,:)  ! (nprimary, nlayers)
+    type(t_layerdata)             :: mgrid_datasets(this%fmodel%nlayers)
+    integer                       :: k, i, j, x, wsize
     integer,allocatable           :: class_idx(:), dataset_idx(:)
     type(t_weights)               :: weights
     
-    call weights%initialize(datasets(1,1)%grid%n, this%fmodel%grid(1)%n)  !input_n, output_n
+    ! temp
+    integer                       :: wstart, wend
     
     ! Loop over model layers
     do k=1, this%fmodel%nlayers
     
       ! Check if layer is active (generally IWFM: means it has thickness)
       if (this%fmodel%is_active_layer(k)==.false.) cycle
+      
+      ! Initialize results
+      call mgrid_datasets(k)%initialize(this%fmodel%grid(1)%n, this%nprimary)
+      mgrid_datasets(k)%values = 0.0
     
       ! Loop over primary classes
       do i=1, this%nprimary
@@ -629,6 +637,14 @@ module m_T2P
           ! Interpolate
           class_idx   = this%get_connection_list(i)           ! Classes involved
           dataset_idx = this%get_dataset_idx_list(class_idx)  ! What datasets those classes are in
+          wsize = 0
+          do j=1, size(dataset_idx)
+            wsize = wsize + this%datasets(dataset_idx(j),k)%grid%n
+          end do
+          call weights%initialize(wsize, this%fmodel%grid(1)%n)  !input_n, output_n
+          ! Multiple weights objects?
+          !call weights%initialize(datasets(1,1)%grid%n, this%fmodel%grid(1)%n)  !input_n, output_n
+          !call weights2%initialize(datasets(2,1)%grid%n, this%fmodel%grid(1)%n)
           
           x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
           call this%interp_data%calc_weights(this%datasets(dataset_idx,k), &
@@ -644,9 +660,17 @@ module m_T2P
         if (this%opt%WRITE_GRID_WEIGHTS) then
           ! TODO WRITE
         end if
-    
         ! Apply weights and create results
-    
+        wsize = 0
+        do j=1, size(dataset_idx)
+          wstart = wsize+1
+          wend = wsize+this%datasets(dataset_idx(j),k)%grid%n
+          ! Weights%values are (output_points, input_points)
+          !                     ngrid          nobs (all datasets)
+          mgrid_datasets(k)%values(i,1:) =  mgrid_datasets(k)%values(i,1:) + matmul(weights%values(:,wstart:wend),this%datasets(dataset_idx(j),k)%values(i,1:))
+          wsize = wsize + this%datasets(dataset_idx(j),k)%grid%n
+        end do
+        
       end do
     end do
     

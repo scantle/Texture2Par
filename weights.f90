@@ -5,7 +5,7 @@ module m_weights
   ! Define a custom type for managing weights
   type :: t_weights
       integer                :: nin, nout     ! grid input point count, grid output point count
-      real, allocatable      :: values(:,:)  ! The weights (input points, output points)
+      real, allocatable      :: values(:,:)  ! The weights (output_points, input_points)
       
   contains
       procedure,public :: initialize

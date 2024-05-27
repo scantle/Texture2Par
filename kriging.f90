@@ -295,7 +295,7 @@ end subroutine doolittle
     class(t_dataset)                     :: obs_data(:)
     real(dp)                             :: weights(:)
     ! local
-    integer                           :: i, j, d, vidx, cidx, matsize, mat_tot, ier, rcount
+    integer                           :: i, j, d, vidx, widx, matsize, mat_tot, ier, rcount, woffset
     integer                           :: inear(this%maxnear,this%nsets)
     real(dp)                          :: value
     real(dp)                          :: dist(this%maxnear,this%nsets)
@@ -335,7 +335,20 @@ end subroutine doolittle
       
     ! Solve & Out
     call doolittle(this%rhsB,this%matA,this%pset_id,this%w,matsize)
-    weights(inear(1:this%usenear(1),1)) = this%w(1:this%usenear(1))  ! TODO test if copying can be avoided (direct pass, pointer)
+    
+    ! Only for kriging - recalculate if weights are below zero
+    if (this%nsets==1.and.minval(this%w)<0.0) then
+      where (this%w < 0.0) this%w = 0.0
+      this%w = this%w/sum(this%w)
+    end if
+    
+    widx = 0
+    woffset = 0
+    do i=1, this%nsets
+      weights((woffset+inear(1:this%usenear(i),i))) = this%w(widx+1:widx+this%usenear(i))
+      widx = widx + this%usenear(i)
+      woffset = woffset + obs_data(i)%grid%n
+    end do
   
   end subroutine predict_point_ok
   
