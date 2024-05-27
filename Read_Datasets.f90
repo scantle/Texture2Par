@@ -23,9 +23,10 @@ module m_read_datasets
     character(30),allocatable     :: hsus(:)
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
     integer                       :: prev_idx, idx, iint, fmodel_loc, didx
-    integer,allocatable           :: cids(:)
+    integer,allocatable           :: cids(:), all_count(:)
     real(dp)                      :: x, y, z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
     real(dp),allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:)
+    real(dp),allocatable          :: all_sum(:)
     type(t_grid),pointer          :: grid
     type(t_data_transformer)      :: data_transformer
     
@@ -55,10 +56,14 @@ module m_read_datasets
       
       ! Allocate for reading
       allocate(wvalues      (nsets), &
+               all_count    (nsets), &
+               all_sum      (nsets), &
               total_thick   (nsets,t2p%fmodel%nlayers), &
               wv_accumulator(nsets,t2p%fmodel%nlayers), &
               hsus(ncats))
       if (allocated(local_elevs)==.false.) allocate(local_elevs(0:t2p%fmodel%nlayers))
+      all_count = 0
+      all_sum = 0
       
       ! Get data length (not file length, since we've gone past the header)
       nlines = reader%get_data_len(rewind_to_last_line=.true.)
@@ -97,6 +102,8 @@ module m_read_datasets
               do l=1, nsets
                 if (total_thick(l,k)>0.0) then
                   t2p%datasets(didx,k)%values(cids(l), prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
+                  all_sum(l) = all_sum(l) + wv_accumulator(l,k) / total_thick(l,k)
+                  all_count(l) = all_count(l) + 1
                 end if
               end do
             end do
@@ -155,12 +162,21 @@ module m_read_datasets
         do l=1, nsets
           if (total_thick(l,k)>0.0) then
             t2p%datasets(didx,k)%values(cids(l),prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
+            all_sum(l) = all_sum(l) + wv_accumulator(l,k) / total_thick(l,k)
+            all_count(l) = all_count(l) + 1
           end if
         end do
       end do
       
+      ! Store means
+      do k=1, t2p%fmodel%nlayers
+        do l=1, nsets
+          t2p%datasets(didx,k)%mean(l) = (all_sum(l) / all_count(l))
+        end do
+      end do
+      
       ! Cleanup loop variables
-      deallocate(wvalues, total_thick, wv_accumulator, hsus)
+      deallocate(wvalues, all_count, all_sum, total_thick, wv_accumulator, hsus)
     end do
   
   end subroutine read_datasets

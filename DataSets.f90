@@ -35,6 +35,7 @@ module m_datasets
     integer                        :: class_id         ! Class ID
     real(dp),allocatable           :: values(:,:)      ! Data values associated with each grid point for each class (nclasses, npoints)
     integer,allocatable            :: fmodel_loc(:)    ! Containing model element/cell
+    real(dp),allocatable           :: mean(:)          ! Mean of values, used for cokriging standardization (generally globally, not by layer)
     
     contains
       procedure                    :: init_layerdata
@@ -109,7 +110,8 @@ module m_datasets
     integer,intent(in)                :: npoints, nclasses
     
     allocate(this%category  (npoints), &
-             this%values    (nclasses, npoints))
+             this%values    (nclasses, npoints), &
+             this%mean      (nclasses))
     allocate(this%grid)
 
     ! By default

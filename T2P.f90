@@ -611,11 +611,10 @@ module m_T2P
     class(t_dataset)              :: datasets(:,:)  ! (nprimary, nlayers)
     type(t_layerdata)             :: mgrid_datasets(this%fmodel%nlayers)
     integer                       :: k, i, j, x, wsize
-    integer,allocatable           :: class_idx(:), dataset_idx(:)
-    type(t_weights)               :: weights
-    
-    ! temp
     integer                       :: wstart, wend
+    integer,allocatable           :: class_idx(:), dataset_idx(:)
+    real(dp)                      :: v_adjust
+    type(t_weights)               :: weights
     
     ! Loop over model layers
     do k=1, this%fmodel%nlayers
@@ -665,12 +664,13 @@ module m_T2P
         do j=1, size(dataset_idx)
           wstart = wsize+1
           wend = wsize+this%datasets(dataset_idx(j),k)%grid%n
+          v_adjust = 0.0_dp
+          if (j>1) v_adjust = this%datasets(1,k)%mean(i) - this%datasets(dataset_idx(j),k)%mean(1)  ! secondary data standardization factor
           ! Weights%values are (output_points, input_points)
           !                     ngrid          nobs (all datasets)
-          mgrid_datasets(k)%values(i,1:) =  mgrid_datasets(k)%values(i,1:) + matmul(weights%values(:,wstart:wend),this%datasets(dataset_idx(j),k)%values(i,1:))
+          mgrid_datasets(k)%values(i,1:) =  mgrid_datasets(k)%values(i,1:) + matmul(weights%values(:,wstart:wend),this%datasets(dataset_idx(j),k)%values(i,1:)+v_adjust)
           wsize = wsize + this%datasets(dataset_idx(j),k)%grid%n
         end do
-        
       end do
     end do
     
