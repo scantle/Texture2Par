@@ -31,7 +31,7 @@ module m_flow_model
     character(3)                  :: grd_file_type  ! Character string of grid file type (GSF, ...)
     character(100)                :: grd_file       ! Grid specification file for grid type or MODFLOW-USG
     character(100)                :: output_file    ! File where aquifer parameters are written
-    real(dp), allocatable         :: elev(:,:)      ! Elevations for each layer (node, layer)
+    real(dp), allocatable         :: elev(:,:)      ! Bottom Elevations for each layer (node, layer) (indexed from zero = model top)
     type(t_grid),pointer          :: grid(:)        ! xy grids for layers
     type(t_category)              :: ppzones        ! Pilot point zone fmodel grid arrays & tracking
     type(t_category)              :: hsus           ! HSU fmodel grid arrays & tracking
@@ -44,6 +44,7 @@ module m_flow_model
       procedure,public            :: write_input_summary
       procedure,public            :: find_in_grid
       procedure,public            :: get_elev_at_point
+      procedure,public            :: get_midpoint_depths
       procedure,public            :: get_active_ppzones
       procedure,public            :: is_active_layer
       procedure,public            :: is_aquitard_layer
@@ -297,6 +298,20 @@ module m_flow_model
   
   end subroutine get_elev_at_point
 
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_midpoint_depths(this, k) result(depths)
+    ! To be overloaded where necessary (should be the same for all models...
+    implicit none
+    class(t_flow_model)                :: this
+    integer,intent(in)                 :: k
+    real(dp)   :: depths(this%nnodes(k))
+    
+    depths = this%elev(:,0) - ((this%elev(:,k-1) + this%elev(:,k)) / 2.0)
+    
+  end function get_midpoint_depths
+!-------------------------------------------------------------------------------------------------!
+  
 !-------------------------------------------------------------------------------------------------!
   
   function get_active_ppzones(this) result(nactive)

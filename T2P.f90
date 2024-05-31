@@ -471,8 +471,8 @@ module m_T2P
     class(t_grid),pointer         :: pp_to                                      ! Where we interpolate the pilot points to
     type(t_category),pointer      :: cat_to                                     ! Categories the pilot points are interpolated using
     type(t_pilotpoints)           :: pp_intermediate(this%fmodel%ppzones%narr)  ! The pilot point data interpolated to pp_to (by ppzone array)
-    type(t_layerdata),pointer     :: mgrid_dataset(:,:)                         ! The primary data interpolated to model grid
-                                                                                ! (texture classes or parameters)
+    type(t_layerdata),pointer     :: mgrid_datasets(:,:)                        ! The primary data interpolated to model grid
+                                                                                ! (texture classes or parameters) (nsets, nlayers)
     integer                       :: i,j
     
     ! Allocate the final parameter objects
@@ -481,13 +481,13 @@ module m_T2P
     ! Assign PPTO_grid (data or fmodel)
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! T2P 1.0 Method
-      allocate(mgrid_dataset(1,this%fmodel%nlayers))
+      allocate(mgrid_datasets(1,this%fmodel%nlayers))
       ! Uses layer 1 grid
       pp_to => this%fmodel%grid(1)
       cat_to => this%fmodel%ppzones
     else if (this%opt%INTERP_ORDER=="AFTER") then
-      allocate(mgrid_dataset(size(this%datasets,1),this%fmodel%nlayers))
-      mgrid_dataset(2:,1:) => this%datasets(2:,1:)  ! All secondary data gets pointed over
+      allocate(mgrid_datasets(size(this%datasets,1),this%fmodel%nlayers))
+      mgrid_datasets(2:,1:) => this%datasets(2:,1:)  ! All secondary data gets pointed over
       ! Uses primary dataset layer 1 grid
       ! Again, assumes uniformity of grid by layer
       pp_to => this%datasets(1,1)%grid
@@ -499,16 +499,16 @@ module m_T2P
   
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! Krige textures to fmodel grid
-      call this%interpolate_model(this%datasets, mgrid_dataset(1,1:))
+      call this%interpolate_model(this%datasets, mgrid_datasets(1,1:))
       ! Write weights 
-      ! Calc parameters at fmodel grid locations (pp,texture,result)
-      call this%calc_block_parameters(pp_intermediate, mgrid_dataset(1,1:), this%par)
+      ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
+      call this%calc_block_parameters(pp_intermediate, mgrid_datasets(1,1:), this%par)
       
     else if (this%opt%INTERP_ORDER=="AFTER") then
       ! Calc parameters at data locations
-      call this%calc_block_parameters(pp_intermediate, this%datasets(1,1:), mgrid_dataset(1,1:))
+      call this%calc_block_parameters(pp_intermediate, this%datasets(1,1:), mgrid_datasets(1,1:))
       ! Krige parameters to fmodel grid
-      call this%interpolate_model(mgrid_dataset, this%par)
+      call this%interpolate_model(mgrid_datasets, this%par)
       ! Write weights
     end if
     
@@ -627,7 +627,11 @@ module m_T2P
       if (this%fmodel%is_active_layer(k)==.false.) cycle
       
       ! Initialize results
-      call mgrid_datasets(k)%initialize(this%fmodel%grid(1)%n, this%nprimary)
+      if (this%opt%INFER_LAST_CLASS) then
+        call mgrid_datasets(k)%initialize(this%fmodel%grid(1)%n, this%nprimary+1)
+      else
+        call mgrid_datasets(k)%initialize(this%fmodel%grid(1)%n, this%nprimary)
+      end if
       mgrid_datasets(k)%values = 0.0
     
       ! Loop over primary classes
@@ -680,6 +684,8 @@ module m_T2P
         ! If we're kriging texture - must be below 1.0
         if (this%opt%INTERP_ORDER=="BEFORE") where(mgrid_datasets(k)%values(i,1:) > 1.0) mgrid_datasets(k)%values(i,1:) = 1.0_dp
       end do
+      ! If we need to, infer the last class
+      if (this%opt%INFER_LAST_CLASS) mgrid_datasets(k)%values(this%nprimary+1,1:) = 1.0_dp - sum(mgrid_datasets(k)%values(1:this%nprimary,1:), dim=1)
     end do
     
   end subroutine interpolate_model
@@ -689,20 +695,52 @@ module m_T2P
   subroutine calc_block_parameters(this, pp_obj, tex_obs, par_out)
     implicit none
     class(t_T2P), intent(inout)    :: this
-    type(t_pilotpoints),intent(in) :: pp_obj(this%fmodel%ppzones%narr)
-    type(t_layerdata),intent(in)   :: tex_obs(this%fmodel%nlayers)
-    type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)
-    integer                        :: k, pparr
-    
+    type(t_pilotpoints),intent(in) :: pp_obj(this%fmodel%ppzones%narr) ! Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, STp
+    type(t_layerdata),intent(in)   :: tex_obs(this%fmodel%nlayers)  !  values(ntexclasses, npoints)
+    type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !(Kh, Kv, Ss, Sy)
+    integer                        :: i, k, r
+    real(dp),allocatable           :: depths(:),KhD(:,:),KvD(:,:)
     
     write(*,*) 'here'
     
-    ! Initialize Par (should this have been done when it was allocated?)
-    
     ! Loop over layers
     do k=1, this%fmodel%nlayers
-      ! Get pilot point array
-      !pp_obj(fmodel%ppzones%lay2arr(k))
+    
+      ! Check if layer is active (generally IWFM: means it has thickness)
+      if (this%fmodel%is_active_layer(k)==.false.) cycle
+    
+      ! TODO AQUITARDS
+    
+      ! Initialize Par
+      call par_out(k)%initialize(this%fmodel%nnodes(k), this%npar)
+      
+      ! Allocate arrays
+      allocate(KhD(this%fmodel%nnodes(k), this%ntexclasses))
+      allocate(KvD(this%fmodel%nnodes(k), this%ntexclasses))
+    
+      ! Get node midpoint depths
+      depths = this%fmodel%get_midpoint_depths(k)
+      
+      ! Get pilot point array  (point, parameter, class_id)
+      r = this%fmodel%ppzones%lay2arr(k)
+      
+      ! Depth-adjusted Kh for all textures
+      KhD = pp_obj(r)%values(:, 1, :) + pp_obj(r)%values(:, 2, :) * exp(-1.0 * pp_obj(r)%values(:, 6, :) * reshape(depths, [this%fmodel%nnodes(k), 1]))
+      ! Anisotropy is used to get Kv from depth-adjusted Kv for all textures
+      KvD = KhD / pp_obj(r)%values(:, 5, :)
+      
+      do i=1, this%fmodel%nnodes(k)
+        ! Kh
+        par_out(k)%values(i,1) = DOT_PRODUCT(KhD(i,:)**pp_obj(r)%values(i, 7, 1), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 7, 1))
+        ! Kv
+        par_out(k)%values(i,2) = DOT_PRODUCT(KvD(i,:)**pp_obj(r)%values(i, 8, 1), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 8, 1))
+        ! Ss
+        par_out(k)%values(i,3) = DOT_PRODUCT(pp_obj(k)%values(i,3,:)**pp_obj(r)%values(i, 9, 1), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 9, 1))
+        ! Sy
+        par_out(k)%values(i,4) = DOT_PRODUCT(pp_obj(k)%values(i,4,:)**pp_obj(r)%values(i, 9, 1), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 9, 1))
+      end do
+      
+      deallocate(KhD, KvD)
     
     end do
   
