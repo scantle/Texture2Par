@@ -12,23 +12,28 @@ module m_kriging
 !-------------------------------------------------------------------------------------------------!
 
   type, extends(t_interpolator) :: t_krige
-    integer                          :: nvario            ! Number of variograms stored for interpolator
-    integer                          :: maxnear           ! Maximum number of nearest points used for interpolation for all classes
-    integer,pointer                  :: nnear(:)          ! Number of nearest points used for interpolation, for each dataset/class
-    integer,pointer                  :: nstruct(:)        ! Number of structures for each variogram
-    integer,pointer                  :: obs_idx(:)        ! Indices of datasets
-    type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)
-    integer,allocatable              :: global_vario_idx(:,:)    ! Variogram index given (class_id, class_id) for ALL classes
-    integer,allocatable              :: vario_idx(:,:)    ! Variogram index given (class_id, class_id) for local classes passed to setup/point
-    integer                          :: nsets             ! Number of datasets involved
-    real(dp),allocatable             :: w(:)              ! Internally calculated weights
-    integer                          :: ndim, ngrid, ndrift, seed, unbias, nsim
-    integer,allocatable              :: nobs(:), nmax(:), near_idx(:), pset_id(:)
+    integer                   :: nvario                ! Number of variograms stored for interpolator
+    integer                   :: maxnear               ! Maximum number of nearest points used for interpolation for all classes
+    integer                   :: nsets                 ! Number of datasets involved 
+    integer                   :: ndim                  ! Number of dimensions being kriged (code may be hardcoded to 2 in places)
+    integer                   :: unbias                ! Unbias term (0 - SK, 1 - OK)
+    integer                   :: ndrift                ! Number of drift terms (unimplemented)
+    integer                   :: nsim                  ! Number of simulations (unimplemented)
+    real(dp)                  :: max_sdist             ! Maximum inclusion distance for secondary data
+    integer,pointer           :: nnear(:)              ! Number of nearest points used for interpolation, for each dataset/class
+    integer,pointer           :: nstruct(:)            ! Number of structures for each variogram
+    integer,pointer           :: obs_idx(:)            ! Indices of datasets
+    type(t_vgm),pointer       :: variograms(:,:)       ! (stuctures, variogram)
+    integer,allocatable       :: global_vario_idx(:,:) ! Variogram index given (class_id, class_id) for ALL classes
+    integer,allocatable       :: vario_idx(:,:)        ! Variogram index given (class_id, class_id) for local classes passed to setup/point
+    real(dp),allocatable      :: w(:)                  ! Internally calculated weights
+    integer,allocatable       :: nobs(:), nmax(:), near_idx(:), pset_id(:)
     ! Attributes for KD-tree and search parameters could be added here
   contains
     procedure               :: intialize => initialize_kriging
     procedure               :: setup => setup_krige
     procedure               :: predict_point => predict_point_krige
+    procedure               :: filter_near_points
   end type t_krige
 !-------------------------------------------------------------------------------------------------!
   
@@ -40,7 +45,6 @@ module m_kriging
 !-------------------------------------------------------------------------------------------------!
   
   type, extends(t_krige) :: t_ordkrige
-    integer,allocatable     :: usenear(:)                 ! Number of nearest points used for interpolation, given mask, for each dataset/class
     real(dp),allocatable    :: matA(:), rhsB(:)
   contains
     procedure               :: setup => setup_ok
@@ -160,7 +164,9 @@ end subroutine doolittle
     this%ndrift = 0  ! Hardcoded out for now
     this%unbias = 0 
     this%nsets  = size(obs_data)
-    this%ngrid  = to_grid%n
+    
+    ! If MAX_SECONDARY_DIST is zero, will use 3x the largest structure range
+    this%max_sdist = opt%MAX_SECONDARY_DIST
     
     if (allocated(this%vario_idx)) deallocate(this%vario_idx)
     allocate(this%vario_idx(this%nsets,this%nsets))
@@ -173,12 +179,44 @@ end subroutine doolittle
   subroutine predict_point_krige(this, idx, p, obs_data, cat, weights)
     implicit none
     class(t_krige),intent(inout)  :: this
-    integer,intent(in)                   :: idx, cat
-    real(dp),intent(in)                  :: p(2)
-    class(t_dataset)                     :: obs_data(:)
-    real(dp)                             :: weights(:)
+    integer,intent(in)            :: idx, cat
+    real(dp),intent(in)           :: p(2)
+    class(t_dataset)              :: obs_data(:)
+    real(dp)                      :: weights(:)
   
   end subroutine predict_point_krige
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine filter_near_points(this, usenear, inear, dist, vidx)
+    implicit none
+    class(t_krige),intent(inout)  :: this
+    integer, intent(inout)        :: usenear
+    integer, intent(inout)        :: inear(:)
+    real(dp), intent(inout)       :: dist(:)
+    integer, intent(in)           :: vidx
+    real(dp)                      :: max_sdist
+
+    integer :: count, j
+    
+    max_sdist = this%max_sdist
+    if (this%max_sdist < 0.1) max_sdist = maxval(this%variograms(:,vidx)%a_hmax)
+
+    count = 0
+    do j = 1, usenear
+      if (sqrt(dist(j)) <= max_sdist) then
+        count = count + 1
+        ! Move valid entries to the beginning of the array
+        if (count /= j) then
+          inear(count) = inear(j)
+          dist(count) = dist(j)
+        end if
+      end if
+    end do
+
+    ! Update usenear to the new count of valid points
+    usenear = count
+  end subroutine filter_near_points
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -255,18 +293,12 @@ end subroutine doolittle
     ! OK uses unbias
     this%unbias = 1
     
-    ! Setup nnearest tracker (usenear) (sometimes there is not this%nnear(i) values in the dataset)
-    if (allocated(this%usenear)) deallocate(this%usenear)
-    allocate(this%usenear(this%nsets))
-    this%usenear = 0.0
-    
     ! Build search trees in observed grid objects
     ! Also, figure out number of datasets in each category
     do i=1, this%nsets
       class_id = obs_idx(i)
       if (i>1) class_id = 1
       call obs_data(i)%build_tree_by_category(cat,class_id) !this%variograms(1,i)%rotmat(1:this%ndim,1:this%ndim))
-      this%usenear(i) = min(this%nnear(i), obs_data(i)%grid%tree%n)
       ! TODO Warn that there is so little data? Do we even have enough information to warn?
       ! Warnings only get printed before the calculations
       ! In this scope we don't if it's pp or data...
@@ -296,21 +328,24 @@ end subroutine doolittle
     real(dp)                             :: weights(:)
     ! local
     integer                           :: i, j, d, vidx, widx, matsize, mat_tot, ier, rcount, woffset
-    integer                           :: inear(this%maxnear,this%nsets)
+    integer                           :: inear(this%maxnear,this%nsets), usenear(this%nsets)
     real(dp)                          :: value
     real(dp)                          :: dist(this%maxnear,this%nsets)
     
     ! Get nearest for each obs dataset
     do i=1, this%nsets
+      usenear(i) = min(this%nnear(i), obs_data(i)%grid%tree%n)
       vidx = this%vario_idx(i,i)              ! Should always equal i, but to be safe
-      call obs_data(i)%grid%get_nnear(p, this%usenear(i), inear(:,i), dist(:,vidx))
+      call obs_data(i)%grid%get_nnear(p, usenear(i), inear(:,i), dist(:,vidx))
+      ! Filter out points beyond max_sdist for covariate datasets
+      if (i > 1) call this%filter_near_points(usenear(i), inear(:,i), dist(:,vidx), vidx)
     end do
     
-    matsize = sum(this%usenear)+this%unbias+this%ndrift
+    matsize = sum(usenear)+this%unbias+this%ndrift
     mat_tot = matsize * (matsize + 1) / 2
     
     ! Create obs-obs matrix
-    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, inear, this%usenear, this%ndim)
+    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, inear, usenear, this%ndim)
     call decomp(this%matA, this%pset_id, matsize, ier)
     
     if (ier == 1) call error_handler(4,opt_msg="Kriging Matrix Decomposition Failure. This is often caused by co-located wells")
@@ -324,7 +359,7 @@ end subroutine doolittle
     do d = 1, this%nsets
       vidx = this%vario_idx(1,d)
       ! loop over data points
-      do i=1, this%usenear(d)
+      do i=1, usenear(d)
         do j=1, this%nstruct(vidx)
           value = this%variograms(j,vidx)%cov(p,obs_data(d)%grid%coords(1:,inear(i,d)))
           this%rhsB(rcount) = this%rhsB(rcount) + value
@@ -345,10 +380,20 @@ end subroutine doolittle
     widx = 0
     woffset = 0
     do i=1, this%nsets
-      weights((woffset+inear(1:this%usenear(i),i))) = this%w(widx+1:widx+this%usenear(i))
-      widx = widx + this%usenear(i)
+      weights((woffset+inear(1:usenear(i),i))) = this%w(widx+1:widx+usenear(i))
+      widx = widx + usenear(i)
       woffset = woffset + obs_data(i)%grid%n
     end do
+    
+    ! TEMP
+    !open(100, file='WEIGHT_DEBUG.txt', action='WRITE', STATUS='REPLACE')
+    !write(100, *) p
+    !do j=1, this%nsets
+    !  write(100, *) obs_data(j)%grid%coords(1:2,inear(1:usenear(j),j))
+    !end do
+    !!write(100, *) dist
+    !write(100, *) this%w
+    !close(100)
   
   end subroutine predict_point_ok
   
@@ -430,5 +475,5 @@ end subroutine doolittle
   end subroutine pset_cok
   
 !-------------------------------------------------------------------------------------------------!
-  
+    
 end module m_kriging

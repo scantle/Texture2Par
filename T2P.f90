@@ -18,7 +18,7 @@ module m_T2P
     class(t_interpolator),pointer    :: interp_data => null()
     class(t_interpolator),pointer    :: interp_pp   => null()
     type(t_layerdata),pointer        :: datasets(:,:)     ! Datasets (dataset, layer) (1+nsecondary, layer)
-    type(t_layerdata),pointer        :: par(:,:)          ! Final model hydraulic parameters (parameters, layers)
+    type(t_layerdata),pointer        :: par(:)            ! Final model hydraulic parameters (parameters, layers)
     !type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)  ! Moved to interpolator
     type(t_pilotpoints),pointer      :: pilot_points
     type(t_pilotpoints),pointer      :: pilot_points_aquitard
@@ -187,7 +187,7 @@ module m_T2P
     if (len_trim(this%fmodel%ppzone_file))  this%has_ppzones = .true.
     
     ! Allocate the final parameter objects
-    allocate(this%par(this%npar, this%fmodel%nlayers))
+    allocate(this%par(this%fmodel%nlayers))
     
   end subroutine setup_flow_model
   
@@ -474,17 +474,20 @@ module m_T2P
     class(t_grid),pointer         :: pp_to                               ! Where we interpolate the pilot points to
     type(t_category),pointer      :: cat_to                              ! Categories the pilot points are interpolated using
     type(t_pilotpoints)           :: pp_intermediate                     ! The pilot point data interpolated to pp_to
-    type(t_layerdata)             :: mgrid_dataset(this%fmodel%nlayers)  ! The primary data interpolated to model grid
+    type(t_layerdata),pointer     :: mgrid_dataset(:,:)  ! The primary data interpolated to model grid
                                                                          ! (texture classes or parameters)
     integer                       :: i,j
     
     ! Assign PPTO_grid (data or fmodel)
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! T2P 1.0 Method
+      allocate(mgrid_dataset(1,this%fmodel%nlayers))
       ! Uses layer 1 grid
       pp_to => this%fmodel%grid(1)
       cat_to => this%fmodel%ppzones
     else if (this%opt%INTERP_ORDER=="AFTER") then
+      allocate(mgrid_dataset(size(this%datasets,1),this%fmodel%nlayers))
+      mgrid_dataset(2:,1:) => this%datasets(2:,1:)  ! All secondary data gets pointed over
       ! Uses primary dataset layer 1 grid
       ! Again, assumes uniformity of grid by layer
       pp_to => this%datasets(1,1)%grid
@@ -496,16 +499,16 @@ module m_T2P
   
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! Krige textures to fmodel grid
-      call this%interpolate_model(this%datasets, mgrid_dataset)
+      call this%interpolate_model(this%datasets, mgrid_dataset(1,1:))
       ! Write weights 
-      ! Calc parameters at fmodel grid locations
-      call this%calc_block_parameters(pp_intermediate)
+      ! Calc parameters at fmodel grid locations (pp,texture,result)
+      call this%calc_block_parameters(pp_intermediate, mgrid_dataset(1,1:), this%par)
       
     else if (this%opt%INTERP_ORDER=="AFTER") then
       ! Calc parameters at data locations
-      call this%calc_block_parameters(pp_intermediate)
+      call this%calc_block_parameters(pp_intermediate, this%datasets(1,1:), mgrid_dataset(1,1:))
       ! Krige parameters to fmodel grid
-      call this%interpolate_model(this%par, mgrid_dataset)
+      call this%interpolate_model(mgrid_dataset, this%par)
       ! Write weights
     end if
     
@@ -671,6 +674,10 @@ module m_T2P
           mgrid_datasets(k)%values(i,1:) =  mgrid_datasets(k)%values(i,1:) + matmul(weights%values(:,wstart:wend),this%datasets(dataset_idx(j),k)%values(i,1:)+v_adjust)
           wsize = wsize + this%datasets(dataset_idx(j),k)%grid%n
         end do
+        ! Enforce values must be greater than zero
+        where(mgrid_datasets(k)%values(i,1:) < 0.0) mgrid_datasets(k)%values(i,1:) = 0.0_dp
+        ! If we're kriging texture - must be below 1.0
+        if (this%opt%INTERP_ORDER=="BEFORE") where(mgrid_datasets(k)%values(i,1:) > 1.0) mgrid_datasets(k)%values(i,1:) = 1.0_dp
       end do
     end do
     
@@ -678,12 +685,15 @@ module m_T2P
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine calc_block_parameters(this, pp_obj)
+  subroutine calc_block_parameters(this, pp_obj, tex_obs, par_out)
     implicit none
-    class(t_T2P), intent(inout)   :: this
-    type(t_pilotpoints)           :: pp_obj
+    class(t_T2P), intent(inout)    :: this
+    type(t_pilotpoints),intent(in) :: pp_obj
+    type(t_layerdata),intent(in)   :: tex_obs(this%fmodel%nlayers)
+    type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)
     
     write(*,*) 'here'
+    par_out(1)%values = 0.0
   
   end subroutine calc_block_parameters
   

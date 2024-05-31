@@ -55,7 +55,6 @@ module m_interpolator
     real(dp), dimension(:, :), intent(in)     :: point_array
     real(dp), dimension(size(point_array, 2)) :: distances
 
-    ! Calculate the differences using appropriate indexing
     distances = sqrt((point_array(1, :) - p(1)) ** 2 + &
                       (point_array(2, :) - p(2)) ** 2)
   end function dist_2D_vector
@@ -82,11 +81,6 @@ module m_interpolator
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
     integer                               :: i, j, cat
-    
-    write(*,*) 'meely meely'
-    
-    ! Need to do anything to setup weights?
-    ! Make sure they're zero'd?
     
     do i=1, size(catlist)
       ! Setup for each category

@@ -15,6 +15,7 @@ module m_options
     ! "Optional" Options - Default Value and Settings
     real                     :: NO_DATA_VALUE         !
     real                     :: IDW_POWER             ! Inverse Distance Weighting Power Parameter
+    real                     :: MAX_SECONDARY_DIST
     integer                  :: INTERP_DIM            ! 2D, 3D, stored as integer, read as string
     character(10)            :: INTERP_METHOD         ! KRIGING, IDW
     character(10)            :: INTERP_ORDER          ! Interpolate to grid: [BEFORE, AFTER] upscaling/aggegating?
@@ -57,7 +58,8 @@ module m_options
     this%MAX_VSTRUCT          = -1
     !this%DATA_CLASSES         = -1
     this%NO_DATA_VALUE        = -999.0
-    this%IDW_POWER            =  2.0
+    this%IDW_POWER            = 2.0
+    this%MAX_SECONDARY_DIST   = 0.0 
     this%INTERP_DIM           = 2
     this%INTERP_METHOD        = 'OK'
     this%INTERP_ORDER         = 'BEFORE'
@@ -126,6 +128,8 @@ subroutine read_options(this, reader)
         this%NO_DATA_VALUE        = item2real(strings, 2)
       case("IDW_POWER")
         this%IDW_POWER            = item2real(strings, 2)
+      case("MAX_SECONDARY_DIST")
+        this%MAX_SECONDARY_DIST   = item2real(strings, 2)
       case("SILENT_MODE")
         this%SILENT_MODE          = .true.
       case("DEBUG_MODE")
@@ -177,6 +181,7 @@ subroutine write_input_summary(this)
     call log%write_valueline('Max Variogram Structures:', this%MAX_VSTRUCT)
     call log%write_valueline('No Data Value:',this%NO_DATA_VALUE)
     call log%write_valueline('IDW Power Value:',this%IDW_POWER)
+    call log%write_valueline('Max Secondary Data Dist:', this%MAX_SECONDARY_DIST)
     !call log%write_valueline('',this%INTERP_DIM)  ! unimplemented
     ! Going to do something a little nicer for the Interpolation Method
     select case(this%INTERP_METHOD)

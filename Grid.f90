@@ -147,6 +147,7 @@ module m_grid
     implicit none
     class(t_Grid), intent(inout)     :: this
     if (associated(this%tree)) deallocate(this%tree)
+    if (allocated(this%true_idx)) deallocate(this%true_idx)
   end subroutine burn_tree
   
 !-------------------------------------------------------------------------------------------------!
@@ -155,8 +156,9 @@ module m_grid
     implicit none
     class(t_Grid), intent(inout) :: this
   
-    if (allocated(this%coords)) deallocate(this%coords)
-    if (associated(this%tree)) deallocate(this%tree)
+    if (allocated(this%coords))   deallocate(this%coords)
+    if (allocated(this%true_idx)) deallocate(this%true_idx)
+    if (associated(this%tree))    deallocate(this%tree)
   
     ! Include any other cleanup tasks here
   end subroutine finalize

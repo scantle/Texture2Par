@@ -139,7 +139,7 @@ module m_read_datasets
         
         ! Start of accumulator
         ! Transform values
-        call data_transformer%apply(wvalues)
+        if (minval(wvalues)>=0) call data_transformer%apply(wvalues)
         intv_bot = z - depth
         ! Accumulate wvalues * interval values for averaging... by layer. It's fun.
         do k=1, t2p%fmodel%nlayers
