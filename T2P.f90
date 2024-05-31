@@ -186,9 +186,6 @@ module m_T2P
     if (len_trim(this%fmodel%hsu_file))     this%has_hsus = .true.
     if (len_trim(this%fmodel%ppzone_file))  this%has_ppzones = .true.
     
-    ! Allocate the final parameter objects
-    allocate(this%par(this%fmodel%nlayers))
-    
   end subroutine setup_flow_model
   
 !-------------------------------------------------------------------------------------------------!
@@ -471,12 +468,15 @@ module m_T2P
     use m_grid, only: t_grid
     implicit none
     class(t_T2P), intent(inout)   :: this
-    class(t_grid),pointer         :: pp_to                               ! Where we interpolate the pilot points to
-    type(t_category),pointer      :: cat_to                              ! Categories the pilot points are interpolated using
-    type(t_pilotpoints)           :: pp_intermediate                     ! The pilot point data interpolated to pp_to
-    type(t_layerdata),pointer     :: mgrid_dataset(:,:)  ! The primary data interpolated to model grid
-                                                                         ! (texture classes or parameters)
+    class(t_grid),pointer         :: pp_to                                      ! Where we interpolate the pilot points to
+    type(t_category),pointer      :: cat_to                                     ! Categories the pilot points are interpolated using
+    type(t_pilotpoints)           :: pp_intermediate(this%fmodel%ppzones%narr)  ! The pilot point data interpolated to pp_to (by ppzone array)
+    type(t_layerdata),pointer     :: mgrid_dataset(:,:)                         ! The primary data interpolated to model grid
+                                                                                ! (texture classes or parameters)
     integer                       :: i,j
+    
+    ! Allocate the final parameter objects
+    allocate(this%par(this%fmodel%nlayers))
     
     ! Assign PPTO_grid (data or fmodel)
     if (this%opt%INTERP_ORDER=="BEFORE") then
@@ -522,7 +522,7 @@ module m_T2P
     ! Pilot Point type in, Pilot Point type out
     implicit none
     class(t_T2P), intent(inout)     :: this
-    type(t_pilotpoints)             :: results
+    type(t_pilotpoints)             :: results(this%fmodel%ppzones%narr)
     class(t_grid),pointer            :: to_grid
     type(t_category)                :: to_categories
     type(t_weights)                 :: weights
@@ -530,15 +530,16 @@ module m_T2P
     integer                         :: class_idx(1)
     type(t_pilotpoints)             :: obs_data(1)  ! a little trick to appease calc_weights
     
-    call results%init_pilotpoint(to_grid%n, to_grid) ! Copies grid over
-    allocate(results%values(to_grid%n, size(this%pilot_points%values,2), this%ntexclasses))
-    
     obs_data(1) = this%pilot_points
     class_idx(1) = 1
     call weights%initialize(this%pilot_points%grid%n, to_grid%n)  !input_n, output_n
     
     ! Go by pilot point zone arrays (up to nlayers)
     do k=1, this%fmodel%ppzones%narr
+    
+      ! Initialize results for this array
+      call results(k)%init_pilotpoint(to_grid%n, to_grid) ! Copies grid over
+      allocate(results(k)%values(to_grid%n, size(this%pilot_points%values,2), this%ntexclasses))
     
       ! Check if we have precalculated weights for the pilot point interpolation
       if (this%opt%READ_PP_WEIGHTS) then
@@ -561,7 +562,7 @@ module m_T2P
       ! Apply weights and create results
       do i=1, this%ntexclasses
         do j=1, nproperties
-          results%values(:,j,i) = matmul(weights%values,this%pilot_points%values(:,j,i))
+          results(k)%values(:,j,i) = matmul(weights%values,this%pilot_points%values(:,j,i))
         end do
       end do
     end do
@@ -595,7 +596,7 @@ module m_T2P
         ! Apply weights and create results - subset of properties
         do i=1, this%ntexclasses
           do j=1, naquitard_props
-            results%values(:,aquitard_props(j),i) = matmul(weights%values,this%pilot_points%values(:,j,i))
+            results(k)%values(:,aquitard_props(j),i) = matmul(weights%values,this%pilot_points%values(:,j,i))
           end do
         end do
       end do
@@ -688,12 +689,22 @@ module m_T2P
   subroutine calc_block_parameters(this, pp_obj, tex_obs, par_out)
     implicit none
     class(t_T2P), intent(inout)    :: this
-    type(t_pilotpoints),intent(in) :: pp_obj
+    type(t_pilotpoints),intent(in) :: pp_obj(this%fmodel%ppzones%narr)
     type(t_layerdata),intent(in)   :: tex_obs(this%fmodel%nlayers)
     type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)
+    integer                        :: k, pparr
+    
     
     write(*,*) 'here'
-    par_out(1)%values = 0.0
+    
+    ! Initialize Par (should this have been done when it was allocated?)
+    
+    ! Loop over layers
+    do k=1, this%fmodel%nlayers
+      ! Get pilot point array
+      !pp_obj(fmodel%ppzones%lay2arr(k))
+    
+    end do
   
   end subroutine calc_block_parameters
   
