@@ -713,6 +713,7 @@ module m_T2P
     
       ! Initialize Par
       call par_out(k)%initialize(this%fmodel%nnodes(k), this%npar)
+      par_out(k)%grid => this%fmodel%grid(k)
       
       ! Allocate arrays
       allocate(KhD(this%fmodel%nnodes(k), this%ntexclasses))
@@ -724,20 +725,19 @@ module m_T2P
       ! Get pilot point array  (point, parameter, class_id)
       r = this%fmodel%ppzones%lay2arr(k)
       
-      ! Depth-adjusted Kh for all textures
-      KhD = pp_obj(r)%values(:, 1, :) + pp_obj(r)%values(:, 2, :) * exp(-1.0 * pp_obj(r)%values(:, 6, :) * reshape(depths, [this%fmodel%nnodes(k), 1]))
-      ! Anisotropy is used to get Kv from depth-adjusted Kv for all textures
-      KvD = KhD / pp_obj(r)%values(:, 5, :)
-      
       do i=1, this%fmodel%nnodes(k)
+        ! Kh - Depth adjusted
+        KhD(i,:) = pp_obj(r)%values(i, 1, :) + pp_obj(r)%values(i, 2, :) * exp(-1_dp *pp_obj(r)%values(1, 6, :) * depths(i))
+        ! Kv - Depth adjusted, calculated from anisotropy
+        KvD(i,:) = KhD(i,:) / pp_obj(r)%values(i, 5, :)
         ! Kh
-        par_out(k)%values(i,1) = DOT_PRODUCT(KhD(i,:)**pp_obj(r)%values(i, 7, 1), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 7, 1))
+        par_out(k)%values(1,i) = DOT_PRODUCT(KhD(i,:)**pp_obj(r)%values(i, 7, :), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 7, 1))
         ! Kv
-        par_out(k)%values(i,2) = DOT_PRODUCT(KvD(i,:)**pp_obj(r)%values(i, 8, 1), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 8, 1))
+        par_out(k)%values(2,i) = DOT_PRODUCT(KvD(i,:)**pp_obj(r)%values(i, 8, :), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 8, 1))
         ! Ss
-        par_out(k)%values(i,3) = DOT_PRODUCT(pp_obj(k)%values(i,3,:)**pp_obj(r)%values(i, 9, 1), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 9, 1))
+        par_out(k)%values(3,i) = DOT_PRODUCT(pp_obj(r)%values(i,3,:)**pp_obj(r)%values(i, 9, :), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 9, 1))
         ! Sy
-        par_out(k)%values(i,4) = DOT_PRODUCT(pp_obj(k)%values(i,4,:)**pp_obj(r)%values(i, 9, 1), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 9, 1))
+        par_out(k)%values(4,i) = DOT_PRODUCT(pp_obj(r)%values(i,4,:)**pp_obj(r)%values(i, 9, :), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 9, 1))
       end do
       
       deallocate(KhD, KvD)

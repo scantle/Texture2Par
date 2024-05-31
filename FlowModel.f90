@@ -305,7 +305,7 @@ module m_flow_model
     implicit none
     class(t_flow_model)                :: this
     integer,intent(in)                 :: k
-    real(dp)   :: depths(this%nnodes(k))
+    real(dp)                           :: depths(this%nnodes(k))
     
     depths = this%elev(:,0) - ((this%elev(:,k-1) + this%elev(:,k)) / 2.0)
     
