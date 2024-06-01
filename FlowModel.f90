@@ -129,8 +129,8 @@ module m_flow_model
     procedure,public          :: read_model => read_modflow2000
     procedure,public          :: find_in_grid => find_in_grid_cell
     procedure,public          :: write_node_file => write_node_file_mf
+    procedure,public          :: cell2rowcol
     procedure,private         :: get_cell_local
-    procedure,private         :: cell2rowcol
     procedure,private         :: calc_mfcell_centers_global
   
   end type 
@@ -1322,7 +1322,7 @@ module m_flow_model
     character(*)               :: fname
     type(t_layerdata),pointer  :: par(:)
     integer,intent(in)         :: par_id
-    integer                    :: i, k, row, col
+    integer                    :: i, k, row, col, unit
     character(60)              :: fmt(2)
     type(t_file_writer),pointer:: fwrite
 
@@ -1334,23 +1334,24 @@ module m_flow_model
 
     !open(20, file=trim(filename), status='replace', action='write', buffered='YES')
     fwrite => open_file_writer(fname)
+    unit = fwrite%unit
     ! Header
     if (this%structured) then
-      write(20,fmt(1)) 'Row','Col', 'X', 'Y', (k, k=1, this%nlayers)
+      write(unit,fmt(1)) 'Row','Col', 'X', 'Y', (k, k=1, this%nlayers)
     else
-      write(20,fmt(1)) 'Node', 'X', 'Y', (k, k=1, this%nlayers)
+      write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, this%nlayers)
     end if
     ! Values
     do i = 1, this%nnodes(1)
       if (this%structured) then
-        call cell2rowcol(this, i, row, col)
-        write(20,fmt(2)) row, col, this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
+        call this%cell2rowcol(i, row, col)
+        write(unit,fmt(2)) row, col, this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
       else
-        write(20,fmt(2)) i, this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
-    end if
+        write(unit,fmt(2)) i, this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
+      end if
     end do
 
-    close(20)
+    call fwrite%close_file()
   
   end subroutine write_node_file_mf
 !-------------------------------------------------------------------------------------------------!

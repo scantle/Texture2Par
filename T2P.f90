@@ -81,6 +81,8 @@ module m_T2P
     ! Main Procedures
     procedure,public   :: predict
     procedure,public   :: write_output
+    procedure,public   :: write_dataset_files
+    procedure,public   :: write_dataset_file
     procedure,private  :: interpolate_pp
     procedure,private  :: interpolate_model
     procedure,private  :: calc_block_parameters
@@ -770,7 +772,8 @@ module m_T2P
       call this%fmodel%write_node_files(p, this%class_names)
     end if
     
-    if (this%opt%WRITE_DATASET_FILES) write(*,*) 'todo'
+    ! Write the observed datasets that were averaged by layer
+    if (this%opt%WRITE_DATASET_FILES) call this%write_dataset_files()
     
     if (this%opt%WRITE_NONE) return  ! Skips model output files
     
@@ -778,6 +781,82 @@ module m_T2P
     call this%fmodel%write_fmodel_input(this%par)
   
   end subroutine write_output
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_dataset_files(this)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    integer                       :: i
+    character(100)                :: fname
+    type(t_layerdata),pointer     :: p(:)
+    
+    do i=1, this%get_active_texture_classes()
+      p=>this%datasets(1,:)
+      call this%write_dataset_file(fname, p, i)
+    end do
+    
+    do i=1, this%nsecondary
+      p=>this%datasets(i,:)
+      call this%write_dataset_file(fname, p,1)
+    end do
+  
+  end subroutine write_dataset_files
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_dataset_file(this, fname, dataset, idx)
+    use m_flow_model, only: t_flow_model,t_modflow_model
+    use m_file_io, only: t_file_writer, open_file_writer
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    character(*)                  :: fname
+    type(t_layerdata),pointer     :: dataset(:)  ! (nlayers)
+    integer, intent(in)           :: idx
+    class(t_flow_model),pointer   :: fm
+    integer                       :: i, k, dim, unit
+    integer                       :: rowcol(2,this%fmodel%nnodes(1))
+    character(60)                 :: fmt(2)
+    type(t_file_writer),pointer   :: fwrite
+    
+    dim = 1
+    select type(fm=>this%fmodel)
+      class is(t_modflow_model)
+        if (fm%structured) dim=2
+        do i=1, this%fmodel%nnodes(1)
+          call fm%cell2rowcol(i, rowcol(1,i), rowcol(2,i))
+        end do
+    end select
+    
+    write(fmt(1),'("(2a10,",i1,"a8,",i5,"i14)")') dim, this%fmodel%nlayers
+    write(fmt(2),'("(1i10,",i1,"i8,",i5,"es14.5)")') dim, this%fmodel%nlayers
+    
+    fwrite => open_file_writer(fname)
+    unit = fwrite%unit
+    
+    ! Header
+    if (dim==1) then
+      ! Header
+      write(unit,fmt(1)) 'Well', 'Element', (k, k=1, this%fmodel%nlayers)
+      ! Values
+      do i = 1, size(dataset(1)%values,2)
+        write(unit,fmt(2)) i, dataset(1)%fmodel_loc(i), (dataset(k)%values(idx,i), k=1, this%fmodel%nlayers)
+      end do
+    else
+      ! Header
+      write(unit,fmt(1)) 'Well', 'Row','Col', (k, k=1, this%fmodel%nlayers)
+      ! Values
+      ! Values
+      do i = 1, size(dataset(1)%values,2)
+        write(unit,fmt(2)) i, rowcol(1:2,dataset(1)%fmodel_loc(i)), (dataset(k)%values(idx,i), k=1, this%fmodel%nlayers)
+      end do
+    end if
+
+    call fwrite%close_file()
+  
+  end subroutine write_dataset_file
+  
+!-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!
 ! ACCESS PROCEDURES
