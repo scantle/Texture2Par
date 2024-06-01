@@ -761,13 +761,20 @@ module m_T2P
   subroutine write_output(this)
     implicit none
     class(t_T2P), intent(inout)   :: this
+    type(t_layerdata),pointer     :: p(:)
     
+    ! Write parameters by node/cell, and if texture was kriged, textures by node/cell
+    if (this%opt%WRITE_NODE_FILES) call this%fmodel%write_node_files(this%par, this%parnames)
+    if (this%opt%WRITE_NODE_FILES.and.this%opt%INTERP_ORDER=="BEFORE") then
+      p=>this%dset_intermediate(1,:)
+      call this%fmodel%write_node_files(p, this%class_names)
+    end if
     
-    if (this%opt%WRITE_NODE_FILES) write(*,*) 'todo'
     if (this%opt%WRITE_DATASET_FILES) write(*,*) 'todo'
     
     if (this%opt%WRITE_NONE) return  ! Skips model output files
     
+    ! Write out flow model input files
     call this%fmodel%write_fmodel_input(this%par)
   
   end subroutine write_output

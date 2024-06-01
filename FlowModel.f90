@@ -8,7 +8,7 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
   ! Module variables
   type(t_file_reader), pointer :: reader          ! For reading input files
-  integer,parameter         :: max_node_elem_members = 30
+  integer,parameter            :: max_node_elem_members = 30
 !-------------------------------------------------------------------------------------------------!
   
   type :: t_flow_model  ! Abstract Base Class
@@ -49,6 +49,8 @@ module m_flow_model
       procedure,public            :: is_active_layer
       procedure,public            :: is_aquitard_layer
       procedure,public            :: write_fmodel_input
+      procedure,public            :: write_node_files
+      procedure,public            :: write_node_file
       procedure,private           :: alloc_layers
       procedure,private           :: alloc_nodes
   
@@ -56,6 +58,7 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
   type,extends(t_flow_model) :: t_flow_fdmodel    ! Finite Difference Model
     ! Ineligant solution to both MF-USG and Grid using the GSF
+    logical                   :: structured    ! T/F Structured (row/col) model
     integer                   :: nvert
     ! I am not sure we actually need either of these vert arrays since we have node coordinates
     !integer,allocatable       :: vertnnode(:)   ! Number of nodes that include each vertex
@@ -105,6 +108,7 @@ module m_flow_model
     procedure,public          :: is_aquitard_layer => is_aquitard_layer_iwfm
     !procedure,public          :: get_active_ppzones => get_active_ppzones_iwfm
     procedure,public          :: write_fmodel_input => write_fmodel_input_iwfm
+    procedure,public          :: write_node_file => write_node_file_iwfm
     procedure,private         :: iwfm_elem_elev_idw
     procedure,private         :: alloc_layers => alloc_layers_iwfm
     procedure,private         :: alloc_nodes  => alloc_nodes_iwfm
@@ -117,7 +121,6 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_flow_fdmodel) :: t_modflow_model
   
-  logical                     :: structured    ! T/F Structured (row/col) model
   integer                     :: layfile       ! LPF/UPW IUNIT number
   character(3)                :: gwftyp        ! LPF or UPW, for printing
   
@@ -125,6 +128,7 @@ module m_flow_model
     procedure,public          :: initialize => init_modflow2000
     procedure,public          :: read_model => read_modflow2000
     procedure,public          :: find_in_grid => find_in_grid_cell
+    procedure,public          :: write_node_file => write_node_file_mf
     procedure,private         :: get_cell_local
     procedure,private         :: cell2rowcol
     procedure,private         :: calc_mfcell_centers_global
@@ -376,6 +380,40 @@ module m_flow_model
     type(t_layerdata),pointer  :: par(:)
   
   end subroutine write_fmodel_input
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_node_files(this, datasets, dat_names)
+    use m_vstringlist, only: t_vstringlist
+    ! Calls methods overloaded by subclasses
+    use m_datasets, only: t_layerdata
+    implicit none
+    class(t_flow_model)        :: this
+    type(t_layerdata),pointer  :: datasets(:)
+    type(t_vstringlist)        :: dat_names
+    character(100)             :: fname, temp
+    integer                    :: i
+    
+    do i=1, size(datasets)
+      call item2char(dat_names, i, temp)
+      write(fname,'()') 't2p_', trim(temp), '.out'
+      call this%write_node_file(fname, datasets, i)
+    end do
+  
+  end subroutine write_node_files
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_node_file(this, fname, par, par_id)
+    ! Base class method, should not be run
+    use m_datasets, only: t_layerdata
+    implicit none
+    class(t_flow_model)        :: this
+    character(*)               :: fname
+    type(t_layerdata),pointer  :: par(:)
+    integer,intent(in)         :: par_id
+  
+  end subroutine write_node_file
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -1012,6 +1050,38 @@ module m_flow_model
   
   end subroutine write_fmodel_input_iwfm
   
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_node_file_iwfm(this, fname, par, par_id)
+    ! Base class method, should not be run
+    use m_datasets, only: t_layerdata
+    implicit none
+    class(t_iwfm_model)        :: this
+    character(*)               :: fname
+    type(t_layerdata),pointer  :: par(:)
+    integer,intent(in)         :: par_id
+    integer                    :: i, k
+    character(60)              :: fmt(2)
+    type(t_file_writer),pointer:: fwrite
+
+    !write(*,'(4x,a,a35)') 'Writing:', trim(filename)
+
+    write(fmt(1),'("(1a8,2a18,",i5,"i14)")') this%nlayers
+    write(fmt(2),'("(1i8,2f18.5,",i5,"e14.5)")') this%nlayers
+
+    !open(20, file=trim(filename), status='replace', action='write', buffered='YES')
+    fwrite => open_file_writer(fname)
+    ! Header
+    write(20,fmt(1)) 'Node', 'X', 'Y', (k, k=1, this%nlayers)
+    ! Values
+    do i = 1, this%nnodes(1)
+      write(20,fmt(2)) this%nodeid(i), this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
+    end do
+
+    close(20)
+  
+  end subroutine write_node_file_iwfm
+!-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!
 ! FINITE-DIFFERENCE CLASS TYPE-BOUND PROCEDURES (MODFLOW, GSF)
@@ -1241,6 +1311,49 @@ module m_flow_model
     if (allocated(grid_count)) deallocate(grid_count)
     
   end subroutine read_modflow2000
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_node_file_mf(this, fname, par, par_id)
+    ! Base class method, should not be run
+    use m_datasets, only: t_layerdata
+    implicit none
+    class(t_modflow_model)     :: this
+    character(*)               :: fname
+    type(t_layerdata),pointer  :: par(:)
+    integer,intent(in)         :: par_id
+    integer                    :: i, k, row, col
+    character(60)              :: fmt(2)
+    type(t_file_writer),pointer:: fwrite
+
+    !write(*,'(4x,a,a35)') 'Writing:', trim(filename)
+    i = 1
+    if (this%structured) i = 2
+    write(fmt(1),'("(",i1,"a8,2a18,",i5,"i14)")') i, this%nlayers
+    write(fmt(2),'("(",i1,"i8,2f18.5,",i5,"e14.5)")') i, this%nlayers
+
+    !open(20, file=trim(filename), status='replace', action='write', buffered='YES')
+    fwrite => open_file_writer(fname)
+    ! Header
+    if (this%structured) then
+      write(20,fmt(1)) 'Row','Col', 'X', 'Y', (k, k=1, this%nlayers)
+    else
+      write(20,fmt(1)) 'Node', 'X', 'Y', (k, k=1, this%nlayers)
+    end if
+    ! Values
+    do i = 1, this%nnodes(1)
+      if (this%structured) then
+        call cell2rowcol(this, i, row, col)
+        write(20,fmt(2)) row, col, this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
+      else
+        write(20,fmt(2)) i, this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
+    end if
+    end do
+
+    close(20)
+  
+  end subroutine write_node_file_mf
+!-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!
   
