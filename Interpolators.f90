@@ -92,13 +92,12 @@ module m_interpolator
       end do
     end do
     
-    !call this%cleanup() needed?
-    
   end subroutine calc_weights
   
 !-------------------------------------------------------------------------------------------------!
   
   subroutine setup(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+    ! Abstract Base Class method - should not be called
     implicit none
     class(t_interpolator),intent(inout)   :: this
     class(t_dataset)                      :: obs_data(:)
@@ -114,6 +113,7 @@ module m_interpolator
 !-------------------------------------------------------------------------------------------------!
   
   subroutine predict_point(this, idx, p, obs_data, cat, weights)
+    ! Abstract Base Class method - should not be called
     implicit none
     class(t_interpolator),intent(inout)  :: this
     integer,intent(in)                   :: idx, cat
@@ -147,13 +147,20 @@ module m_interpolator
     integer,intent(in)            :: cat
     integer,intent(in)            :: to_cats(:)
     type(t_options),intent(in)    :: opt
+    type(t_layerdata),pointer     :: p
+    logical                       :: na_mask(obs_data(1)%grid%n)
     
     this%nobs = obs_data(1)%grid%n
     this%power = opt%IDW_POWER
+    na_mask = .true.
     
     allocate(this%catmask(this%nobs))
-    this%catmask = (obs_data(1)%category == cat)
-    
+    ! For layer dataset, ignore all NA values
+    select type(p=>obs_data(1))
+      class is (t_layerdata)
+        na_mask = .not. any(p%values(1:, :) == -999.0, dim=1)
+    end select
+    this%catmask = (obs_data(1)%category == cat) .and. (na_mask)
   end subroutine setup_idw
 
 !-------------------------------------------------------------------------------------------------!

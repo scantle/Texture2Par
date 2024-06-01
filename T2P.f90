@@ -17,8 +17,9 @@ module m_T2P
     class(t_flow_model),pointer      :: fmodel      => null()
     class(t_interpolator),pointer    :: interp_data => null()
     class(t_interpolator),pointer    :: interp_pp   => null()
-    type(t_layerdata),pointer        :: datasets(:,:)     ! Datasets (dataset, layer) (1+nsecondary, layer)
-    type(t_layerdata),pointer        :: par(:)            ! Final model hydraulic parameters (parameters, layers)
+    type(t_layerdata),pointer        :: datasets(:,:)           ! Datasets (dataset, layer) (1+nsecondary, layer)
+    type(t_layerdata),pointer        :: dset_intermediate(:,:)  ! texture or parameters data interpolated to model grid (nsets, nlayers)
+    type(t_layerdata),pointer        :: par(:)            ! Final model hydraulic parameters (nlayers)&values(npar, npoints)
     !type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)  ! Moved to interpolator
     type(t_pilotpoints),pointer      :: pilot_points
     type(t_pilotpoints),pointer      :: pilot_points_aquitard
@@ -41,7 +42,6 @@ module m_T2P
     integer,pointer                  :: nsecondary_by_id(:)   ! Connections (covariates) per [class, hyd property]
     integer,pointer                  :: connections(:,:)      ! (connections, [classes or hyd properties])
     integer,allocatable              :: class_dataset(:)      ! Translation from class id to dataset_id, ie datasets(dataset_id, layer)
-    !integer,allocatable              :: vario_idx(:,:)        ! Variogram index given (class_id, class_id)  ! TODO: How to make this part of interpolator? Global?
     type(t_vstringlist)              :: dataset_files         ! dataset filenames
     type(t_vstringlist)              :: dataset_trans         ! dataset transformations (same order as filenames)
     type(t_vstringlist)              :: dataset_trans_params  ! dataset transformation parameters (same order as filenames) (unimplemented)
@@ -80,6 +80,7 @@ module m_T2P
     
     ! Main Procedures
     procedure,public   :: predict
+    procedure,public   :: write_output
     procedure,private  :: interpolate_pp
     procedure,private  :: interpolate_model
     procedure,private  :: calc_block_parameters
@@ -171,6 +172,12 @@ module m_T2P
     end select
     call this%interp_data%initialize()  ! Todo - custom parameters?
     call this%interp_pp%initialize()    ! Todo - custom parameters?
+    
+    ! Invalid combinations...
+    if (this%opt%INTERP_ORDER=="AFTER") then
+      if (this%opt%ONLY_TEXTURE) call error_handler(1,opt_msg='ONLY_TEXTURE option is only valid for INTERP_ORDER=="BEFORE"')
+      if (this%opt%INFER_LAST_CLASS) call error_handler(1,opt_msg='Cannot use INFER_LAST_CLASS with INTERP_ORDER=="AFTER"')
+    end if
   
   end subroutine process_options
   
@@ -471,23 +478,28 @@ module m_T2P
     class(t_grid),pointer         :: pp_to                                      ! Where we interpolate the pilot points to
     type(t_category),pointer      :: cat_to                                     ! Categories the pilot points are interpolated using
     type(t_pilotpoints)           :: pp_intermediate(this%fmodel%ppzones%narr)  ! The pilot point data interpolated to pp_to (by ppzone array)
-    type(t_layerdata),pointer     :: mgrid_datasets(:,:)                        ! The primary data interpolated to model grid
-                                                                                ! (texture classes or parameters) (nsets, nlayers)
     integer                       :: i,j
     
     ! Allocate the final parameter objects
     allocate(this%par(this%fmodel%nlayers))
     
+    if (this%opt%ONLY_TEXTURE) then
+      ! If just texture, our jobs is very easy
+      allocate(this%dset_intermediate(1,this%fmodel%nlayers))
+      call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
+      RETURN
+    end if
+    
     ! Assign PPTO_grid (data or fmodel)
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! T2P 1.0 Method
-      allocate(mgrid_datasets(1,this%fmodel%nlayers))
+      allocate(this%dset_intermediate(1,this%fmodel%nlayers))
       ! Uses layer 1 grid
       pp_to => this%fmodel%grid(1)
       cat_to => this%fmodel%ppzones
     else if (this%opt%INTERP_ORDER=="AFTER") then
-      allocate(mgrid_datasets(size(this%datasets,1),this%fmodel%nlayers))
-      mgrid_datasets(2:,1:) => this%datasets(2:,1:)  ! All secondary data gets pointed over
+      allocate(this%dset_intermediate(size(this%datasets,1),this%fmodel%nlayers))
+      this%dset_intermediate(2:,1:) => this%datasets(2:,1:)  ! All secondary data gets pointed over
       ! Uses primary dataset layer 1 grid
       ! Again, assumes uniformity of grid by layer
       pp_to => this%datasets(1,1)%grid
@@ -499,16 +511,16 @@ module m_T2P
   
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! Krige textures to fmodel grid
-      call this%interpolate_model(this%datasets, mgrid_datasets(1,1:))
+      call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
       ! Write weights 
       ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
-      call this%calc_block_parameters(pp_intermediate, mgrid_datasets(1,1:), this%par)
+      call this%calc_block_parameters(pp_intermediate, this%dset_intermediate(1,1:), this%par)
       
     else if (this%opt%INTERP_ORDER=="AFTER") then
       ! Calc parameters at data locations
-      call this%calc_block_parameters(pp_intermediate, this%datasets(1,1:), mgrid_datasets(1,1:))
+      call this%calc_block_parameters(pp_intermediate, this%datasets(1,1:), this%dset_intermediate(1,1:))
       ! Krige parameters to fmodel grid
-      call this%interpolate_model(mgrid_datasets, this%par)
+      call this%interpolate_model(this%dset_intermediate, this%par)
       ! Write weights
     end if
     
@@ -523,7 +535,7 @@ module m_T2P
     implicit none
     class(t_T2P), intent(inout)     :: this
     type(t_pilotpoints)             :: results(this%fmodel%ppzones%narr)
-    class(t_grid),pointer            :: to_grid
+    class(t_grid),pointer           :: to_grid
     type(t_category)                :: to_categories
     type(t_weights)                 :: weights
     integer                         :: i,j,k
@@ -606,14 +618,14 @@ module m_T2P
 
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine interpolate_model(this, datasets, mgrid_datasets)
+  subroutine interpolate_model(this, obs, dout)
     use m_grid, only: t_grid
     use m_weights, only: t_weights
     
     implicit none
     class(t_T2P), intent(inout)   :: this
-    class(t_dataset)              :: datasets(:,:)  ! (nprimary, nlayers)
-    type(t_layerdata)             :: mgrid_datasets(this%fmodel%nlayers)
+    class(t_layerdata)            :: obs(:,:)  ! (nprimary, nlayers)
+    type(t_layerdata)             :: dout(this%fmodel%nlayers)
     integer                       :: k, i, j, x, wsize
     integer                       :: wstart, wend
     integer,allocatable           :: class_idx(:), dataset_idx(:)
@@ -628,11 +640,11 @@ module m_T2P
       
       ! Initialize results
       if (this%opt%INFER_LAST_CLASS) then
-        call mgrid_datasets(k)%initialize(this%fmodel%grid(1)%n, this%nprimary+1)
+        call dout(k)%initialize(this%fmodel%grid(1)%n, this%nprimary+1)
       else
-        call mgrid_datasets(k)%initialize(this%fmodel%grid(1)%n, this%nprimary)
+        call dout(k)%initialize(this%fmodel%grid(1)%n, this%nprimary)
       end if
-      mgrid_datasets(k)%values = 0.0
+      dout(k)%values = 0.0
     
       ! Loop over primary classes
       do i=1, this%nprimary
@@ -646,15 +658,15 @@ module m_T2P
           dataset_idx = this%get_dataset_idx_list(class_idx)  ! What datasets those classes are in
           wsize = 0
           do j=1, size(dataset_idx)
-            wsize = wsize + this%datasets(dataset_idx(j),k)%grid%n
+            wsize = wsize + obs(dataset_idx(j),k)%grid%n
           end do
           call weights%initialize(wsize, this%fmodel%grid(1)%n)  !input_n, output_n
           ! Multiple weights objects?
-          !call weights%initialize(datasets(1,1)%grid%n, this%fmodel%grid(1)%n)  !input_n, output_n
-          !call weights2%initialize(datasets(2,1)%grid%n, this%fmodel%grid(1)%n)
+          !call weights%initialize(obs(1,1)%grid%n, this%fmodel%grid(1)%n)  !input_n, output_n
+          !call weights2%initialize(obs(2,1)%grid%n, this%fmodel%grid(1)%n)
           
           x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
-          call this%interp_data%calc_weights(this%datasets(dataset_idx,k), &
+          call this%interp_data%calc_weights(obs(dataset_idx,k), &
                                             class_idx,  &
                                             this%fmodel%grid(1),  &
                                             weights%values, &
@@ -671,21 +683,21 @@ module m_T2P
         wsize = 0
         do j=1, size(dataset_idx)
           wstart = wsize+1
-          wend = wsize+this%datasets(dataset_idx(j),k)%grid%n
+          wend = wsize+obs(dataset_idx(j),k)%grid%n
           v_adjust = 0.0_dp
-          if (j>1) v_adjust = this%datasets(1,k)%mean(i) - this%datasets(dataset_idx(j),k)%mean(1)  ! secondary data standardization factor
+          if (j>1) v_adjust = obs(1,k)%mean(i) - obs(dataset_idx(j),k)%mean(1)  ! secondary data standardization factor
           ! Weights%values are (output_points, input_points)
           !                     ngrid          nobs (all datasets)
-          mgrid_datasets(k)%values(i,1:) =  mgrid_datasets(k)%values(i,1:) + matmul(weights%values(:,wstart:wend),this%datasets(dataset_idx(j),k)%values(i,1:)+v_adjust)
-          wsize = wsize + this%datasets(dataset_idx(j),k)%grid%n
+          dout(k)%values(i,1:) =  dout(k)%values(i,1:) + matmul(weights%values(:,wstart:wend),obs(dataset_idx(j),k)%values(i,1:)+v_adjust)
+          wsize = wsize + obs(dataset_idx(j),k)%grid%n
         end do
         ! Enforce values must be greater than zero
-        where(mgrid_datasets(k)%values(i,1:) < 0.0) mgrid_datasets(k)%values(i,1:) = 0.0_dp
+        where(dout(k)%values(i,1:) < 0.0) dout(k)%values(i,1:) = 0.0_dp
         ! If we're kriging texture - must be below 1.0
-        if (this%opt%INTERP_ORDER=="BEFORE") where(mgrid_datasets(k)%values(i,1:) > 1.0) mgrid_datasets(k)%values(i,1:) = 1.0_dp
+        if (this%opt%INTERP_ORDER=="BEFORE") where(dout(k)%values(i,1:) > 1.0) dout(k)%values(i,1:) = 1.0_dp
       end do
       ! If we need to, infer the last class
-      if (this%opt%INFER_LAST_CLASS) mgrid_datasets(k)%values(this%nprimary+1,1:) = 1.0_dp - sum(mgrid_datasets(k)%values(1:this%nprimary,1:), dim=1)
+      if (this%opt%INFER_LAST_CLASS) dout(k)%values(this%nprimary+1,1:) = 1.0_dp - sum(dout(k)%values(1:this%nprimary,1:), dim=1)
     end do
     
   end subroutine interpolate_model
@@ -697,7 +709,7 @@ module m_T2P
     class(t_T2P), intent(inout)    :: this
     type(t_pilotpoints),intent(in) :: pp_obj(this%fmodel%ppzones%narr) ! Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, STp
     type(t_layerdata),intent(in)   :: tex_obs(this%fmodel%nlayers)  !  values(ntexclasses, npoints)
-    type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !(Kh, Kv, Ss, Sy)
+    type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !values([Kh, Kv, Ss, Sy], npoints)
     integer                        :: i, k, r
     real(dp),allocatable           :: depths(:),KhD(:,:),KvD(:,:)
     
@@ -708,8 +720,6 @@ module m_T2P
     
       ! Check if layer is active (generally IWFM: means it has thickness)
       if (this%fmodel%is_active_layer(k)==.false.) cycle
-    
-      ! TODO AQUITARDS
     
       ! Initialize Par
       call par_out(k)%initialize(this%fmodel%nnodes(k), this%npar)
@@ -747,6 +757,20 @@ module m_T2P
   end subroutine calc_block_parameters
   
 !-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_output(this)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    
+    
+    if (this%opt%WRITE_NODE_FILES) write(*,*) 'todo'
+    if (this%opt%WRITE_DATASET_FILES) write(*,*) 'todo'
+    
+    if (this%opt%WRITE_NONE) return  ! Skips model output files
+    
+    call this%fmodel%write_fmodel_input(this%par)
+  
+  end subroutine write_output
   
 !-------------------------------------------------------------------------------------------------!
 ! ACCESS PROCEDURES

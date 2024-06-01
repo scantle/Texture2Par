@@ -55,7 +55,7 @@ program Texture2Par
   call t2p%predict()
     
   ! Output
-  !call t2p%write_output()
+  call t2p%write_output()
     
   ! Exit
   call write_elapsed_time(log)

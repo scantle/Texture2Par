@@ -108,7 +108,8 @@
 		<File RelativePath=".\Tools.f90"/></Filter>
 		<File RelativePath=".\data_transformer.f90"/>
 		<File RelativePath=".\global.f90"/>
-		<File RelativePath=".\Texture2Par.f90"/></Filter>
+		<File RelativePath=".\Texture2Par.f90"/>
+		<File RelativePath=".\write_fmodel.f90"/></Filter>
 	</Files>
 	<Globals/>
 </VisualStudioProject>

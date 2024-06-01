@@ -48,9 +48,9 @@ module m_flow_model
       procedure,public            :: get_active_ppzones
       procedure,public            :: is_active_layer
       procedure,public            :: is_aquitard_layer
+      procedure,public            :: write_fmodel_input
       procedure,private           :: alloc_layers
       procedure,private           :: alloc_nodes
-      !procedure,private     :: write_model_input
   
   end type t_flow_model
 !-------------------------------------------------------------------------------------------------!
@@ -104,6 +104,7 @@ module m_flow_model
     procedure,public          :: is_active_layer => is_active_layer_iwfm
     procedure,public          :: is_aquitard_layer => is_aquitard_layer_iwfm
     !procedure,public          :: get_active_ppzones => get_active_ppzones_iwfm
+    procedure,public          :: write_fmodel_input => write_fmodel_input_iwfm
     procedure,private         :: iwfm_elem_elev_idw
     procedure,private         :: alloc_layers => alloc_layers_iwfm
     procedure,private         :: alloc_nodes  => alloc_nodes_iwfm
@@ -365,6 +366,17 @@ module m_flow_model
     
   end function is_aquitard_layer
 
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_fmodel_input(this, par)
+    ! Base class method, should not be run
+    use m_datasets, only: t_layerdata
+    implicit none
+    class(t_flow_model)        :: this
+    type(t_layerdata),pointer  :: par(:)
+  
+  end subroutine write_fmodel_input
+  
 !-------------------------------------------------------------------------------------------------!
   
   !subroutine add_node2vert2node(this, node, nvert)
@@ -988,6 +1000,19 @@ module m_flow_model
     
 !-------------------------------------------------------------------------------------------------!
 
+  subroutine write_fmodel_input_iwfm(this, par)
+    use m_write_fmodel, only: writeIWFMgwfile
+    use m_datasets, only: t_layerdata
+    implicit none
+    class(t_iwfm_model)        :: this
+    type(t_layerdata),pointer  :: par(:)
+    
+    ! External for now
+    call writeIWFMgwfile(this%template_file, this%output_file, par, this%nlayers, this%nnodes(1), this%nodeid, this%lay_aqtard, this%lay_exist)
+  
+  end subroutine write_fmodel_input_iwfm
+  
+  
 !-------------------------------------------------------------------------------------------------!
 ! FINITE-DIFFERENCE CLASS TYPE-BOUND PROCEDURES (MODFLOW, GSF)
 !-------------------------------------------------------------------------------------------------!

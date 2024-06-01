@@ -30,9 +30,9 @@ module m_options
     logical                  :: WRITE_GRID_WEIGHTS    !
     logical                  :: READ_PP_WEIGHTS       !
     logical                  :: READ_GRID_WEIGHTS     !
-    logical                  :: WRITE_NONE            !
-    logical                  :: WRITE_NODE_FILES      !
-    logical                  :: WRITE_DATASET_FILES   !
+    logical                  :: WRITE_NONE            ! Skips model output files (as implemented...)
+    logical                  :: WRITE_NODE_FILES      ! Writes parameters by node/cell
+    logical                  :: WRITE_DATASET_FILES   ! Writes ou
     logical                  :: OUTPUT_GRID           !
     logical                  :: OUTPUT_ARRAY          !
     logical                  :: LOG_KRIGE_K           !
@@ -148,7 +148,7 @@ subroutine read_options(this, reader)
         this%READ_GRID_WEIGHTS    = .true.
       case("WRITE_NONE")
         this%WRITE_NONE           = .true.
-      case("WRITE_NODE_FILES")
+      case("WRITE_NODE_FILES","WRITE_CELL_FILES")
         this%WRITE_NODE_FILES     = .true.
       case("WRITE_DATASET_FILES")
         this%WRITE_DATASET_FILES  = .true.
