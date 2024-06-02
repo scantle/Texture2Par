@@ -123,6 +123,8 @@ module m_read_datasets
           end do
           ! If using, get ppzone in model
           if (t2p%opt%INTERP_ORDER=="AFTER") then
+            ! TODO for IWFM this is attempting to match element (fmodel_Loc) to node (ppzones)
+            ! Should replace with a fmodel routine get_ppzone_by_loc. For modflow, we'll use the cell, but from iwfm we'll use the nearest node?
             t2p%dataset_ppzones%array(idx,1:) = t2p%dataset_ppzones%array(fmodel_loc,1:)
           end if
           ! Store HSUs for each layer

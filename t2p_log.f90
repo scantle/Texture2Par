@@ -107,10 +107,11 @@ module m_log
   
     if (vstrlist_length(warnings) < 1) return   ! Early return if no warnings
     
-    call log%write_line('--- WARNINGS ---', blank_start=1)
+    call log%write_line('--- INPUT WARNINGS ---', blank_start=1)
     do i=1, vstrlist_length(warnings)
       call log%write_line(vstrlist_index(warnings,i))
     end do
+    call log%write_line('') ! blank
   
   end subroutine write_warnings
   

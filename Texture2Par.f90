@@ -32,6 +32,7 @@ program Texture2Par
   write(*,'(/,4x,a)') '             Texture2Par v2.0.0             '
   write(*,'(3x,a)') '----------------------------------------------'
   write(*,'(4x,a)')   'Copyright S.S. Papadopulos & Associates Inc.'
+  write(*,*)  ! blank
     
   ! Pre-read initializations
   call get_command_args(main_input_file)

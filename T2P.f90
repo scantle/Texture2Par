@@ -80,12 +80,16 @@ module m_T2P
     
     ! Main Procedures
     procedure,public   :: predict
-    procedure,public   :: write_output
-    procedure,public   :: write_dataset_files
-    procedure,public   :: write_dataset_file
     procedure,private  :: interpolate_pp
     procedure,private  :: interpolate_model
     procedure,private  :: calc_block_parameters
+    
+    ! I/O Procedures
+    procedure,public   :: write_output
+    procedure,public   :: write_dataset_files
+    procedure,public   :: write_dataset_file
+    procedure,public,nopass   :: write_status
+    procedure,public,nopass   :: write_minor_status
     
     ! Access procedures
     procedure, public  :: get_class_id
@@ -147,6 +151,9 @@ module m_T2P
     
     ! Setup warnings
     call vstrlist_new (warnings)  ! belongs to m_error_handler
+    
+    ! Open the overwrite unit
+    open(6, carriagecontrol='fortran')
     
   end subroutine initialize
 
@@ -488,18 +495,21 @@ module m_T2P
     if (this%opt%ONLY_TEXTURE) then
       ! If just texture, our jobs is very easy
       allocate(this%dset_intermediate(1,this%fmodel%nlayers))
+      call this%write_status("Interpolating datasets to result grid")
       call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
       RETURN
     end if
     
     ! Assign PPTO_grid (data or fmodel)
     if (this%opt%INTERP_ORDER=="BEFORE") then
+      call this%write_status("Interpolating pilot point parameters to result grid")
       ! T2P 1.0 Method
       allocate(this%dset_intermediate(1,this%fmodel%nlayers))
       ! Uses layer 1 grid
       pp_to => this%fmodel%grid(1)
       cat_to => this%fmodel%ppzones
     else if (this%opt%INTERP_ORDER=="AFTER") then
+      call this%write_status("Interpolating pilot point parameters to primary dataset grid")
       allocate(this%dset_intermediate(size(this%datasets,1),this%fmodel%nlayers))
       this%dset_intermediate(2:,1:) => this%datasets(2:,1:)  ! All secondary data gets pointed over
       ! Uses primary dataset layer 1 grid
@@ -513,18 +523,23 @@ module m_T2P
   
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! Krige textures to fmodel grid
+      call this%write_status("Interpolating datsets to result grid")
       call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
       ! Write weights 
       ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
+      call this%write_status("Calculating hydraulic parameters")
       call this%calc_block_parameters(pp_intermediate, this%dset_intermediate(1,1:), this%par)
       
     else if (this%opt%INTERP_ORDER=="AFTER") then
       ! Calc parameters at data locations
+    call this%write_status("Calculating hydraulic parameters")
       call this%calc_block_parameters(pp_intermediate, this%datasets(1,1:), this%dset_intermediate(1,1:))
       ! Krige parameters to fmodel grid
+      call this%write_status("Interpolating hydraulic parameters to result grid")
       call this%interpolate_model(this%dset_intermediate, this%par)
       ! Write weights
     end if
+    call this%write_status("Interpolating hydraulic parameters to result grid")
     
   end subroutine predict
 !-------------------------------------------------------------------------------------------------!
@@ -550,6 +565,8 @@ module m_T2P
     
     ! Go by pilot point zone arrays (up to nlayers)
     do k=1, this%fmodel%ppzones%narr
+    
+      call this%write_minor_status('- Array:',k)
     
       ! Initialize results for this array
       call results(k)%init_pilotpoint(to_grid%n, to_grid) ! Copies grid over
@@ -588,6 +605,8 @@ module m_T2P
     
       ! Go by pilot point zone arrays (up to nlayers)
       do k=1, this%fmodel%ppzones%narr
+      
+        call this%write_minor_status('Interpolating Aquitard Pilot Point Array:',k)
     
         ! Check if we have precalculated weights for the pilot point interpolation
         if (this%opt%READ_PP_WEIGHTS) then
@@ -628,7 +647,7 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     class(t_layerdata)            :: obs(:,:)  ! (nprimary, nlayers)
     type(t_layerdata)             :: dout(this%fmodel%nlayers)
-    integer                       :: k, i, j, x, wsize
+    integer                       :: k, i, j, x, wsize, k_active
     integer                       :: wstart, wend
     integer,allocatable           :: class_idx(:), dataset_idx(:)
     real(dp)                      :: v_adjust
@@ -639,6 +658,7 @@ module m_T2P
     
       ! Check if layer is active (generally IWFM: means it has thickness)
       if (this%fmodel%is_active_layer(k)==.false.) cycle
+      call this%write_minor_status('- Layer:',k)
       
       ! Initialize results
       if (this%opt%INFER_LAST_CLASS) then
@@ -715,13 +735,12 @@ module m_T2P
     integer                        :: i, k, r
     real(dp),allocatable           :: depths(:),KhD(:,:),KvD(:,:)
     
-    write(*,*) 'here'
-    
     ! Loop over layers
     do k=1, this%fmodel%nlayers
     
       ! Check if layer is active (generally IWFM: means it has thickness)
       if (this%fmodel%is_active_layer(k)==.false.) cycle
+      call this%write_minor_status('- Layer:',k)
     
       ! Initialize Par
       call par_out(k)%initialize(this%fmodel%nnodes(k), this%npar)
@@ -765,19 +784,29 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     type(t_layerdata),pointer     :: p(:)
     
+    call this%write_status("Writing output files")
+    
     ! Write parameters by node/cell, and if texture was kriged, textures by node/cell
-    if (this%opt%WRITE_NODE_FILES) call this%fmodel%write_node_files(this%par, this%parnames)
+    if (this%opt%WRITE_NODE_FILES) then
+      call this%write_minor_status('Writing Parameter Node Files')
+      call this%fmodel%write_node_files(this%par, this%parnames)
+    end if
     if (this%opt%WRITE_NODE_FILES.and.this%opt%INTERP_ORDER=="BEFORE") then
+      call this%write_minor_status('Writing Class Node Files')
       p=>this%dset_intermediate(1,:)
       call this%fmodel%write_node_files(p, this%class_names)
     end if
     
     ! Write the observed datasets that were averaged by layer
-    if (this%opt%WRITE_DATASET_FILES) call this%write_dataset_files()
+    if (this%opt%WRITE_DATASET_FILES) then
+      call this%write_minor_status('Writing Layer-Averaged Dataset File(s)')
+      call this%write_dataset_files()
+    end if
     
     if (this%opt%WRITE_NONE) return  ! Skips model output files
     
     ! Write out flow model input files
+    call this%write_minor_status('Writing Model Input Files')
     call this%fmodel%write_fmodel_input(this%par)
   
   end subroutine write_output
@@ -868,6 +897,58 @@ module m_T2P
   
 !-------------------------------------------------------------------------------------------------!
   
+  subroutine write_status(line, blank_start, blank_end)
+    use m_global, only: log
+    implicit none
+    character(len=*)                 :: line
+    integer,intent(inout),optional   :: blank_start, blank_end
+    integer                          :: i
+    
+    ! To log
+    call log%write_line(line, blank_start, blank_end)
+    
+    ! To screen
+    if (present(blank_start)) then
+      do i=1, blank_start
+        write(*,*)
+      end do
+    end if
+    
+    write(*,'(2x,a)') line
+    
+    if (present(blank_end)) then
+      do i=1, blank_end
+        write(*,*)
+      end do
+    end if
+    
+  end subroutine write_status
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_minor_status(line, value)
+      use m_global, only: log
+    implicit none
+    character(len=*)                 :: line
+    integer,intent(in),optional      :: value
+    character(100)                   :: line_out, temp
+
+    if (present(value)) then
+      write(temp,'(i)') value
+    else
+      temp = ''
+    end if
+    
+    write(line_out,'(2x,a98)') line//' '//temp
+    
+    ! To log
+    call log%write_line(line_out)
+    
+    ! To Screen (with overwrite)
+    write(6,'("+",2x,a100)') line_out
+  
+  end subroutine write_minor_status
+  
 !-------------------------------------------------------------------------------------------------!
 ! ACCESS PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -955,6 +1036,31 @@ module m_T2P
     return
   end function get_active_texture_classes
 
-  !-------------------------------------------------------------------------------------------------!
+!-------------------------------------------------------------------------------------------------!
   
+  subroutine finalize(this)
+    implicit none
+    class(t_T2P)            :: this  
+    ! Main data storage
+    if(associated(this%fmodel               )) deallocate(this%fmodel               )
+    if(associated(this%interp_data          )) deallocate(this%interp_data          )
+    if(associated(this%interp_pp            )) deallocate(this%interp_pp            )
+    if(associated(this%datasets             )) deallocate(this%datasets             )
+    if(associated(this%dset_intermediate    )) deallocate(this%dset_intermediate    )
+    if(associated(this%par                  )) deallocate(this%par                  )
+    if(associated(this%pilot_points         )) deallocate(this%pilot_points         )
+    if(associated(this%pilot_points_aquitard)) deallocate(this%pilot_points_aquitard)
+  
+    ! Trackers
+    if(allocated(this%class_dataset    )) deallocate(this%class_dataset   )
+    if(associated(this%class_names     )) deallocate(this%class_names     )
+    if(associated(this%nsecondary_by_id)) deallocate(this%nsecondary_by_id)
+    if(associated(this%connections     )) deallocate(this%connections     )
+    if(associated(this%dataset_ppzones )) deallocate(this%dataset_ppzones )
+  
+    ! close overwrite unit
+    close(6)
+  
+  end subroutine finalize
+!-------------------------------------------------------------------------------------------------!
 end module m_T2P

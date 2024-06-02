@@ -150,7 +150,7 @@ module m_file_io
     f%file = trim(file)
     
     open(f%unit, file=f%file, action='WRITE', STATUS='REPLACE', iostat=f%ioerr, iomsg=iomsg)
-    if (log_unit > 0) write(log_unit,'(3a)') 'Opening file', trim(f%file), ' for writing.'
+    if (log_unit > 0) write(log_unit,'(3a)') 'Opening file ', trim(f%file), ' for writing.'
     call f%iomsg_handler(iomsg)
     
   end function open_file_writer

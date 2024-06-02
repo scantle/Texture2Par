@@ -14,7 +14,7 @@ module m_error_handler
   subroutine early_exit()
     implicit none
     
-    write(*,'(a)') 'Texture2Par Early Termination.'
+    write(*,'(2x,a)') 'Texture2Par Early Termination.'
     call log%write_line('Texture2Par Early Termination')
     call log%close_file()
     error stop
@@ -27,7 +27,8 @@ module m_error_handler
     use m_file_io, only: close_file
     implicit none
     
-    write(*,'(a)') 'Texture2Par Normal Termination.'
+    write(*,*)  ! blank
+    write(*,'(2x,a)') 'Texture2Par Normal Termination.'
     call log%write_line('Texture2Par Normal Termination')
     call log%close_file()
     ! TODO write total run time
