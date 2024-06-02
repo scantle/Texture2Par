@@ -110,6 +110,7 @@ module m_datasets
     integer,intent(in)                :: npoints, nclasses
     
     allocate(this%category  (npoints), &
+             this%fmodel_loc(npoints), &
              this%values    (nclasses, npoints), &
              this%mean      (nclasses))
     allocate(this%grid)

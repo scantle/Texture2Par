@@ -384,19 +384,19 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
   
   subroutine write_node_files(this, datasets, dat_names)
-    use m_vstringlist, only: t_vstringlist
+    use m_vstringlist, only: t_vstringlist, vstrlist_length
     ! Calls methods overloaded by subclasses
     use m_datasets, only: t_layerdata
     implicit none
     class(t_flow_model)        :: this
-    type(t_layerdata),pointer  :: datasets(:)
+    type(t_layerdata),pointer  :: datasets(:)  ! (nlayers)
     type(t_vstringlist)        :: dat_names
     character(100)             :: fname, temp
     integer                    :: i
     
-    do i=1, size(datasets)
+    do i=1, vstrlist_length(dat_names)  ! ndat, hopefully
       call item2char(dat_names, i, temp)
-      write(fname,'()') 't2p_', trim(temp), '.out'
+      write(fname,'(3a)') 't2p_', trim(temp), '.out'
       call this%write_node_file(fname, datasets, i)
     end do
   
@@ -1060,7 +1060,7 @@ module m_flow_model
     character(*)               :: fname
     type(t_layerdata),pointer  :: par(:)
     integer,intent(in)         :: par_id
-    integer                    :: i, k
+    integer                    :: i, k, unit
     character(60)              :: fmt(2)
     type(t_file_writer),pointer:: fwrite
 
@@ -1071,14 +1071,16 @@ module m_flow_model
 
     !open(20, file=trim(filename), status='replace', action='write', buffered='YES')
     fwrite => open_file_writer(fname)
+    unit = fwrite%unit
+    
     ! Header
-    write(20,fmt(1)) 'Node', 'X', 'Y', (k, k=1, this%nlayers)
+    write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, (this%nlayers/2))
     ! Values
     do i = 1, this%nnodes(1)
-      write(20,fmt(2)) this%nodeid(i), this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
+      write(unit,fmt(2)) this%nodeid(i), this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=2, this%nlayers, 2)  ! Only writes aquifer params
     end do
 
-    close(20)
+    call fwrite%close_file()
   
   end subroutine write_node_file_iwfm
 !-------------------------------------------------------------------------------------------------!

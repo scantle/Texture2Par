@@ -117,6 +117,10 @@ module m_read_datasets
           grid%coords(2,idx) = y
           ! Get location in model, get elevation at model layers in model
           fmodel_loc = t2p%fmodel%find_in_grid(grid%coords(:,idx))
+          ! Store location
+          do k=1, t2p%fmodel%nlayers
+            t2p%datasets(didx,k)%fmodel_loc(idx) = fmodel_loc
+          end do
           ! If using, get ppzone in model
           if (t2p%opt%INTERP_ORDER=="AFTER") then
             t2p%dataset_ppzones%array(idx,1:) = t2p%dataset_ppzones%array(fmodel_loc,1:)

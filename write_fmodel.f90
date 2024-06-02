@@ -22,14 +22,7 @@ subroutine writeIWFMgwfile(gwtemp, gwfile, par, nlayers, nnodes, nodeid, is_aqui
   real(dp)                   :: KvB_aquitard
   type(t_file_reader),pointer:: fread
   type(t_file_writer),pointer:: fwrite
-  
 
-  write(*,'(2x,a)') 'Reading gw temp file, writing new gw file'
-
-  !open(ru, file=trim(gwtemp), status='old', iostat = ierr, iomsg=cerr)   ! Temp File
-  !call iomsghandler(ierr, cerr)
-  !open(12, file=trim(GWFile), status='replace', iostat = ierr, iomsg=cerr)   ! New File
-  !call iomsghandler(ierr, cerr)
   fread  => open_file_reader(gwtemp)
   ru = fread%unit
   fwrite => open_file_writer(gwfile)

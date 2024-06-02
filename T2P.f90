@@ -134,8 +134,8 @@ module m_T2P
     call vstrlist_new(this%parnames)
     call vstrlist_append (this%parnames, "KH" )
     call vstrlist_append (this%parnames, "KV" )
-    call vstrlist_append (this%parnames, "SY" )
     call vstrlist_append (this%parnames, "SS" )
+    call vstrlist_append (this%parnames, "SY" )
     this%npar = vstrlist_length(this%parnames)
     
     ! Intialize counters (useful to determine when a block is missing or has not been read yet)
@@ -785,18 +785,23 @@ module m_T2P
 !-------------------------------------------------------------------------------------------------!
   
   subroutine write_dataset_files(this)
+    use m_file_io, only: item2char
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer                       :: i
-    character(100)                :: fname
+    character(100)                :: fname, temp
     type(t_layerdata),pointer     :: p(:)
     
     do i=1, this%get_active_texture_classes()
       p=>this%datasets(1,:)
+      call item2char(this%class_names, i, temp)
+      write(fname,'(3a)') 't2p_', trim(temp), '_layavg.out'
       call this%write_dataset_file(fname, p, i)
     end do
     
     do i=1, this%nsecondary
+      call item2char(this%class_names, this%ntexclasses + i, temp)
+      write(fname,'(3a)') 't2p_', trim(temp), '_layavg.out'
       p=>this%datasets(i,:)
       call this%write_dataset_file(fname, p,1)
     end do
@@ -806,7 +811,7 @@ module m_T2P
 !-------------------------------------------------------------------------------------------------!
   
   subroutine write_dataset_file(this, fname, dataset, idx)
-    use m_flow_model, only: t_flow_model,t_modflow_model
+    use m_flow_model, only: t_flow_model,t_modflow_model, t_iwfm_model
     use m_file_io, only: t_file_writer, open_file_writer
     implicit none
     class(t_T2P), intent(inout)   :: this
@@ -814,22 +819,27 @@ module m_T2P
     type(t_layerdata),pointer     :: dataset(:)  ! (nlayers)
     integer, intent(in)           :: idx
     class(t_flow_model),pointer   :: fm
-    integer                       :: i, k, dim, unit
+    integer                       :: i, k, dim, unit, kstart, kintrvl
     integer                       :: rowcol(2,this%fmodel%nnodes(1))
     character(60)                 :: fmt(2)
     type(t_file_writer),pointer   :: fwrite
     
-    dim = 1
+    dim     = 1   ! Number of indices needed to express location, e.g. node # vs row col
+    kstart  = 1   ! Start layer
+    kintrvl = 1   ! Interval of layers
     select type(fm=>this%fmodel)
       class is(t_modflow_model)
         if (fm%structured) dim=2
         do i=1, this%fmodel%nnodes(1)
           call fm%cell2rowcol(i, rowcol(1,i), rowcol(2,i))
         end do
+      class is(t_iwfm_model)
+        kstart  = 2  ! Ignore aquitards
+        kintrvl = 2
     end select
     
-    write(fmt(1),'("(2a10,",i1,"a8,",i5,"i14)")') dim, this%fmodel%nlayers
-    write(fmt(2),'("(1i10,",i1,"i8,",i5,"es14.5)")') dim, this%fmodel%nlayers
+    write(fmt(1),'("(1a10,",i1,"a8,",i5,"i14)")') dim, this%fmodel%nlayers/kintrvl
+    write(fmt(2),'("(1i10,",i1,"i8,",i5,"es14.5)")') dim, this%fmodel%nlayers/kintrvl
     
     fwrite => open_file_writer(fname)
     unit = fwrite%unit
@@ -837,18 +847,18 @@ module m_T2P
     ! Header
     if (dim==1) then
       ! Header
-      write(unit,fmt(1)) 'Well', 'Element', (k, k=1, this%fmodel%nlayers)
+      write(unit,fmt(1)) 'Well', 'Element', (k, k=1, this%fmodel%nlayers/kintrvl, kintrvl)
       ! Values
       do i = 1, size(dataset(1)%values,2)
-        write(unit,fmt(2)) i, dataset(1)%fmodel_loc(i), (dataset(k)%values(idx,i), k=1, this%fmodel%nlayers)
+        write(unit,fmt(2)) i, dataset(1)%fmodel_loc(i), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
       end do
     else
       ! Header
-      write(unit,fmt(1)) 'Well', 'Row','Col', (k, k=1, this%fmodel%nlayers)
+      write(unit,fmt(1)) 'Well', 'Row','Col', (k, k=1, this%fmodel%nlayers/kintrvl)
       ! Values
       ! Values
       do i = 1, size(dataset(1)%values,2)
-        write(unit,fmt(2)) i, rowcol(1:2,dataset(1)%fmodel_loc(i)), (dataset(k)%values(idx,i), k=1, this%fmodel%nlayers)
+        write(unit,fmt(2)) i, rowcol(1:2,dataset(1)%fmodel_loc(i)), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
       end do
     end if
 
