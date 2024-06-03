@@ -495,21 +495,21 @@ module m_T2P
     if (this%opt%ONLY_TEXTURE) then
       ! If just texture, our jobs is very easy
       allocate(this%dset_intermediate(1,this%fmodel%nlayers))
-      call this%write_status("Interpolating datasets to result grid")
+      call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid")
       call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
       RETURN
     end if
     
     ! Assign PPTO_grid (data or fmodel)
     if (this%opt%INTERP_ORDER=="BEFORE") then
-      call this%write_status("Interpolating pilot point parameters to result grid")
+      call this%write_status("Interpolating Pilot Point Parameters to "//trim(this%fmodel%name)//" Grid")
       ! T2P 1.0 Method
       allocate(this%dset_intermediate(1,this%fmodel%nlayers))
       ! Uses layer 1 grid
       pp_to => this%fmodel%grid(1)
       cat_to => this%fmodel%ppzones
     else if (this%opt%INTERP_ORDER=="AFTER") then
-      call this%write_status("Interpolating pilot point parameters to primary dataset grid")
+      call this%write_status("Interpolating Pilot Point Parameters to Dataset Grid")
       allocate(this%dset_intermediate(size(this%datasets,1),this%fmodel%nlayers))
       this%dset_intermediate(2:,1:) => this%datasets(2:,1:)  ! All secondary data gets pointed over
       ! Uses primary dataset layer 1 grid
@@ -523,23 +523,23 @@ module m_T2P
   
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! Krige textures to fmodel grid
-      call this%write_status("Interpolating datsets to result grid")
+      call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid")
       call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
       ! Write weights 
       ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
-      call this%write_status("Calculating hydraulic parameters")
+      call this%write_status("Calculating Hydraulic Parameters")
       call this%calc_block_parameters(pp_intermediate, this%dset_intermediate(1,1:), this%par)
       
     else if (this%opt%INTERP_ORDER=="AFTER") then
       ! Calc parameters at data locations
-    call this%write_status("Calculating hydraulic parameters")
+    call this%write_status("Calculating Hydraulic Parameters")
       call this%calc_block_parameters(pp_intermediate, this%datasets(1,1:), this%dset_intermediate(1,1:))
       ! Krige parameters to fmodel grid
-      call this%write_status("Interpolating hydraulic parameters to result grid")
+      call this%write_status("Interpolating Hydraulic Parameters to "//trim(this%fmodel%name)//" Grid")
       call this%interpolate_model(this%dset_intermediate, this%par)
       ! Write weights
     end if
-    call this%write_status("Interpolating hydraulic parameters to result grid")
+    call this%write_status("Calculations finished!")
     
   end subroutine predict
 !-------------------------------------------------------------------------------------------------!
@@ -658,7 +658,7 @@ module m_T2P
     
       ! Check if layer is active (generally IWFM: means it has thickness)
       if (this%fmodel%is_active_layer(k)==.false.) cycle
-      call this%write_minor_status('- Layer:',k)
+      call this%write_minor_status('- Layer:',this%fmodel%get_layer_id(k))
       
       ! Initialize results
       if (this%opt%INFER_LAST_CLASS) then
@@ -740,7 +740,7 @@ module m_T2P
     
       ! Check if layer is active (generally IWFM: means it has thickness)
       if (this%fmodel%is_active_layer(k)==.false.) cycle
-      call this%write_minor_status('- Layer:',k)
+      call this%write_minor_status('- Layer:',this%fmodel%get_layer_id(k))
     
       ! Initialize Par
       call par_out(k)%initialize(this%fmodel%nnodes(k), this%npar)
@@ -803,12 +803,13 @@ module m_T2P
       call this%write_dataset_files()
     end if
     
-    if (this%opt%WRITE_NONE) return  ! Skips model output files
+    if (this%opt%WRITE_NONE==.false.) then    
+      ! Write out flow model input files
+      call this%write_minor_status("Writing "//trim(this%fmodel%name)//" Input Files")
+      call this%fmodel%write_fmodel_input(this%par)
+    end if
     
-    ! Write out flow model input files
-    call this%write_minor_status('Writing Model Input Files')
-    call this%fmodel%write_fmodel_input(this%par)
-  
+    call this%write_minor_status('Done Writing.')
   end subroutine write_output
   
 !-------------------------------------------------------------------------------------------------!

@@ -16,13 +16,14 @@ module m_flow_model
   ! the compiler gets upset when you try to set them on the polymorphic t2p%fmodel type
   ! The alternative was to write a lot of get/set-type methods that would have to be overwritten
   ! by each derived class.
-  
+    
     integer                       :: model_type     ! 1 - grid, 2 - IWFM, 3 - MODFLOW 2000
     real(dp)                      :: xoff,yoff,rot  ! Conversion from/to global coordinates
     integer                       :: nlayers        ! Number of model layers
     integer                       :: ngrids         ! Number of unique model grid (xy) layers
     integer,allocatable           :: nnodes(:)      ! Number of nodes (points at which flow is solved) by layer
     integer,pointer               :: lay2grid(:)    ! Which grid each layer uses (e.g., same xy between layers)
+    character(30)                 :: name           ! For printing nicely to log/screen
     character(100)                :: preproc_file   ! IWFM main discretization file (empty for others)
     character(100)                :: sim_file       ! Simulation File or MODFLOW name file
     character(100)                :: ppzone_file    ! File of pilot point zones defined for each node
@@ -46,6 +47,8 @@ module m_flow_model
       procedure,public            :: get_elev_at_point
       procedure,public            :: get_midpoint_depths
       procedure,public            :: get_active_ppzones
+      procedure,public            :: get_layer_id
+      procedure,public            :: get_layer_no   ! For when layer =/ layer_id (e.g., IWFM aquitards)
       procedure,public            :: is_active_layer
       procedure,public            :: is_aquitard_layer
       procedure,public            :: write_fmodel_input
@@ -104,6 +107,8 @@ module m_flow_model
     procedure,public          :: read_model => read_iwfm
     procedure,public          :: find_in_grid => find_in_grid_elem
     procedure,public          :: get_elev_at_point =>  get_elev_at_point_elem
+    procedure,public          :: get_layer_id => get_layer_id_iwfm
+    procedure,public          :: get_layer_no => get_layer_no_iwfm
     procedure,public          :: is_active_layer => is_active_layer_iwfm
     procedure,public          :: is_aquitard_layer => is_aquitard_layer_iwfm
     !procedure,public          :: get_active_ppzones => get_active_ppzones_iwfm
@@ -315,7 +320,6 @@ module m_flow_model
     depths = this%elev(:,0) - ((this%elev(:,k-1) + this%elev(:,k)) / 2.0)
     
   end function get_midpoint_depths
-!-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -329,6 +333,30 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
   
+  function get_layer_id(this, k) result (id)
+    ! To be overloaded where necessary
+    implicit none
+    class(t_flow_model)     :: this
+    integer,intent(in)      :: k
+    integer                 :: id
+    id = k
+    return
+  end function get_layer_id
+
+!-------------------------------------------------------------------------------------------------!
+
+  function get_layer_no(this, k) result(no)
+    ! To be overloaded where necessary
+    implicit none
+    class(t_flow_model)     :: this
+    integer,intent(in)      :: k
+    integer                 :: no
+    no = k
+    return
+  end function get_layer_no
+  
+!-------------------------------------------------------------------------------------------------!
+
   subroutine read_category_files(this)
     ! Called after model read
     ! Assumes all layers have same number of nodes
@@ -586,6 +614,7 @@ module m_flow_model
     
     call initialize(this)
     this%model_type  = 1
+    this%name = "GSF"
     
   end subroutine init_mgrid  
   
@@ -654,6 +683,7 @@ module m_flow_model
     
     call initialize(this)
     this%model_type  = 2
+    this%name = "IWFM"
     
   end subroutine init_iwfm  
 
@@ -1035,6 +1065,28 @@ module m_flow_model
     end do
     InterpValues(:) =InterpValues(:) / wgt
   end subroutine iwfm_elem_elev_idw
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_layer_id_iwfm(this, k) result (id)
+    implicit none
+    class(t_iwfm_model)     :: this
+    integer,intent(in)      :: k
+    integer                 :: id
+    id = ceiling(real(k)/real(2))
+    return
+  end function get_layer_id_iwfm
+
+!-------------------------------------------------------------------------------------------------!
+
+  function get_layer_no_iwfm(this, k) result(no)
+    implicit none
+    class(t_iwfm_model)     :: this
+    integer,intent(in)      :: k
+    integer                 :: no
+    no = k*2
+    return
+  end function get_layer_no_iwfm
     
 !-------------------------------------------------------------------------------------------------!
 
@@ -1121,6 +1173,7 @@ module m_flow_model
     call initialize(this)
     this%model_type  = 3
     this%structured  = .true.
+    this%name = "MODFLOW"
     
   end subroutine init_modflow2000
   
