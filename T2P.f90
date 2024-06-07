@@ -183,6 +183,12 @@ module m_T2P
     call this%interp_data%initialize()  ! Todo - custom parameters?
     call this%interp_pp%initialize()    ! Todo - custom parameters?
     
+    ! Enforce if ONLY_TEXTURE
+    if (this%opt%ONLY_TEXTURE) then
+      this%opt%WRITE_NODE_FILES = .true.
+      this%opt%WRITE_NONE = .true.
+    end if
+    
     ! Invalid combinations...
     if (this%opt%INTERP_ORDER=="AFTER") then
       if (this%opt%ONLY_TEXTURE) call error_handler(1,opt_msg='ONLY_TEXTURE option is only valid for INTERP_ORDER=="BEFORE"')
@@ -338,14 +344,16 @@ module m_T2P
     end select
     
     ! Add Pilot Point variogram
-    this%nvario = this%nvario + 1  
+    if (this%opt%ONLY_TEXTURE==.false.) then
+      this%nvario = this%nvario + 1  
     
-    ! Allocate variogram matrix for pp
-    select type(p => this%interp_pp)
-      class is(t_krige)
-        if (allocated(p%global_vario_idx)==.false.) allocate(p%global_vario_idx(1,1))
-        p%global_vario_idx(1,1) = 1  ! Is passed only this variogram
-    end select
+      ! Allocate variogram matrix for pp
+      select type(p => this%interp_pp)
+        class is(t_krige)
+          if (allocated(p%global_vario_idx)==.false.) allocate(p%global_vario_idx(1,1))
+          p%global_vario_idx(1,1) = 1  ! Is passed only this variogram
+      end select
+    end if
   
   end subroutine nvario_estimator
   
@@ -448,10 +456,6 @@ module m_T2P
     if(this%has_classes  ==.false.) call error_handler(1,opt_msg="Missing Required CLASSES Block")
     if(this%has_fmodel   ==.false.) call error_handler(1,opt_msg="Missing Required FLOW_MODEL Block")
     if(this%has_datafiles==.false.) call error_handler(1,opt_msg="Missing Required DATASET Block(s)")
-    if (this%opt%ONLY_TEXTURE==.false.) then
-      if(this%has_pplocs   ==.false.) call error_handler(1,opt_msg="Missing Required PP_LOCS Block")
-      if(this%has_pp       ==.false.) call error_handler(1,opt_msg="Missing Required PP_PARAMETERS Block")
-    end if
     if(this%has_covar    ==.false.) call this%no_covariates()  ! Allowable, just needs to be handled
     if(this%has_interp   ==.false.) then
       if (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK") then
@@ -461,19 +465,21 @@ module m_T2P
       end if
     end if
     
-    ! Check pilot point zones
-    ! Doesn't ensure they are the same ID values...
-    if (this%pilot_points%nppzones /= this%fmodel%get_active_ppzones()) then
-      call error_handler(1,opt_msg="Mismatch between Pilot Point Zones assigned to Pilot Points vs Model Grid")
-    end if
+    if (this%opt%ONLY_TEXTURE==.false.) then  ! Pilot point info
+      if(this%has_pplocs   ==.false.) call error_handler(1,opt_msg="Missing Required PP_LOCS Block")
+      if(this%has_pp       ==.false.) call error_handler(1,opt_msg="Missing Required PP_PARAMETERS Block")
+      ! Check pilot point zones
+      ! Doesn't ensure they are the same ID values...
+      if (this%pilot_points%nppzones /= this%fmodel%get_active_ppzones()) then
+        call error_handler(1,opt_msg="Mismatch between Pilot Point Zones assigned to Pilot Points vs Model Grid")
+      end if
     
-    ! Make sure pilot points and flow model agree on existance of aquitards
-    ! TODO - more robust? Nothing checks to ensure values at this points
-    if (this%has_pplocs_aquitards /= this%fmodel%has_aquitards) then
-      call error_handler(1,opt_msg="Mismatch in aquitard existance between Pilot Points and Model")
+      ! Make sure pilot points and flow model agree on existance of aquitards
+      ! TODO - more robust? Nothing checks to ensure values at this points
+      if (this%has_pplocs_aquitards /= this%fmodel%has_aquitards) then
+        call error_handler(1,opt_msg="Mismatch in aquitard existance between Pilot Points and Model")
+      end if
     end if
-    
-    !call this%check_pp_zone_layertype_assignments()
     
   end subroutine check_major_inputs
   
@@ -776,7 +782,7 @@ module m_T2P
     call this%write_status("Writing output files")
     
     ! Write parameters by node/cell, and if texture was kriged, textures by node/cell
-    if (this%opt%WRITE_NODE_FILES) then
+    if (this%opt%WRITE_NODE_FILES.and.this%opt%ONLY_TEXTURE==.false.) then
       call this%write_minor_status('Writing Parameter Node Files')
       call this%fmodel%write_node_files(this%par, this%parnames)
     end if

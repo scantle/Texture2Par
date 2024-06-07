@@ -32,7 +32,7 @@ module m_options
     logical                  :: READ_GRID_WEIGHTS     !
     logical                  :: WRITE_NONE            ! Skips model output files (as implemented...)
     logical                  :: WRITE_NODE_FILES      ! Writes parameters by node/cell
-    logical                  :: WRITE_DATASET_FILES   ! Writes ou
+    logical                  :: WRITE_DATASET_FILES   ! Writes out datasets averaged by layer
     logical                  :: OUTPUT_GRID           !
     logical                  :: OUTPUT_ARRAY          !
     logical                  :: LOG_KRIGE_K           !
@@ -204,21 +204,21 @@ subroutine write_input_summary(this)
     logic_true = ''
     no_true_len = 0 !len(trim(logic_true))
     
-    if (this%SILENT_MODE        ) logic_true = trim(logic_true) // "SILENT_MODE "
-    if (this%DEBUG_MODE         ) logic_true = trim(logic_true) // "DEBUG_MODE "
-    if (this%ONLY_TEXTURE       ) logic_true = trim(logic_true) // "ONLY_TEXTURE "
-    if (this%WRITE_MATRIX       ) logic_true = trim(logic_true) // "WRITE_MATRIX "
-    if (this%WRITE_PP_WEIGHTS   ) logic_true = trim(logic_true) // "WRITE_PP_WEIGHTS "
-    if (this%WRITE_GRID_WEIGHTS ) logic_true = trim(logic_true) // "WRITE_GRID_WEIGHTS "
-    if (this%READ_PP_WEIGHTS    ) logic_true = trim(logic_true) // "READ_PP_WEIGHTS "
-    if (this%READ_GRID_WEIGHTS  ) logic_true = trim(logic_true) // "READ_GRID_WEIGHTS "
-    if (this%WRITE_NONE         ) logic_true = trim(logic_true) // "WRITE_NONE "
-    if (this%WRITE_NODE_FILES   ) logic_true = trim(logic_true) // "WRITE_NODE_FILES "
-    if (this%WRITE_DATASET_FILES) logic_true = trim(logic_true) // "WRITE_DATASET_FILES "
-    if (this%OUTPUT_GRID        ) logic_true = trim(logic_true) // "OUTPUT_GRID "
-    if (this%OUTPUT_ARRAY       ) logic_true = trim(logic_true) // "OUTPUT_ARRAY "
-    if (this%LOG_KRIGE_K        ) logic_true = trim(logic_true) // "LOG_KRIGE_K "
-    if (this%INFER_LAST_CLASS   ) logic_true = trim(logic_true) // "INFER_LAST_CLASS "
+    if (this%SILENT_MODE        ) logic_true = trim(logic_true) // "SILENT_MODE"         // ","
+    if (this%DEBUG_MODE         ) logic_true = trim(logic_true) // "DEBUG_MODE"          // ","
+    if (this%ONLY_TEXTURE       ) logic_true = trim(logic_true) // "ONLY_TEXTURE"        // ","
+    if (this%WRITE_MATRIX       ) logic_true = trim(logic_true) // "WRITE_MATRIX"        // ","
+    if (this%WRITE_PP_WEIGHTS   ) logic_true = trim(logic_true) // "WRITE_PP_WEIGHTS"    // ","
+    if (this%WRITE_GRID_WEIGHTS ) logic_true = trim(logic_true) // "WRITE_GRID_WEIGHTS"  // ","
+    if (this%READ_PP_WEIGHTS    ) logic_true = trim(logic_true) // "READ_PP_WEIGHTS"     // ","
+    if (this%READ_GRID_WEIGHTS  ) logic_true = trim(logic_true) // "READ_GRID_WEIGHTS"   // ","
+    if (this%WRITE_NONE         ) logic_true = trim(logic_true) // "WRITE_NONE"          // ","
+    if (this%WRITE_NODE_FILES   ) logic_true = trim(logic_true) // "WRITE_NODE_FILES"    // ","
+    if (this%WRITE_DATASET_FILES) logic_true = trim(logic_true) // "WRITE_DATASET_FILES" // ","
+    if (this%OUTPUT_GRID        ) logic_true = trim(logic_true) // "OUTPUT_GRID"         // ","
+    if (this%OUTPUT_ARRAY       ) logic_true = trim(logic_true) // "OUTPUT_ARRAY"        // ","
+    if (this%LOG_KRIGE_K        ) logic_true = trim(logic_true) // "LOG_KRIGE_K"         // ","
+    if (this%INFER_LAST_CLASS   ) logic_true = trim(logic_true) // "INFER_LAST_CLASS"    // ","
     
     if (len(trim(logic_true)) > no_true_len) then
       !call log%write_line(logic_true)

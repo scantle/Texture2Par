@@ -83,12 +83,14 @@ module m_log
     call t2p%fmodel%write_input_summary()
     
     ! Pilot Points
-    call log%write_valueline('Number of Pilot Point Zones',       t2p%pilot_points%nppzones)
-    call log%write_valueline('Number of Aquifer Pilot Points',      t2p%pilot_points%npp)
-    if (t2p%has_pplocs_aquitards) then
-      call log%write_valueline('Number of Aquitard Pilot Points',  t2p%pilot_points_aquitard%npp)
+    if (t2p%opt%ONLY_TEXTURE==.false.) then
+      call log%write_valueline('Number of Pilot Point Zones',       t2p%pilot_points%nppzones)
+      call log%write_valueline('Number of Aquifer Pilot Points',      t2p%pilot_points%npp)
+      if (t2p%has_pplocs_aquitards) then
+        call log%write_valueline('Number of Aquitard Pilot Points',  t2p%pilot_points_aquitard%npp)
+      end if
+      !call log%write_valueline('Number of Pilot Point Zones', t2p%pilot_points%nppzones)
     end if
-    !call log%write_valueline('Number of Pilot Point Zones', t2p%pilot_points%nppzones)
     
     ! Options
     call t2p%opt%write_input_summary() ! Move here?
