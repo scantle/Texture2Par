@@ -28,6 +28,7 @@ module m_categories
       generic, private         :: add_category => add_category_int,add_category_str,add_category_char
       procedure, pass          :: get_id_char
       generic, public          :: get_id => get_id_char
+      procedure,private        :: finalize
   end type
 !-------------------------------------------------------------------------------------------------!
   contains
@@ -256,6 +257,20 @@ module m_categories
     index = vstrlist_search(this%strlist, trim(value))
   
   end function get_id_char
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine finalize(this)
+    implicit none
+    class(t_category), intent(inout) :: this
+  
+    if (allocated(this%catlist)) deallocate(this%catlist)
+    if (allocated(this%lay2arr)) deallocate(this%lay2arr)
+    if (allocated(this%array))   deallocate(this%array)
+    if (allocated(this%arrncat)) deallocate(this%arrncat)
+    if (allocated(this%arrcat))  deallocate(this%arrcat)
+  
+  end subroutine finalize
   
 !-------------------------------------------------------------------------------------------------!
 end module m_categories

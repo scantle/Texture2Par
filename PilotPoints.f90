@@ -28,9 +28,10 @@ module m_pilotpoints
     contains
     
       procedure,private            :: get_pp_index
-      procedure,public             :: init_pilotpoint
-      generic                      :: initialize => init_pilotpoint
+      procedure,public             :: init_pilotpoints
+      generic                      :: initialize => init_pilotpoints
       procedure,public             :: read_pp_line
+      procedure,public             :: finalize => finalize_pilotpoints
   
   end type t_pilotpoints
 !-------------------------------------------------------------------------------------------------!
@@ -62,7 +63,7 @@ module m_pilotpoints
 ! LAYER CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine init_pilotpoint(this, npoints, grid)
+  subroutine init_pilotpoints(this, npoints, grid)
     implicit none
     class(t_pilotpoints),intent(inout) :: this
     integer,intent(in)                 :: npoints
@@ -83,7 +84,7 @@ module m_pilotpoints
       this%grid => create_grid_object(2, npoints)  ! X,Y coords by n 
     end if
   
-  end subroutine init_pilotpoint
+  end subroutine init_pilotpoints
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -159,27 +160,17 @@ module m_pilotpoints
 
 !-------------------------------------------------------------------------------------------------!  
   
-  !subroutine add_zone_id(this, value)
-  !  ! Modified version of add_category_int from Categories.f90    
-  !  class(t_category), intent(inout) :: this
-  !  integer, intent(in)              :: value
-  !  logical                          :: is_new
-  !  integer                          :: index
-  !
-  !  ! Check if new_cat is a new unique category
-  !  is_new = .true.
-  !  do index = 1, this%nppzones
-  !    if (this%zonelist(index) == value) then
-  !      is_new = .false.
-  !      exit             ! Early exit
-  !    end if
-  !  end do
-  !
-  !  if (is_new) then
-  !    this%nppzones = this%nppzones + 1
-  !    this%zonelist(this%nppzones) = value
-  !  end if
-  !end subroutine add_zone_id
+  subroutine finalize_pilotpoints(this)
+    implicit none
+    class(t_pilotpoints),intent(inout) :: this
+    
+    if (allocated(this%category)) deallocate(this%category)
+    if (allocated(this%values  )) deallocate(this%values  )
+    if (allocated(this%zonelist)) deallocate(this%zonelist)
+    if (associated(this%pp_id  )) nullify(this%pp_id)
+    if (associated(this%grid   )) nullify(this%grid)
+  
+  end subroutine finalize_pilotpoints
   
 !-------------------------------------------------------------------------------------------------!  
 end module m_pilotpoints

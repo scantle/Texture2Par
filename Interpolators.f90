@@ -20,6 +20,7 @@ module m_interpolator
     procedure              :: setup
     procedure              :: predict_point
     procedure              :: wsize_estimate
+    procedure              :: finalize
   end type t_interpolator
 !-------------------------------------------------------------------------------------------------!
   
@@ -29,8 +30,9 @@ module m_interpolator
     logical,allocatable    :: catmask(:)
     
   contains
-    procedure               :: setup => setup_idw
-    procedure               :: predict_point => predict_point_idw
+    procedure              :: setup => setup_idw
+    procedure              :: predict_point => predict_point_idw
+    procedure              :: finalize => finalize_idw
   end type t_idw
   
 !-------------------------------------------------------------------------------------------------!
@@ -169,6 +171,7 @@ module m_interpolator
 !-------------------------------------------------------------------------------------------------!
   
   function wsize_estimate(this, obs_data)
+    ! To be overwritten where necessary
     implicit none
     class(t_interpolator),intent(inout)  :: this
     class(t_layerdata)                   :: obs_data(:)
@@ -179,6 +182,16 @@ module m_interpolator
     end do
     return
   end function wsize_estimate
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine finalize(this)
+    implicit none
+    class(t_interpolator),intent(inout)  :: this
+    ! Nothing for the base class
+  end subroutine finalize
+    
+!-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!
 ! INVERSE DISTANCE WEIGHTING (IDW) CLASS TYPE-BOUND PROCEDURES
@@ -270,5 +283,14 @@ module m_interpolator
     end if
     
   end subroutine predict_point_idw
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine finalize_idw(this)
+    implicit none
+    class(t_idw),intent(inout)  :: this
+    
+    if (allocated(this%catmask)) deallocate(this%catmask)
+  end subroutine finalize_idw
+  
 !-------------------------------------------------------------------------------------------------!
 end module m_interpolator

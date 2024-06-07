@@ -14,6 +14,7 @@ module m_datasets
       procedure,nopass             :: initialize_abc
       generic,public               :: initialize => initialize_abc
       procedure,public             :: build_tree_by_category
+      procedure,public             :: finalize
   end type t_dataset
 !-------------------------------------------------------------------------------------------------!
 !  type, extends(t_dataset) :: t_intervaldata
@@ -40,7 +41,7 @@ module m_datasets
     contains
       procedure                    :: init_layerdata
       generic                      :: initialize => init_layerdata
-  
+      procedure,public             :: finalize => finalize_layerdata
   end type t_layerdata
 !-------------------------------------------------------------------------------------------------!
 !  type, extends(t_dataset) :: t_layermultidata
@@ -99,6 +100,15 @@ module m_datasets
   end subroutine build_tree_by_category
   
 !-------------------------------------------------------------------------------------------------!
+  
+  subroutine finalize(this)
+    implicit none
+    class(t_dataset),intent(inout) :: this
+    
+    if (allocated(this%category)) deallocate(this%category)
+    if (associated(this%grid)) nullify(this%grid)
+  
+  end subroutine finalize
 
 !-------------------------------------------------------------------------------------------------!
 ! LAYER CLASS TYPE-BOUND PROCEDURES
@@ -143,6 +153,20 @@ module m_datasets
 !  
 !  end subroutine init_layermultidata
 !  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine finalize_layerdata(this)
+    implicit none
+    class(t_layerdata),intent(inout) :: this
+    
+    if (allocated(this%category  )) deallocate(this%category  )
+    if (allocated(this%values    )) deallocate(this%values    )
+    if (allocated(this%fmodel_loc)) deallocate(this%fmodel_loc)
+    if (allocated(this%mean      )) deallocate(this%mean      )
+    if (associated(this%grid     )) nullify(this%grid)
+  
+  end subroutine finalize_layerdata
+  
 !-------------------------------------------------------------------------------------------------!
   
 end module m_datasets

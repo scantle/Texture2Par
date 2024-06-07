@@ -447,9 +447,11 @@ module m_T2P
     if(this%has_opt      ==.false.) call error_handler(1,opt_msg="Missing Required OPTIONS Block")
     if(this%has_classes  ==.false.) call error_handler(1,opt_msg="Missing Required CLASSES Block")
     if(this%has_fmodel   ==.false.) call error_handler(1,opt_msg="Missing Required FLOW_MODEL Block")
-    if(this%has_pplocs   ==.false.) call error_handler(1,opt_msg="Missing Required PP_LOCS Block")
-    if(this%has_pp       ==.false.) call error_handler(1,opt_msg="Missing Required PP_PARAMETERS Block")
     if(this%has_datafiles==.false.) call error_handler(1,opt_msg="Missing Required DATASET Block(s)")
+    if (this%opt%ONLY_TEXTURE==.false.) then
+      if(this%has_pplocs   ==.false.) call error_handler(1,opt_msg="Missing Required PP_LOCS Block")
+      if(this%has_pp       ==.false.) call error_handler(1,opt_msg="Missing Required PP_PARAMETERS Block")
+    end if
     if(this%has_covar    ==.false.) call this%no_covariates()  ! Allowable, just needs to be handled
     if(this%has_interp   ==.false.) then
       if (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK") then
@@ -570,7 +572,7 @@ module m_T2P
       call this%write_minor_status('- Array:',k)
     
       ! Initialize results for this array
-      call results(k)%init_pilotpoint(to_grid%n, to_grid) ! Copies grid over
+      call results(k)%initialize(to_grid%n, to_grid) ! Copies grid over
       allocate(results(k)%values(to_grid%n, size(this%pilot_points%values,2), this%ntexclasses))
     
       ! Check if we have precalculated weights for the pilot point interpolation

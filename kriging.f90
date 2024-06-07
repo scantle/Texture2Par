@@ -27,12 +27,13 @@ module m_kriging
     integer,allocatable       :: global_vario_idx(:,:) ! Variogram index given (class_id, class_id) for ALL classes
     integer,allocatable       :: vario_idx(:,:)        ! Variogram index given (class_id, class_id) for local classes passed to setup/point
     real(dp),allocatable      :: w(:)                  ! Internally calculated weights
-    integer,allocatable       :: nobs(:), nmax(:), near_idx(:), pset_id(:)
+    integer,allocatable       :: pset_id(:)            ! ID vector used for kriging matrix
     ! Attributes for KD-tree and search parameters could be added here
   contains
     procedure               :: intialize => initialize_kriging
     procedure               :: setup => setup_krige
     procedure               :: filter_near_points
+    procedure               :: finalize => finalize_krige
   end type t_krige
 !-------------------------------------------------------------------------------------------------!
   
@@ -50,6 +51,7 @@ module m_kriging
     procedure               :: predict_point => predict_point_ok
     procedure               :: wsize_estimate => wsize_estimate_ok
     procedure               :: pset_cok
+    procedure               :: finalize => finalize_ok
   end type t_ordkrige
 !-------------------------------------------------------------------------------------------------!
 
@@ -176,20 +178,6 @@ end subroutine doolittle
   
 !-------------------------------------------------------------------------------------------------!
   
-  !subroutine predict_point_krige(this, idx, p, obs_data, cat, weights)
-  !  implicit none
-  !  class(t_krige),intent(inout)  :: this
-  !  integer,intent(in)            :: idx, cat
-  !  real(dp),intent(in)           :: p(2)
-  !  class(t_dataset)              :: obs_data(:)
-  !  real(dp)                      :: weights(:)
-  !  integer, optional             :: widx(:)              ! idx associated with weights
-  !  integer, optional             :: ppd(size(obs_data))  ! points per dataset
-  !
-  !end subroutine predict_point_krige
-  
-!-------------------------------------------------------------------------------------------------!
-  
   subroutine filter_near_points(this, usenear, inear, dist, vidx)
     implicit none
     class(t_krige),intent(inout)  :: this
@@ -221,6 +209,21 @@ end subroutine doolittle
   end subroutine filter_near_points
   
 !-------------------------------------------------------------------------------------------------!
+  
+  subroutine finalize_krige(this)
+    implicit none
+    class(t_krige),intent(inout)  :: this
+    
+    if (associated(this%nnear)) deallocate(this%nnear)
+    if (associated(this%nstruct)) deallocate(this%nstruct)
+    if (associated(this%obs_idx)) deallocate(this%obs_idx)
+    if (associated(this%variograms)) deallocate(this%variograms)
+    if (allocated(this%global_vario_idx)) deallocate(this%global_vario_idx)
+    if (allocated(this%vario_idx)) deallocate(this%vario_idx)
+    if (allocated(this%w)) deallocate(this%w)
+    if (allocated(this%pset_id)) deallocate(this%pset_id)
+    
+  end subroutine finalize_krige
   
 !-------------------------------------------------------------------------------------------------!
 ! SIMPLE KRIGING CLASS TYPE-BOUND PROCEDURES
@@ -504,5 +507,19 @@ end subroutine doolittle
   end function wsize_estimate_ok
 
 !-------------------------------------------------------------------------------------------------!
+  
+  subroutine finalize_ok(this)
+    implicit none
+    class(t_ordkrige),intent(inout)  :: this
+    
+    if (allocated(this%matA)) deallocate(this%matA)
+    if (allocated(this%rhsB)) deallocate(this%rhsB)
+    
+    ! call super
+    call finalize_krige(this)
+  
+  end subroutine finalize_ok
+  
+!-------------------------------------------------------------------------------------------------!  
   
 end module m_kriging
