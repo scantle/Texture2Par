@@ -99,6 +99,7 @@ module m_T2P
     procedure, public  :: get_active_texture_classes
     procedure, public  :: get_connection_list
     procedure, public  :: get_dataset_idx_list
+    procedure, public  :: get_dataval_idx_list
   
   end type t_T2P
 !-------------------------------------------------------------------------------------------------!
@@ -649,9 +650,9 @@ module m_T2P
     type(t_layerdata)             :: dout(this%fmodel%nlayers)
     integer                       :: k, i, j, x, wsize, k_active
     integer                       :: wstart, wend
-    integer,allocatable           :: class_idx(:), dataset_idx(:)
+    integer,allocatable           :: class_idx(:), dataset_idx(:), dataval_idx(:)
     real(dp)                      :: v_adjust
-    type(t_weights)               :: weights
+    !type(t_weights)               :: weights
     
     ! Loop over model layers
     do k=1, this%fmodel%nlayers
@@ -678,41 +679,27 @@ module m_T2P
           ! Interpolate
           class_idx   = this%get_connection_list(i)           ! Classes involved
           dataset_idx = this%get_dataset_idx_list(class_idx)  ! What datasets those classes are in
+          dataval_idx = this%get_dataval_idx_list(class_idx)  ! What index are associated with those values
           wsize = 0
           do j=1, size(dataset_idx)
             wsize = wsize + obs(dataset_idx(j),k)%grid%n
           end do
-          call weights%initialize(wsize, this%fmodel%grid(1)%n)  !input_n, output_n
-          ! Multiple weights objects?
-          !call weights%initialize(obs(1,1)%grid%n, this%fmodel%grid(1)%n)  !input_n, output_n
-          !call weights2%initialize(obs(2,1)%grid%n, this%fmodel%grid(1)%n)
           
           x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
-          call this%interp_data%calc_weights(obs(dataset_idx,k), &
-                                            class_idx,  &
-                                            this%fmodel%grid(1),  &
-                                            weights%values, &
-                                            this%fmodel%hsus%arrcat(1:this%fmodel%hsus%arrncat(x),x), &
-                                            this%fmodel%hsus%array(1:,x),&
-                                            this%opt)
+          call this%interp_data%calc(obs(dataset_idx,k), &
+                                             class_idx,  &
+                                             dataval_idx,&
+                                             this%fmodel%grid(1),  &
+                                             dout(k)%values(i,1:), &
+                                             this%fmodel%hsus%arrcat(1:this%fmodel%hsus%arrncat(x),x), &
+                                             this%fmodel%hsus%array(1:,x),&
+                                             this%opt)
         end if
     
         ! Write weights
         if (this%opt%WRITE_GRID_WEIGHTS) then
           ! TODO WRITE
         end if
-        ! Apply weights and create results
-        wsize = 0
-        do j=1, size(dataset_idx)
-          wstart = wsize+1
-          wend = wsize+obs(dataset_idx(j),k)%grid%n
-          v_adjust = 0.0_dp
-          if (j>1) v_adjust = obs(1,k)%mean(i) - obs(dataset_idx(j),k)%mean(1)  ! secondary data standardization factor
-          ! Weights%values are (output_points, input_points)
-          !                     ngrid          nobs (all datasets)
-          dout(k)%values(i,1:) =  dout(k)%values(i,1:) + matmul(weights%values(:,wstart:wend),obs(dataset_idx(j),k)%values(i,1:)+v_adjust)
-          wsize = wsize + obs(dataset_idx(j),k)%grid%n
-        end do
         ! Enforce values must be greater than zero
         where(dout(k)%values(i,1:) < 0.0) dout(k)%values(i,1:) = 0.0_dp
         ! If we're kriging texture - must be below 1.0
@@ -886,7 +873,6 @@ module m_T2P
       ! Header
       write(unit,fmt(1)) 'Well', 'Row','Col', (k, k=1, this%fmodel%nlayers/kintrvl)
       ! Values
-      ! Values
       do i = 1, size(dataset(1)%values,2)
         write(unit,fmt(2)) i, rowcol(1:2,dataset(1)%fmodel_loc(i)), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
       end do
@@ -1025,6 +1011,22 @@ module m_T2P
     dataset_idx(:) = this%class_dataset(class_ids)
     return
   end function
+
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_dataval_idx_list(this, class_ids) result (dataval_idx)
+    implicit none
+    class(t_T2P)            :: this
+    integer,intent(in)      :: class_ids(:)
+    integer,allocatable     :: dataval_idx(:)
+    integer                 :: nactive
+    
+    if (allocated(dataval_idx)) deallocate(dataval_idx)
+    nactive = this%get_active_texture_classes()
+    dataval_idx = class_ids
+    where (dataval_idx>nactive) dataval_idx = 1  ! All covariates use idx=1 for values
+    
+  end function get_dataval_idx_list
   
 !-------------------------------------------------------------------------------------------------!
   

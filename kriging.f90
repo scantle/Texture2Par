@@ -32,7 +32,6 @@ module m_kriging
   contains
     procedure               :: intialize => initialize_kriging
     procedure               :: setup => setup_krige
-    procedure               :: predict_point => predict_point_krige
     procedure               :: filter_near_points
   end type t_krige
 !-------------------------------------------------------------------------------------------------!
@@ -49,6 +48,7 @@ module m_kriging
   contains
     procedure               :: setup => setup_ok
     procedure               :: predict_point => predict_point_ok
+    procedure               :: wsize_estimate => wsize_estimate_ok
     procedure               :: pset_cok
   end type t_ordkrige
 !-------------------------------------------------------------------------------------------------!
@@ -176,15 +176,17 @@ end subroutine doolittle
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine predict_point_krige(this, idx, p, obs_data, cat, weights)
-    implicit none
-    class(t_krige),intent(inout)  :: this
-    integer,intent(in)            :: idx, cat
-    real(dp),intent(in)           :: p(2)
-    class(t_dataset)              :: obs_data(:)
-    real(dp)                      :: weights(:)
-  
-  end subroutine predict_point_krige
+  !subroutine predict_point_krige(this, idx, p, obs_data, cat, weights)
+  !  implicit none
+  !  class(t_krige),intent(inout)  :: this
+  !  integer,intent(in)            :: idx, cat
+  !  real(dp),intent(in)           :: p(2)
+  !  class(t_dataset)              :: obs_data(:)
+  !  real(dp)                      :: weights(:)
+  !  integer, optional             :: widx(:)              ! idx associated with weights
+  !  integer, optional             :: ppd(size(obs_data))  ! points per dataset
+  !
+  !end subroutine predict_point_krige
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -259,13 +261,15 @@ end subroutine doolittle
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine predict_point_sk(this, idx, p, obs_data, cat, weights)
+  subroutine predict_point_sk(this, idx, p, obs_data, cat, weights, widx, ppd)
     implicit none
     class(t_simpkrige),intent(inout)  :: this
-    integer,intent(in)                   :: idx, cat
-    real(dp),intent(in)                  :: p(2)
-    class(t_dataset)                     :: obs_data(:)
-    real(dp)                             :: weights(:)
+    integer,intent(in)                :: idx, cat
+    real(dp),intent(in)               :: p(2)
+    class(t_dataset)                  :: obs_data(:)
+    real(dp)                          :: weights(:)
+    integer, optional                 :: widx(:)              ! idx associated with weights
+    integer, optional                 :: ppd(size(obs_data))  ! points per dataset
   
   end subroutine predict_point_sk
   
@@ -319,18 +323,20 @@ end subroutine doolittle
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine predict_point_ok(this, idx, p, obs_data, cat, weights)
+  subroutine predict_point_ok(this, idx, p, obs_data, cat, weights, widx, ppd)
     implicit none
     class(t_ordkrige),intent(inout)  :: this
-    integer,intent(in)                   :: idx, cat
-    real(dp),intent(in)                  :: p(2)
-    class(t_dataset)                     :: obs_data(:)
-    real(dp)                             :: weights(:)
+    integer,intent(in)               :: idx, cat
+    real(dp),intent(in)              :: p(2)
+    class(t_dataset)                 :: obs_data(:)
+    real(dp)                         :: weights(:)
+    integer, optional                :: widx(:)              ! idx associated with weights
+    integer, optional                :: ppd(size(obs_data))  ! points per dataset
     ! local
-    integer                           :: i, j, d, vidx, widx, matsize, mat_tot, ier, rcount, woffset
-    integer                           :: inear(this%maxnear,this%nsets), usenear(this%nsets)
-    real(dp)                          :: value
-    real(dp)                          :: dist(this%maxnear,this%nsets)
+    integer                          :: i, j, d, vidx, wi, matsize, mat_tot, ier, rcount, woffset
+    integer                          :: inear(this%maxnear,this%nsets), usenear(this%nsets)
+    real(dp)                         :: value
+    real(dp)                         :: dist(this%maxnear,this%nsets)
     
     ! Get nearest for each obs dataset
     do i=1, this%nsets
@@ -340,6 +346,8 @@ end subroutine doolittle
       ! Filter out points beyond max_sdist for covariate datasets
       if (i > 1) call this%filter_near_points(usenear(i), inear(:,i), dist(:,vidx), vidx)
     end do
+    
+    if (present(ppd)) ppd = usenear
     
     matsize = sum(usenear)+this%unbias+this%ndrift
     mat_tot = matsize * (matsize + 1) / 2
@@ -377,13 +385,23 @@ end subroutine doolittle
       this%w = this%w/sum(this%w)
     end if
     
-    widx = 0
+    wi = 0
     woffset = 0
-    do i=1, this%nsets
-      weights((woffset+inear(1:usenear(i),i))) = this%w(widx+1:widx+usenear(i))
-      widx = widx + usenear(i)
-      woffset = woffset + obs_data(i)%grid%n
-    end do
+    if (present(widx)) then
+      widx = 0
+      ! just ids
+      do i=1, this%nsets
+        widx(woffset+1:woffset+usenear(i)) = inear(1:usenear(i),i)
+        woffset = woffset + usenear(i)
+      end do
+      weights(1:sum(usenear)) = this%w(1:sum(usenear))
+    else
+      do i=1, this%nsets
+        weights((woffset+inear(1:usenear(i),i))) = this%w(wi+1:wi+usenear(i))
+        wi = wi + usenear(i)
+        woffset = woffset + obs_data(i)%grid%n
+      end do
+    end if
     
     ! TEMP
     !open(100, file='WEIGHT_DEBUG.txt', action='WRITE', STATUS='REPLACE')
@@ -475,5 +493,16 @@ end subroutine doolittle
   end subroutine pset_cok
   
 !-------------------------------------------------------------------------------------------------!
-    
+  
+  function wsize_estimate_ok(this, obs_data)
+    implicit none
+    class(t_ordkrige),intent(inout)  :: this
+    class(t_layerdata)                   :: obs_data(:)
+    integer                              :: wsize_estimate_ok
+    wsize_estimate_ok = sum(this%nnear)
+    return
+  end function wsize_estimate_ok
+
+!-------------------------------------------------------------------------------------------------!
+  
 end module m_kriging

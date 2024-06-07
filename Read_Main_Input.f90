@@ -19,6 +19,7 @@ module m_read_main_input
     integer                     :: eof_check
     character(100)              :: id
   
+    call t2p%write_status("Reading Input Files")
     reader => open_file_reader(file)
     
     eof_check = 0

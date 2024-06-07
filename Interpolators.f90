@@ -16,8 +16,10 @@ module m_interpolator
     procedure,private      :: initialize_abc
     generic                :: initialize => initialize_abc       ! placeholder
     procedure,public       :: calc_weights
-    procedure     :: setup
-    procedure      :: predict_point
+    procedure,public       :: calc
+    procedure              :: setup
+    procedure              :: predict_point
+    procedure              :: wsize_estimate
   end type t_interpolator
 !-------------------------------------------------------------------------------------------------!
   
@@ -54,9 +56,7 @@ module m_interpolator
     real(dp), intent(in)                      :: p(2)          
     real(dp), dimension(:, :), intent(in)     :: point_array
     real(dp), dimension(size(point_array, 2)) :: distances
-
-    distances = sqrt((point_array(1, :) - p(1)) ** 2 + &
-                      (point_array(2, :) - p(2)) ** 2)
+    distances = sqrt((point_array(1, :) - p(1)) ** 2 + (point_array(2, :) - p(2)) ** 2)
   end function dist_2D_vector
   
 !-------------------------------------------------------------------------------------------------!
@@ -96,6 +96,47 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
+  subroutine calc(this, obs_data, obs_idx, val_idx, to_grid, results, catlist, to_cats, opt)
+    use m_weights, only: t_sosa_weights
+    implicit none
+    class(t_interpolator),intent(inout)   :: this
+    class(t_layerdata)                    :: obs_data(:)
+    integer,intent(in)                    :: obs_idx(:), val_idx(:)
+    type(t_grid),intent(in)               :: to_grid
+    real(dp)                              :: results(:)
+    integer,intent(in)                    :: catlist(:), to_cats(:)
+    type(t_options),intent(in)            :: opt
+    type(t_sosa_weights)                  :: weights
+    integer                               :: i, j, k, woffset, cat, wlen
+    real(dp)                              :: fake_weights(1,1), v_adjust
+    integer                               :: ppd(size(obs_data))
+    
+    results = 0.0_dp  ! necessary?
+    call weights%initialize(this%wsize_estimate(obs_data))
+    
+    do i=1, size(catlist)
+      ! Setup for each category
+      cat = catlist(i)
+      call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, fake_weights, opt)
+      
+      do j=1, to_grid%n
+        ! Interpolate for each point
+        if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(1:2,j), obs_data, cat, weights%values, weights%idx, ppd)
+        ! Calculate for each point
+        woffset = 0
+        do k=1, size(obs_data)
+          v_adjust = 0.0_dp
+          if (k>1) v_adjust = obs_data(1)%mean(i) - obs_data(k)%mean(val_idx(1))
+          results(j) = results(j) + dot_product(weights%values(woffset+1:woffset+ppd(k)), obs_data(k)%values(val_idx(k), weights%idx(woffset+1:woffset+ppd(k)))+v_adjust)
+          woffset = woffset + ppd(k)
+        end do
+      end do
+    end do
+    
+  end subroutine calc
+  
+!-------------------------------------------------------------------------------------------------!
+  
   subroutine setup(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
     ! Abstract Base Class method - should not be called
     implicit none
@@ -112,7 +153,7 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine predict_point(this, idx, p, obs_data, cat, weights)
+  subroutine predict_point(this, idx, p, obs_data, cat, weights, widx, ppd)
     ! Abstract Base Class method - should not be called
     implicit none
     class(t_interpolator),intent(inout)  :: this
@@ -120,10 +161,24 @@ module m_interpolator
     real(dp),intent(in)                  :: p(2)
     class(t_dataset)                     :: obs_data(:)
     real(dp)                             :: weights(:)
+    integer, optional                    :: widx(:)              ! idx associated with weights
+    integer, optional                    :: ppd(size(obs_data))  ! points per dataset
   
   end subroutine predict_point
   
 !-------------------------------------------------------------------------------------------------!
+  
+  function wsize_estimate(this, obs_data)
+    implicit none
+    class(t_interpolator),intent(inout)  :: this
+    class(t_layerdata)                   :: obs_data(:)
+    integer                              :: i,wsize_estimate
+    wsize_estimate = 0
+    do i=1, size(obs_data)
+      wsize_estimate = wsize_estimate + obs_data(i)%grid%n
+    end do
+    return
+  end function wsize_estimate
   
 !-------------------------------------------------------------------------------------------------!
 ! INVERSE DISTANCE WEIGHTING (IDW) CLASS TYPE-BOUND PROCEDURES
@@ -165,7 +220,7 @@ module m_interpolator
 
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine predict_point_idw(this, idx, p, obs_data, cat, weights)
+  subroutine predict_point_idw(this, idx, p, obs_data, cat, weights, widx, ppd)
     implicit none
     class(t_idw),intent(inout)    :: this
     integer,intent(in)            :: idx, cat
@@ -174,7 +229,9 @@ module m_interpolator
     real(dp)                      :: weights(:)
     real(dp)                      :: distances(this%nobs)
     real(dp)                      :: total_weight
-    integer                       :: zero_count
+    integer                       :: zero_count, i
+    integer, optional             :: widx(:)              ! idx associated with weights
+    integer, optional             :: ppd(size(obs_data))  ! points per dataset
     
     ! Calculate distances for points matching the mask
     distances = huge(dp)
@@ -197,6 +254,19 @@ module m_interpolator
       ! Normalize weights to sum up to 1
       total_weight = sum(weights)
       weights = weights / total_weight
+    end if
+    
+    ! Handle widx & ppd presence
+    if (present(widx)) then
+      ! todo oneliner?
+      do i=1,obs_data(1)%grid%n
+        widx = i
+      end do
+    end if
+    if (present(ppd)) then
+      do i=1,size(obs_data)
+        ppd(i) = obs_data(i)%grid%n
+      end do
     end if
     
   end subroutine predict_point_idw

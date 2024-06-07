@@ -88,10 +88,10 @@ contains
 !-------------------------------------------------------------------------------------------------!  
   
   ! Initialize the weights object
-  subroutine initialize_sosa(this, input_n, output_n)
+  subroutine initialize_sosa(this, input_n)
     implicit none
     class(t_sosa_weights), intent(inout) :: this
-    integer,intent(in)              :: input_n, output_n
+    integer,intent(in)              :: input_n
     
     this%nin  = input_n
     if (allocated(this%idx)) deallocate(this%idx)
@@ -108,7 +108,7 @@ contains
     class(t_sosa_weights), intent(in) :: this
     character(len=*), intent(in) :: filename
 
-      ! Implementation to serialize and save weights to a file
+    ! Implementation to serialize and save weights to a file
   end subroutine open_file_sosa
 
   !-------------------------------------------------------------------------------------------------!
@@ -119,7 +119,7 @@ contains
     class(t_sosa_weights), intent(in) :: this
     character(len=*), intent(in) :: filename
 
-      ! Implementation to serialize and save weights to a file
+    ! Implementation to serialize and save weights to a file
   end subroutine save_to_file_sosa
 
 !-------------------------------------------------------------------------------------------------!
@@ -130,7 +130,7 @@ contains
     class(t_sosa_weights), intent(inout) :: this
     character(len=*), intent(in) :: filename
 
-      ! Implementation to deserialize and load weights from a file
+    ! Implementation to deserialize and load weights from a file
   end subroutine load_from_file_sosa
 
 !-------------------------------------------------------------------------------------------------!
