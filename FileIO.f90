@@ -157,50 +157,64 @@ module m_file_io
 
 !-------------------------------------------------------------------------------------------------!
   
-    ! Should these be here or in a different module??
   function item2int(strings, i) result(out_int)
+    use m_error_handler
     implicit none
     class(t_vstringlist),intent(in)   :: strings
     integer, intent(in)               :: i
     integer                           :: out_int
-    
-    call vstring_cast(vstrlist_index(strings, i), out_int)
+    character(30)                     :: temp
+    if(vstring_is(vstrlist_index(strings, i),'integer', strict=.true.)) then
+      call vstring_cast(vstrlist_index(strings, i), out_int)
+    else
+      call item2char(strings, i, temp)
+      call error_handler(3,opt_msg='Could not convert '//trim(temp)//' to an integer value')
+    end if
   end function item2int
   
 !-------------------------------------------------------------------------------------------------!
   
-    ! Should these be here or in a different module??
   function item2real(strings, i) result(out_real)
+    use m_error_handler
     implicit none
     class(t_vstringlist),intent(in)   :: strings
     integer, intent(in)               :: i
     real                              :: out_real
-    
-    call vstring_cast(vstrlist_index(strings, i), out_real)
+    character(30)                     :: temp
+    if(vstring_is(vstrlist_index(strings, i),'real', strict=.true.)) then
+      call vstring_cast(vstrlist_index(strings, i), out_real)
+    else
+      call item2char(strings, i, temp)
+      call error_handler(3,opt_msg='Could not convert '//trim(temp)//' to a numeric value')
+    end if
   end function item2real
   
 !-------------------------------------------------------------------------------------------------!
   
-    ! Should these be here or in a different module??
   function item2dp(strings, i) result(out_dp)
+    use m_error_handler
     implicit none
     class(t_vstringlist),intent(in)   :: strings
     integer, intent(in)               :: i
     real(dp)                          :: out_dp
-    
-    call vstring_cast(vstrlist_index(strings, i), out_dp)
+    character(30)                     :: temp
+    if(vstring_is(vstrlist_index(strings, i),'real', strict=.true.)) then
+      call vstring_cast(vstrlist_index(strings, i), out_dp)
+    else
+      call item2char(strings, i, temp)
+      call error_handler(3,opt_msg='Could not convert '//trim(temp)//' to a numeric value')
+    end if
   end function item2dp
   
 !-------------------------------------------------------------------------------------------------!
   
-    ! Should these be here or in a different module??
   subroutine item2char(strings, i, out_char, toupper)
     implicit none
     class(t_vstringlist),intent(in)   :: strings
     integer, intent(in)               :: i
     logical, optional                 :: toupper
     character(*),intent(out)          :: out_char
-    
+    ! TODO - how to do error handling on this one?
     if (present(toupper)) then
       if (toupper) then
         call vstring_cast(vstring_toupper(vstrlist_index(strings, i)), out_char)
@@ -212,7 +226,6 @@ module m_file_io
   
 !-------------------------------------------------------------------------------------------------!
   
-    ! Should these be here or in a different module??
   function find_string_index_in_list(strings, i, list, toupper) result(index)
     implicit none
     ! Given input (strings(i)), find the index of it in the comma delimited character list "list"

@@ -24,7 +24,6 @@ module m_error_handler
 !-------------------------------------------------------------------------------------------------!
   
   subroutine normal_exit()
-    use m_file_io, only: close_file
     implicit none
     
     write(*,*)  ! blank

@@ -197,12 +197,6 @@ module m_interpolator
 ! INVERSE DISTANCE WEIGHTING (IDW) CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  !subroutine initialize_idw(this)
-  !  implicit none
-  !  class(t_idw)                  :: this
-  !  
-  !end subroutine initialize_idw
-  
 !-------------------------------------------------------------------------------------------------!
   
   subroutine setup_idw(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
