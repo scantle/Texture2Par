@@ -18,7 +18,7 @@ module m_pilotpoints
     !type(t_grid),pointer          :: grid             ! Grid
   
     integer,pointer                :: pp_id(:)         ! ID value of each pilot point (index matches pilot_points)
-    integer,allocatable            :: zonelist(:)      ! List of all "categories" assigned to a pilot point
+    integer,allocatable            :: zonelist(:)      ! List of "categories" assigned to each pilot point (pilot point zone)
     real(dp),allocatable           :: values(:,:,:)    ! Data values by parameter (point, parameter, class_id)
     
     ! Counters
