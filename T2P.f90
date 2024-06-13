@@ -146,6 +146,7 @@ module m_T2P
     ! Intialize counters (useful to determine when a block is missing or has not been read yet)
     this%nclasses = 0
     this%nvario   = 0
+    this%nsecondary = 0
     
     ! Set class defaults
     this%nhsus    = 1
@@ -359,6 +360,7 @@ module m_T2P
   
 !-------------------------------------------------------------------------------------------------!
   subroutine no_covariates(this)
+  ! Run during check_major_inputs (currently before datasets are read)
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer                       :: i
@@ -371,7 +373,13 @@ module m_T2P
     do i = 1, this%nprimary
       this%connections(1, i) = i
     end do
-  
+
+    ! Now we can setup the dataset-class connection
+    allocate(this%class_dataset(this%nclasses))
+    this%class_dataset(1:) = 0
+    
+    !call this%nvario_estimator()
+    
   end subroutine no_covariates
 !-------------------------------------------------------------------------------------------------!
   
@@ -448,6 +456,7 @@ module m_T2P
 !-------------------------------------------------------------------------------------------------!
   
   subroutine check_major_inputs(this)
+    ! Run in main Texture2Par file, currently before datasets are read but after fmodel/categories
     implicit none
     class(t_T2P), intent(inout)   :: this
     

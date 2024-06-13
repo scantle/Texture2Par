@@ -44,11 +44,12 @@ program Texture2Par
   call read_main_input(t2p, main_input_file)
   call t2p%fmodel%read_model()
   call t2p%fmodel%read_category_files()
+  ! Check major inputs
+  call t2p%check_major_inputs()
   ! Read datasets
   call read_datasets(t2p)
   call write_elapsed_time(log)
-  ! Check Major Inputs, write input summary, write warnings
-  call t2p%check_major_inputs()
+  ! Write input summary, write warnings
   call write_input_summary(log, t2p)
   call write_warnings(log)
     
