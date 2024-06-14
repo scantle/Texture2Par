@@ -343,6 +343,7 @@ program Texture2Par
       call layertexture(wellelevtop, wellelevbot, i, PcWellElem)
       ! TODO find a more reasonable place for this
       wellmean = sum(PcWellElem(:,:,i),PcWellElem(:,:,i)>0.0)/count(PcWellElem(:,:,i)>0.0)
+      wellmean = sum(PcWellElem(:,:,i),PcWellElem(:,:,i)>=0.0)/count(PcWellElem(:,:,i)>=0.0)
       ! If IWFM or if there are MODFLOW confining beds
       if ((modflowflag == 0).or.(ncbd > 0 )) then
         call layertexture(wellaqtardelevtop, wellaqtardelevbot, 1, PcWellAqtardElem)

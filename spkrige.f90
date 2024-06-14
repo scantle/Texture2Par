@@ -885,7 +885,7 @@ subroutine spcokrige_tree_group(dsets, ndsets, ngrid, gx, gy, kriged_val, lay, &
             nearcount = nearcount + 1
             nearsets(j)%v(nearcount) = dsets(j-1)%layv(closeobs(k)%idx,lay)
           end if
-          nearsets(j)%xy(:,nearcount) = dtrees(j)%tp%THE_DATA(:,closeobs(nearcount)%idx)
+          nearsets(j)%xy(:,nearcount) = dtrees(j)%tp%THE_DATA(:,closeobs(k)%idx)
         end do
         nearsets(j)%n = nearcount
         ! Move secondary data to observation array

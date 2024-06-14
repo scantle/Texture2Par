@@ -231,7 +231,7 @@ SUBROUTINE pd_avg2lay(pdset, n, topelevs, botelevs, layvarray)
       do intv = 1, pdset%ndint(i)
         if (intv == 1) then 
           intv_bot = pdset%z(intv, i)
-          intv_top = pdset%zland(intv)
+          intv_top = pdset%zland(i)
         else
           intv_bot = pdset%z(intv, i)
           intv_top = pdset%z(intv - 1,i)
