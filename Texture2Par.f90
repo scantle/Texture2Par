@@ -30,9 +30,9 @@ program Texture2Par
                                   i, ierr, iarr, twell, wpoint, zone, &
                                   modflowflag, zoneflag, geoflag
     real                       :: a_hmin
-    character(150)             :: jnk,fpath_line
+    character(150)             :: jnk
     character(256)             :: cerr
-    character(1000)            :: line
+    character(3000)            :: line, fpath_line
     logical                    :: writenodefiles
 
 ! Intel-Fortran specific way of writing to same command line line

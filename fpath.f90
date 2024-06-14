@@ -4,7 +4,9 @@ module fpath
 ! Simple File Path Handling
 ! Copyright Leland Scantlebury 2022
 !-----------------------------------------------------------------------------!
-  integer,   parameter, private     :: maxlen=150
+!  integer,   parameter, private     :: maxlen=150
+! Update 5/22/2024 - all character arrays are automatically allocated
+!                    Thanks modern fortran!
 !-----------------------------------------------------------------------------!
 
   contains
@@ -12,8 +14,8 @@ module fpath
 subroutine fpath_strip(path, cfolder, cfile)
   implicit none
 
-  character(maxlen), intent(in)     :: path
-  character(maxlen), intent(out)    :: cfolder, cfile
+  character(len=*), intent(in) :: path
+  character(len=:), allocatable, intent(out) :: cfolder, cfile
 
   integer                  :: lastslash
 
@@ -28,15 +30,14 @@ end subroutine fpath_strip
 subroutine fpath_join(path1, path2, pathcombo)
   implicit none
 
-  character(maxlen), intent(in)  :: path1, path2
-  character(maxlen), intent(out) :: pathcombo
-
-  character(maxlen)              :: c1, c2
-  integer                        :: len1, len2
+  character(*), intent(in)              :: path1, path2
+  character(:),allocatable, intent(out) :: pathcombo
+  character(:), allocatable             :: c1, c2
+  integer                               :: len1, len2
 
   ! Copy
-  c1 = path1
-  c2 = path2
+  c1 = trim(path1)
+  c2 = trim(path2)
 
   ! Set
   len1 = len_trim(c1)

@@ -31,10 +31,9 @@ MODULE IWFM
   integer, dimension(NUM_WORD_DIM)    :: left_word, right_word
   integer, allocatable                :: elemid(:)
   character(3000)                     :: cline
-  character(200)                      :: nodefile, elementfile, prefolder, &
-                                         preSimFile, simFile, stratfile, &
+  character(300)                      :: nodefile, elementfile, simFile, stratfile, &
                                          gwfile, gwtemp
-
+  character(len=:), allocatable       :: prefolder, preSimFile  ! Automatically allocated by fpath
   CONTAINS
 
 !-----------------------------------------------------------------------------!
@@ -47,8 +46,9 @@ subroutine readIWFM()
                               idum, maxnodeid, nid, node
   integer                  :: ls(100), rs(100)
   real                     :: fact
-  character(150)           :: jnk,currfile
+  character(150)           :: jnk
   character(256)           :: cerr
+  character(:),allocatable :: currfile
 
   ! Read pre-processor file
 !    write(*,'(2x,a)') 'Reading IWFM pre-processor file...'
