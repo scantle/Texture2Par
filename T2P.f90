@@ -400,7 +400,7 @@ module m_T2P
         p%nvario     = this%nvario -1
         p%nstruct    => nstruct(1:this%nvario-1)
         p%variograms => variograms(:,1:p%nvario)
-        p%nnear      => nnear(1:nsets)
+        p%nnear      => nnear(1:p%nvario)
     end select
     ! PP is the last one
     select type(p => this%interp_pp)
@@ -408,7 +408,7 @@ module m_T2P
         p%nvario     = 1
         p%nstruct    => nstruct(this%nvario:this%nvario)
         p%variograms => variograms(:,this%nvario:this%nvario)
-        p%nnear      => nnear(nsets+1:nsets+1)
+        p%nnear      => nnear(this%nvario:this%nvario)
     end select
     
     this%has_interp = .true.
@@ -671,7 +671,7 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     class(t_layerdata)            :: obs(:,:)  ! (nprimary, nlayers)
     type(t_layerdata)             :: dout(this%fmodel%nlayers)
-    integer                       :: k, i, j, x, wsize, k_active
+    integer                       :: k, i, j, x, k_active
     integer                       :: wstart, wend
     integer,allocatable           :: class_idx(:), dataset_idx(:), dataval_idx(:)
     real(dp)                      :: v_adjust
@@ -703,10 +703,6 @@ module m_T2P
           class_idx   = this%get_connection_list(i)           ! Classes involved
           dataset_idx = this%get_dataset_idx_list(class_idx)  ! What datasets those classes are in
           dataval_idx = this%get_dataval_idx_list(class_idx)  ! What index are associated with those values
-          wsize = 0
-          do j=1, size(dataset_idx)
-            wsize = wsize + obs(dataset_idx(j),k)%grid%n
-          end do
           
           x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
           call this%interp_data%calc(obs(dataset_idx,k), &
@@ -740,7 +736,7 @@ module m_T2P
     implicit none
     class(t_T2P), intent(inout)    :: this
     type(t_pilotpoints),intent(in) :: pp_obj(this%fmodel%ppzones%narr) ! Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, STp
-    type(t_layerdata),intent(in)   :: tex_obs(this%fmodel%nlayers)  !  values(ntexclasses, npoints)
+    type(t_layerdata),intent(inout):: tex_obs(this%fmodel%nlayers)  !  values(ntexclasses, npoints)
     type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !values([Kh, Kv, Ss, Sy], npoints)
     integer                        :: i, k, r
     real(dp),allocatable           :: depths(:),KhD(:,:),KvD(:,:)
@@ -767,6 +763,8 @@ module m_T2P
       r = this%fmodel%ppzones%lay2arr(k)
       
       do i=1, this%fmodel%nnodes(k)
+        ! Ensure classes add to one
+        tex_obs(k)%values(:,i) = tex_obs(k)%values(:,i) / sum(tex_obs(k)%values(:,i))
         ! Kh - Depth adjusted
         KhD(i,:) = pp_obj(r)%values(i, 1, :) + pp_obj(r)%values(i, 2, :) * exp(-1_dp *pp_obj(r)%values(1, 6, :) * depths(i))
         ! Kv - Depth adjusted, calculated from anisotropy

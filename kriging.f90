@@ -20,7 +20,8 @@ module m_kriging
     integer                   :: ndrift                ! Number of drift terms (unimplemented)
     integer                   :: nsim                  ! Number of simulations (unimplemented)
     real(dp)                  :: max_sdist             ! Maximum inclusion distance for secondary data
-    integer,pointer           :: nnear(:)              ! Number of nearest points used for interpolation, for each dataset/class
+    integer,pointer           :: nnear(:)              ! Number of nearest points used for interpolation, for each dataset/class (nvario) (0 for cross)
+    integer,allocatable       :: usenear(:)            ! NNear but local to problem (nsets) and limited by tree size
     integer,pointer           :: nstruct(:)            ! Number of structures for each variogram
     integer,pointer           :: obs_idx(:)            ! Indices of datasets
     type(t_vgm),pointer       :: variograms(:,:)       ! (stuctures, variogram)
@@ -300,6 +301,11 @@ end subroutine doolittle
     ! OK uses unbias
     this%unbias = 1
     
+    ! Setup usenear for problem
+    if (allocated(this%usenear)) deallocate(this%usenear)
+    allocate(this%usenear(this%nsets))
+    this%usenear = this%nnear(obs_idx)
+    
     ! Build search trees in observed grid objects
     ! Also, figure out number of datasets in each category
     do i=1, this%nsets
@@ -307,13 +313,14 @@ end subroutine doolittle
       if (i>1) class_id = 1
       call obs_data(i)%build_tree_by_category(cat,class_id) !this%variograms(1,i)%rotmat(1:this%ndim,1:this%ndim))
       ! TODO Warn that there is so little data? Do we even have enough information to warn?
-      ! Warnings only get printed before the calculations
       ! In this scope we don't if it's pp or data...
+      ! Maybe we could check before here?
+      this%usenear(i) = min(this%usenear(i), obs_data(i)%grid%tree%n)
     end do
     
-    this%maxnear =  maxval(this%nnear)  !this%nnear(1)
+    this%maxnear =  maxval(this%usenear)  !this%nnear(1)
     !if (this%nsets > 1) this%maxnear = this%maxnear + maxval(this%nnear)
-    matsize = sum(this%nnear)+this%unbias+this%ndrift
+    matsize = sum(this%usenear)+this%unbias+this%ndrift
     mat_tot = matsize * (matsize + 1) / 2
     
     if (allocated(this%matA)) deallocate(this%matA)
@@ -336,27 +343,28 @@ end subroutine doolittle
     integer, optional                :: widx(:)              ! idx associated with weights
     integer, optional                :: ppd(size(obs_data))  ! points per dataset
     ! local
-    integer                          :: i, j, d, vidx, wi, matsize, mat_tot, ier, rcount, woffset
-    integer                          :: inear(this%maxnear,this%nsets), usenear(this%nsets)
+    integer                          :: i, j, d, vidx, wi, osize, matsize, mat_tot, ier, rcount, woffset
+    integer                          :: inear(this%maxnear,this%nsets), loc_usenear(this%nsets)
     real(dp)                         :: value
     real(dp)                         :: dist(this%maxnear,this%nsets)
     
     ! Get nearest for each obs dataset
+    loc_usenear = this%usenear  ! LOCAL VERSION
     do i=1, this%nsets
-      usenear(i) = min(this%nnear(i), obs_data(i)%grid%tree%n)
       vidx = this%vario_idx(i,i)              ! Should always equal i, but to be safe
-      call obs_data(i)%grid%get_nnear(p, usenear(i), inear(:,i), dist(:,vidx))
+      call obs_data(i)%grid%get_nnear(p, loc_usenear(i), inear(:,i), dist(:,i))
       ! Filter out points beyond max_sdist for covariate datasets
-      if (i > 1) call this%filter_near_points(usenear(i), inear(:,i), dist(:,vidx), vidx)
+      if (i > 1) call this%filter_near_points(loc_usenear(i), inear(:,i), dist(:,vidx), vidx)
     end do
     
-    if (present(ppd)) ppd = usenear
+    if (present(ppd)) ppd = loc_usenear
     
-    matsize = sum(usenear)+this%unbias+this%ndrift
+    osize   = sum(loc_usenear)
+    matsize = osize+this%unbias+this%ndrift
     mat_tot = matsize * (matsize + 1) / 2
     
     ! Create obs-obs matrix
-    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, inear, usenear, this%ndim)
+    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, inear, loc_usenear, this%ndim)
     call decomp(this%matA, this%pset_id, matsize, ier)
     
     if (ier == 1) call error_handler(4,opt_msg="Kriging Matrix Decomposition Failure. This is often caused by co-located wells")
@@ -370,7 +378,7 @@ end subroutine doolittle
     do d = 1, this%nsets
       vidx = this%vario_idx(1,d)
       ! loop over data points
-      do i=1, usenear(d)
+      do i=1, loc_usenear(d)
         do j=1, this%nstruct(vidx)
           value = this%variograms(j,vidx)%cov(p,obs_data(d)%grid%coords(1:,inear(i,d)))
           this%rhsB(rcount) = this%rhsB(rcount) + value
@@ -383,9 +391,10 @@ end subroutine doolittle
     call doolittle(this%rhsB,this%matA,this%pset_id,this%w,matsize)
     
     ! Only for kriging - recalculate if weights are below zero
-    if (this%nsets==1.and.minval(this%w)<0.0) then
-      where (this%w < 0.0) this%w = 0.0
-      this%w = this%w/sum(this%w)
+    ! TODO make an option
+    if (this%nsets==1.and.minval(this%w(1:osize))<0.0) then
+      where (this%w(1:osize) < 0.0) this%w(1:osize) = 0.0
+      this%w(1:osize) = this%w(1:osize)/sum(this%w(1:osize))
     end if
     
     wi = 0
@@ -394,14 +403,14 @@ end subroutine doolittle
       widx = 0
       ! just ids
       do i=1, this%nsets
-        widx(woffset+1:woffset+usenear(i)) = inear(1:usenear(i),i)
-        woffset = woffset + usenear(i)
+        widx(woffset+1:woffset+loc_usenear(i)) = inear(1:loc_usenear(i),i)
+        woffset = woffset + loc_usenear(i)
       end do
-      weights(1:sum(usenear)) = this%w(1:sum(usenear))
+      weights(1:sum(loc_usenear)) = this%w(1:sum(loc_usenear))
     else
       do i=1, this%nsets
-        weights((woffset+inear(1:usenear(i),i))) = this%w(wi+1:wi+usenear(i))
-        wi = wi + usenear(i)
+        weights((woffset+inear(1:loc_usenear(i),i))) = this%w(wi+1:wi+loc_usenear(i))
+        wi = wi + loc_usenear(i)
         woffset = woffset + obs_data(i)%grid%n
       end do
     end if
@@ -497,12 +506,13 @@ end subroutine doolittle
   
 !-------------------------------------------------------------------------------------------------!
   
-  function wsize_estimate_ok(this, obs_data)
+  function wsize_estimate_ok(this, obs_data, obs_idx)
     implicit none
     class(t_ordkrige),intent(inout)  :: this
     class(t_layerdata)                   :: obs_data(:)
+    integer, intent(in)                  :: obs_idx(:)
     integer                              :: wsize_estimate_ok
-    wsize_estimate_ok = sum(this%nnear)
+    wsize_estimate_ok = sum(this%nnear(obs_idx))
     return
   end function wsize_estimate_ok
 
@@ -512,8 +522,9 @@ end subroutine doolittle
     implicit none
     class(t_ordkrige),intent(inout)  :: this
     
-    if (allocated(this%matA)) deallocate(this%matA)
-    if (allocated(this%rhsB)) deallocate(this%rhsB)
+    if (allocated(this%matA))    deallocate(this%matA)
+    if (allocated(this%rhsB))    deallocate(this%rhsB)
+    if (allocated(this%usenear)) deallocate(this%usenear)
     
     ! call super
     call finalize_krige(this)

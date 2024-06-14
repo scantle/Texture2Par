@@ -358,7 +358,7 @@ subroutine read_variogram_block(t2p, reader)
   
   ! Allocate variograms
   ! nvario is currently set during the class block read, max structures in settings
-  allocate(vgms(t2p%opt%max_vstruct,t2p%nvario), nnear(t2p%nprimary+t2p%nsecondary+1), nstruct(t2p%nvario))
+  allocate(vgms(t2p%opt%max_vstruct,t2p%nvario), nnear(t2p%nvario), nstruct(t2p%nvario))
   vcount = 0
   nnear = 0
   nstruct = 0
@@ -397,7 +397,8 @@ subroutine read_variogram_block(t2p, reader)
         if (vstring_match(class_name,"PilotPoints",nocase=.true.)) then
           ispp = .true.
           vario_id = t2p%nvario  ! PP vario is max
-          prime_id = size(nnear,1)
+          !prime_id = size(nnear,1)
+          prime_vidx = size(nnear,1)
         else
         ! Not PP
           select type(p => t2p%interp_data)
@@ -406,8 +407,8 @@ subroutine read_variogram_block(t2p, reader)
                 prime_id = t2p%get_class_id(class_name, adjust_for_infer=.true.)
                 prime_vidx = t2p%get_class_id(class_name)
                 ! If you're wondering -
-                ! nnear and connections are indexed by prime_id, which aligns with the active class number
-                ! global_vario_idx,vgms,and nstruct is indexed by prime_vidx, which aligns with the class number
+                ! connections is indexed by prime_id, which aligns with the active class number
+                ! global_vario_idx,nnear,vgms,and nstruct is indexed by prime_vidx, which aligns with the class number
                 if (prime_id==0) then
                   call error_handler(1,reader%file,"Invalid Class Name in Variogram Assignment")
                 end if
@@ -453,7 +454,7 @@ subroutine read_variogram_block(t2p, reader)
             if (iscross) then
               ! Can't get n cross points...
             else
-              nnear(prime_id) = item2int(strings, maxread+1)
+              nnear(prime_vidx) = item2int(strings, maxread+1)
             end if
             vcount = vcount + 1
           end if

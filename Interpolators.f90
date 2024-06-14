@@ -114,7 +114,7 @@ module m_interpolator
     integer                               :: ppd(size(obs_data))
     
     results = 0.0_dp  ! necessary?
-    call weights%initialize(this%wsize_estimate(obs_data))
+    call weights%initialize(this%wsize_estimate(obs_data, obs_idx))
     
     do i=1, size(catlist)
       ! Setup for each category
@@ -170,11 +170,12 @@ module m_interpolator
   
 !-------------------------------------------------------------------------------------------------!
   
-  function wsize_estimate(this, obs_data)
+  function wsize_estimate(this, obs_data, obs_idx)
     ! To be overwritten where necessary
     implicit none
     class(t_interpolator),intent(inout)  :: this
     class(t_layerdata)                   :: obs_data(:)
+    integer,intent(in)                   :: obs_idx(:)
     integer                              :: i,wsize_estimate
     wsize_estimate = 0
     do i=1, size(obs_data)
