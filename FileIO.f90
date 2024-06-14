@@ -158,7 +158,6 @@ module m_file_io
 !-------------------------------------------------------------------------------------------------!
   
   function item2int(strings, i) result(out_int)
-    use m_error_handler
     implicit none
     class(t_vstringlist),intent(in)   :: strings
     integer, intent(in)               :: i
@@ -167,15 +166,13 @@ module m_file_io
     if(vstring_is(vstrlist_index(strings, i),'integer', strict=.true.)) then
       call vstring_cast(vstrlist_index(strings, i), out_int)
     else
-      call item2char(strings, i, temp)
-      call error_handler(3,opt_msg='Could not convert '//trim(temp)//' to an integer value')
+
     end if
   end function item2int
   
 !-------------------------------------------------------------------------------------------------!
   
   function item2real(strings, i) result(out_real)
-    use m_error_handler
     implicit none
     class(t_vstringlist),intent(in)   :: strings
     integer, intent(in)               :: i
@@ -184,15 +181,13 @@ module m_file_io
     if(vstring_is(vstrlist_index(strings, i),'real', strict=.true.)) then
       call vstring_cast(vstrlist_index(strings, i), out_real)
     else
-      call item2char(strings, i, temp)
-      call error_handler(3,opt_msg='Could not convert '//trim(temp)//' to a numeric value')
+
     end if
   end function item2real
   
 !-------------------------------------------------------------------------------------------------!
   
   function item2dp(strings, i) result(out_dp)
-    use m_error_handler
     implicit none
     class(t_vstringlist),intent(in)   :: strings
     integer, intent(in)               :: i
@@ -201,8 +196,7 @@ module m_file_io
     if(vstring_is(vstrlist_index(strings, i),'real', strict=.true.)) then
       call vstring_cast(vstrlist_index(strings, i), out_dp)
     else
-      call item2char(strings, i, temp)
-      call error_handler(3,opt_msg='Could not convert '//trim(temp)//' to a numeric value')
+
     end if
   end function item2dp
   
