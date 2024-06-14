@@ -593,7 +593,7 @@ module m_T2P
       ! Check if we have precalculated weights for the pilot point interpolation
       if (this%opt%READ_PP_WEIGHTS) then
         ! TODO READ
-      else if (count(this%pilot_points%zonelist==k)==1) then
+      else if (count(this%pilot_points%category==k)==1) then
         ! One pp == full weight on that pp
         weights%values = 1.0_dp
       else
@@ -632,7 +632,7 @@ module m_T2P
         ! Check if we have precalculated weights for the pilot point interpolation
         if (this%opt%READ_PP_WEIGHTS) then
           ! TODO READ
-        else if (count(this%pilot_points%zonelist==k)==1) then
+        else if (count(this%pilot_points_aquitard%category==k)==1) then
           ! One pp == full weight on that pp
           weights%values = 1.0_dp
         else
