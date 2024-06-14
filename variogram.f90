@@ -57,11 +57,11 @@ end type t_vgm
     
     ! TODO implement different reading for nonstandard variograms (e.g. power)
     if (interp_dim==2) then
-      vgm%nugget = item2real(strings, 3)
-      vgm%sill   = item2real(strings, 4)
-      vgm%a_hmin = item2real(strings, 5)
-      vgm%a_hmax = item2real(strings, 6)
-      vgm%ang1   = item2real(strings, 7)
+      vgm%nugget = item2dp(strings, 3)
+      vgm%sill   = item2dp(strings, 4)
+      vgm%a_hmin = item2dp(strings, 5)
+      vgm%a_hmax = item2dp(strings, 6)
+      vgm%ang1   = item2dp(strings, 7)
       maxread = 7
       ! Sanitize unused variables
       vgm%a_vert = vgm%a_hmin
@@ -69,14 +69,14 @@ end type t_vgm
       vgm%ang3   = 0.0
       !nnear read outside of routine
     else if (interp_dim==3) then
-      vgm%nugget = item2real(strings, 3)
-      vgm%sill   = item2real(strings, 4)
-      vgm%a_hmin = item2real(strings, 5)
-      vgm%a_hmax = item2real(strings, 6)
-      vgm%a_vert = item2real(strings, 7)
-      vgm%ang1   = item2real(strings, 8)
-      vgm%ang2   = item2real(strings, 9)
-      vgm%ang3   = item2real(strings,10)
+      vgm%nugget = item2dp(strings, 3)
+      vgm%sill   = item2dp(strings, 4)
+      vgm%a_hmin = item2dp(strings, 5)
+      vgm%a_hmax = item2dp(strings, 6)
+      vgm%a_vert = item2dp(strings, 7)
+      vgm%ang1   = item2dp(strings, 8)
+      vgm%ang2   = item2dp(strings, 9)
+      vgm%ang3   = item2dp(strings,10)
       maxread = 10
       !nnear read outside of routine
     end if
