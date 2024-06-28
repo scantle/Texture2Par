@@ -9,6 +9,55 @@ module m_interpolator
   use m_categories, only: t_category
   implicit none
 !-------------------------------------------------------------------------------------------------!
+! ADDING A NEW INTERPOLATOR
+! 
+! Interpolators must override these methods:
+!  - setup(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+!  - predict_point(this, idx, p, obs_data, cat, weights, widx, ppd)
+! 
+! Optionally, they can also override these:
+!  - wsize_estimate(this, obs_data, obs_idx)
+!  - finalize(this)
+! 
+! `setup` is called before each loop over a set of points in a given category (pp zone, HSU).
+! The intent is for it to be used to allocate arrays, etc.
+! 
+! `predict_point` is called for each point on the output grid (MF, IWFM, GSF...). The intent
+! is to return a series of a weights for each input observation (pp or class data). In the
+! interpolate subroutine `calc_weights` it returns weights for the entire observation set.
+! In `calc` however (currently used for class interpolation) a sparse weight representation
+! is used; the predict_point() optional arguments ppd and widx are used to return the number
+! of observations and the observation indices, respectively.
+!
+! `wsize_estimator` returns the maximum size of the weight array (max obs points used)
+! `finalize` deallocates arrays and nullifies pointers
+! 
+! The arguments of these methods are documented in their abstract base class placeholders
+! below.
+! 
+! To add the new interpolator as a valid option in the input file, add a new case
+! statement to T2P.f90 in the `process_options` method. Their the interpolator can be setup
+! to be allocated as the correct subclass. 
+! 
+! If your interpolator has additional options that need to be included via the input file,
+! their are a couple possible routes. New options can be added to the options class in
+! options.f90, and then when the interpolator `setup()` method is called it will have access
+! to the new options. If the interpolator requires it's own block in the input file (as
+! kriging did with variograms) you'll need to:
+!  1. Add a new block in the main input file with a new reader in the Read_Main_Input.f90 
+!     file
+!  2. Setup the OPTIONS block to be required before your new block in `pre_block_read_check()`
+!  3. Write a subroutine in T2P to be called after your block is read. Pass the necessary
+!     data or options to t2p%interp_pp and t2p%interp_data - see setup_variograms in T2P.f90
+! 	for an example
+! Other less drastic options include:
+!  1. Adding an input file to the options block your `setup()` routine can read
+!     Downside: `setup()` can't distinguish between pp and data interpolation easily
+!  2. Modify the interpolator `initialize()` routine to accept your parameter as an input.
+!     Override `initialize()` for your interpolator so it properly handles the parameter
+! 	The `initialize()` calls are currently in `process_options()` but could be moved
+! 	to run after everything is read - they currently do nothing!
+!-------------------------------------------------------------------------------------------------!
   type, abstract:: t_interpolator
   
   ! Abstract Base Class
@@ -138,7 +187,17 @@ module m_interpolator
   end subroutine calc
   
 !-------------------------------------------------------------------------------------------------!
-  
+!> Initializes the interpolator before each loop over a set of points in a given category.
+!! This is typically used to allocate necessary arrays and set up the environment.
+!! 
+!! @param this The interpolator object.
+!! @param obs_data Observed datasets to be used for interpolation.
+!! @param obs_idx Indices of the observed data points.
+!! @param to_grid Grid object where the interpolated values will be placed.
+!! @param cat Category data.
+!! @param to_cats Categories for the target grid points.
+!! @param weights Weights to be calculated during interpolation.
+!! @param opt T2P Options object.
   subroutine setup(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
     ! Abstract Base Class method - should not be called
     implicit none
@@ -154,7 +213,17 @@ module m_interpolator
   end subroutine setup
   
 !-------------------------------------------------------------------------------------------------!
-  
+!> Predicts the value at a specific point on the output grid based on the observed data and weights.
+!! This is called for each point on the output grid to compute the interpolation weights.
+!! 
+!! @param this The interpolator object.
+!! @param idx Index of the point to predict.
+!! @param p Coordinates of the point to predict.
+!! @param obs_data Observed data used for prediction.
+!! @param cat Category data.
+!! @param weights Weights for the prediction.
+!! @param widx Indices of the weights (optional).
+!! @param ppd Number of observations (optional).
   subroutine predict_point(this, idx, p, obs_data, cat, weights, widx, ppd)
     ! Abstract Base Class method - should not be called
     implicit none
@@ -169,7 +238,13 @@ module m_interpolator
   end subroutine predict_point
   
 !-------------------------------------------------------------------------------------------------!
-  
+!> Estimates the maximum size of the weight array for the interpolation.
+!! This subroutine returns the maximum number of observation points used.
+!! 
+!! @param this The interpolator object.
+!! @param obs_data Observed data used for interpolation.
+!! @param obs_idx Indices of the observed data points.
+!! @return Maximum size of the weight array.
   function wsize_estimate(this, obs_data, obs_idx)
     ! To be overwritten where necessary
     implicit none

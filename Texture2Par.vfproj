@@ -87,7 +87,8 @@
 		<File RelativePath=".\fpath.f90"/>
 		<File RelativePath=".\Read_Datasets.f90"/>
 		<File RelativePath=".\Read_Main_Input.f90"/>
-		<File RelativePath=".\t2p_log.f90"/></Filter>
+		<File RelativePath=".\t2p_log.f90"/>
+		<File RelativePath=".\write_fmodel.f90"/></Filter>
 		<Filter Name="Interpolators">
 		<File RelativePath=".\Interpolators.f90"/>
 		<File RelativePath=".\kriging.f90"/>
@@ -101,15 +102,14 @@
 		<File RelativePath=".\T2P.f90"/>
 		<File RelativePath=".\weights.f90"/></Filter>
 		<Filter Name="Tools">
+		<File RelativePath=".\data_transformer.f90"/>
 		<File RelativePath=".\ErrorHandler.f90"/>
 		<File RelativePath=".\kdtree2.f90"/>
 		<File RelativePath=".\Str_Module.f90"/>
 		<File RelativePath=".\time.f90"/>
 		<File RelativePath=".\Tools.f90"/></Filter>
-		<File RelativePath=".\data_transformer.f90"/>
 		<File RelativePath=".\global.f90"/>
-		<File RelativePath=".\Texture2Par.f90"/>
-		<File RelativePath=".\write_fmodel.f90"/></Filter>
+		<File RelativePath=".\Texture2Par.f90"/></Filter>
 	</Files>
 	<Globals/>
 </VisualStudioProject>
