@@ -277,7 +277,7 @@ module m_T2P
     ! Loop over each array and add each category stored in arrcat
     do i = 1, this%fmodel%ppzones%narr
       do j = 1, this%fmodel%ppzones%arrncat(i)
-        call this%dataset_ppzones%add_category_int(this%fmodel%ppzones%arrcat(j, i), i, idx)
+        call this%dataset_ppzones%add_category_int(this%fmodel%ppzones%catlist(j, i), i, idx)
       end do
     end do
   
@@ -583,7 +583,6 @@ module m_T2P
     
     ! Go by pilot point zone arrays (up to nlayers)
     do k=1, this%fmodel%ppzones%narr
-    
       call this%write_minor_status('- Array:',k)
     
       ! Initialize results for this array
@@ -598,7 +597,7 @@ module m_T2P
                                          class_idx,  &
                                          to_grid,  &
                                          weights%values, &
-                                         to_categories%arrcat(1:to_categories%arrncat(k),k), &
+                                         to_categories%catlist(1:to_categories%arrncat(k),k), &
                                          to_categories%array(:,k),&
                                          this%opt)
       end if
@@ -614,6 +613,8 @@ module m_T2P
           results(k)%values(:,j,i) = matmul(weights%values,this%pilot_points%values(:,j,i))
         end do
       end do
+      ! reset weights
+      weights%values = 0.0_dp
     end do
     
     ! Aquitards
@@ -634,7 +635,7 @@ module m_T2P
                                            class_idx,  &
                                            to_grid,  &
                                            weights%values, &
-                                           to_categories%arrcat(1:to_categories%arrncat(k),k), &
+                                           to_categories%catlist(1:to_categories%arrncat(k),k), &
                                            to_categories%array(:,k),&
                                            this%opt)
         end if
@@ -650,6 +651,8 @@ module m_T2P
             results(k)%values(:,aquitard_props(j),i) = matmul(weights%values,this%pilot_points%values(:,j,i))
           end do
         end do
+        ! reset weights
+        weights%values = 0.0_dp
       end do
     end if
     
@@ -704,7 +707,7 @@ module m_T2P
                                              dataval_idx,&
                                              this%fmodel%grid(1),  &
                                              dout(k)%values(i,1:), &
-                                             this%fmodel%hsus%arrcat(1:this%fmodel%hsus%arrncat(x),x), &
+                                             this%fmodel%hsus%catlist(1:this%fmodel%hsus%arrncat(x),x), &
                                              this%fmodel%hsus%array(1:,x),&
                                              this%opt)
         end if

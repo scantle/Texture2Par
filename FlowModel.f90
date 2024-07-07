@@ -352,7 +352,8 @@ module m_flow_model
     implicit none
     class(t_flow_model)     :: this
     integer                 :: nactive
-    nactive = this%ppzones%ncat
+    !nactive = this%ppzones%ncat
+    nactive = maxval(this%ppzones%arrncat(1:))
   end function get_active_ppzones
 
 !-------------------------------------------------------------------------------------------------!

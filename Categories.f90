@@ -10,12 +10,11 @@ module m_categories
     integer                    :: dtype          ! Data type, 0-int, 1-str
     integer                    :: narr           ! Number of unique arrays
     integer                    :: ncat           ! Number of categories
-    integer,allocatable        :: catlist(:)     ! List of category values
+    integer,allocatable        :: catlist(:,:)   ! List of category values
     type(t_vstringlist)        :: strlist        ! Category values, but when string
     integer,allocatable        :: lay2arr(:)     ! Translation from layer to array
     integer,allocatable        :: array(:,:)     ! Arrays of category values (nvalues, narr)
     integer,allocatable        :: arrncat(:)     ! Number of categories per array
-    integer,allocatable        :: arrcat(:,:)    ! Categories present in each array (catlist_size, narr)
     logical                    :: from_file      ! Categories were read from file
     
     contains
@@ -47,8 +46,7 @@ module m_categories
     allocate(this%lay2arr (nlayers     ), &
              this%array   (nnodes, narr), &  ! Assumes uniform size layers
              this%arrncat (narr        ), &
-             this%catlist(DEFAULT_CATLIST_SIZE), &
-             this%arrcat(DEFAULT_CATLIST_SIZE, narr) ) 
+             this%catlist(DEFAULT_CATLIST_SIZE, narr)) 
     if (this%dtype==1) call vstrlist_new(this%strlist)
     
     ! By Default
@@ -57,7 +55,6 @@ module m_categories
     this%array      =  1
     this%catlist    = -1
     this%arrncat    =  0
-    this%arrcat     = -1
   
   end subroutine initialize
 
@@ -67,9 +64,8 @@ module m_categories
     class(t_category), intent(inout) :: this
     
     this%ncat = 1
-    this%catlist(1) = 1
+    this%catlist(1,:) = 1
     this%arrncat(:) = 1
-    this%arrcat(:,1) = 1
     if (this%dtype==1) then
       call vstrlist_append(this%strlist, '')  ! Necessary?
     end if
@@ -84,25 +80,21 @@ module m_categories
     logical                          :: is_new
     integer, intent(out)             :: index
 
-    ! Check if new_cat is a new unique category
     is_new = .true.
     do index = 1, this%ncat
-      if (this%catlist(index) == value) then
+      if (this%catlist(index, arr) == value) then
         is_new = .false.
-        exit             ! Early exit
+        exit  ! Category already exists for this array
       end if
     end do
 
     if (is_new) then
-      if (this%ncat >= size(this%catlist)) then
-        ! Need to reallocate catlist to make room for new category
+      if (this%ncat >= size(this%catlist, 1)) then
         call reallocate_catlist(this)
       end if
       this%ncat = this%ncat + 1
-      index = this%ncat
-      this%catlist(this%ncat) = value
       this%arrncat(arr) = this%arrncat(arr) + 1
-      this%arrcat(this%arrncat(arr), arr) = value
+      this%catlist(this%arrncat(arr), arr) = value
     end if
   end subroutine add_category_int
   
@@ -114,15 +106,13 @@ module m_categories
     integer, intent(in)              :: arr
     integer, intent(out)             :: index
 
-    ! Check if new_cat is a new unique category
     index = vstrlist_search(this%strlist, value)
     if (index == 0) then
       call vstrlist_append(this%strlist, value)
       this%ncat = this%ncat + 1
       index = this%ncat
-      this%catlist(this%ncat) = this%ncat
       this%arrncat(arr) = this%arrncat(arr) + 1
-      this%arrcat(this%arrncat(arr), arr) = this%ncat
+      this%catlist(this%arrncat(arr), arr) = index
     end if
   end subroutine add_category_str
   
@@ -134,15 +124,13 @@ module m_categories
     integer, intent(in)              :: arr
     integer, intent(out)             :: index
 
-    ! Check if new_cat is a new unique category
     index = vstrlist_search(this%strlist, trim(value))
     if (index == 0) then
       call vstrlist_append(this%strlist, trim(value))
       this%ncat = this%ncat + 1
       index = this%ncat
-      this%catlist(this%ncat) = this%ncat
       this%arrncat(arr) = this%arrncat(arr) + 1
-      this%arrcat(this%arrncat(arr), arr) = this%ncat
+      this%catlist(this%arrncat(arr), arr) = index
     end if
   end subroutine add_category_char
   
@@ -150,16 +138,13 @@ module m_categories
 
   subroutine reallocate_catlist(this)
     class(t_category), intent(inout) :: this
-    integer, allocatable :: temp_catlist(:), temp_arrcat(:,:)
+    integer, allocatable :: temp_catlist(:,:)
     integer :: new_size
 
-    new_size = size(this%catlist) + 5  ! Increase size by 5, adjust as necessary
-    allocate(temp_catlist(new_size))
-    allocate(temp_arrcat (new_size,this%narr))
-    temp_catlist(:size(this%catlist)) = this%catlist
-    temp_arrcat(:size(this%arrcat),1:this%narr) = this%arrcat
+    new_size = size(this%catlist, 1) + DEFAULT_CATLIST_SIZE
+    allocate(temp_catlist(new_size, size(this%catlist, 2)))
+    temp_catlist(:size(this%catlist, 1), :) = this%catlist
     call move_alloc(temp_catlist, this%catlist)
-    call move_alloc(temp_arrcat, this%arrcat)
   end subroutine reallocate_catlist
   
 !-------------------------------------------------------------------------------------------------!
@@ -268,7 +253,6 @@ module m_categories
     if (allocated(this%lay2arr)) deallocate(this%lay2arr)
     if (allocated(this%array))   deallocate(this%array)
     if (allocated(this%arrncat)) deallocate(this%arrncat)
-    if (allocated(this%arrcat))  deallocate(this%arrcat)
   
   end subroutine finalize
   
