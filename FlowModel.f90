@@ -139,17 +139,20 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_flow_fdmodel) :: t_modflow_model
   
+  type(t_grid),pointer        :: loc_grid(:)   ! LOCAL xy grids for layers (not global coords)
   integer                     :: layfile       ! LPF/UPW IUNIT number
   character(3)                :: gwftyp        ! LPF or UPW, for printing
   
   contains
     procedure,public          :: initialize => init_modflow2000
+    procedure,private         :: alloc_layers => alloc_layers_mf
+    procedure,private         :: alloc_nodes  => alloc_nodes_mf
     procedure,public          :: read_model => read_modflow2000
     procedure,public          :: find_in_grid => find_in_grid_cell
     procedure,public          :: write_node_file => write_node_file_mf
     procedure,public          :: cell2rowcol
     procedure,private         :: get_cell_local
-    procedure,private         :: calc_mfcell_centers_global
+    procedure,private         :: calc_mfcell_centers
   
   end type 
 !-------------------------------------------------------------------------------------------------!  
@@ -1247,31 +1250,62 @@ module m_flow_model
     this%name = "MODFLOW"
     
   end subroutine init_modflow2000
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine alloc_layers_mf(this, lay2grid)
+    implicit none
+    class(t_modflow_model)       :: this
+    integer                      :: lay2grid(this%nlayers)
+    
+    ! Call super
+    call alloc_layers(this, lay2grid)
+    
+    allocate(this%loc_grid(1))  ! Would be this%ngrids if layers did not have same xy grid
+    
+  end subroutine alloc_layers_mf
   
 !-------------------------------------------------------------------------------------------------!
-  subroutine calc_mfcell_centers_global(this)
+  
+  subroutine alloc_nodes_mf(this)
+    ! Additional arrays required for IWFM due to Finite-element
+    implicit none
+    class(t_modflow_model)       :: this
+    
+    ! Create local grid object (see above layer caveat in alloc_layers_mf)
+    this%loc_grid(1) = create_grid_object(2, this%nnodes(1))
+    
+    ! Call super
+    call alloc_nodes(this)
+    
+  end subroutine alloc_nodes_mf
+  
+!-------------------------------------------------------------------------------------------------!
+  subroutine calc_mfcell_centers(this)
+    ! Both local and global (formerly was just global, causing some issues in get_cell_local!)
     use tools, only: loc2glo
     use GLOBAL, ONLY : NROW, NCOL, DELR, DELC
     implicit none
     ! Calculates cell centers in global coordinates  
     class(t_modflow_model)       :: this
     integer                :: i, j, n
-    real(dp)               :: xbase, ybase, locx(this%nnodes(1)), locy(this%nnodes(1))
+    real(dp)               :: xbase, ybase
   
     ybase = sum(delc)
     do i=1, nrow
       xbase = 0.0
       do j=1, ncol
-        n = (i-1)*ncol+j
-        locx(n) = xbase + 0.5 * delr(j)
-        locy(n) = ybase - 0.5 * delc(i)
-        call loc2glo(locx(n), locy(n), this%xoff, this%yoff, this%rot, this%grid(1)%coords(1,n), this%grid(1)%coords(2,n))
+        n = (i-1)*ncol+j                            ! node number
+        this%loc_grid(1)%coords(1,n) = xbase + 0.5 * delr(j)  ! x local
+        this%loc_grid(1)%coords(2,n) = ybase - 0.5 * delc(i)  ! y loca
+        ! get global
+        call loc2glo(this%loc_grid(1)%coords(1,n), this%loc_grid(1)%coords(2,n), this%xoff, this%yoff, this%rot, this%grid(1)%coords(1,n), this%grid(1)%coords(2,n))
         xbase = xbase + delr(j)
       end do
       ybase = ybase - delc(i)
     end do
   
-  end subroutine calc_mfcell_centers_global
+  end subroutine calc_mfcell_centers
 !-------------------------------------------------------------------------------------------------!
   
   function find_in_grid_cell(this, coords) result(cell)
@@ -1334,10 +1368,10 @@ module m_flow_model
     
     if (this%structured) then
       call this%cell2rowcol(cell, row, col)
-      xmin = this%grid(this%lay2grid(1))%coords(1,cell) - 0.5 * delr(col)
-      xmax = this%grid(this%lay2grid(1))%coords(1,cell) + 0.5 * delr(col)
-      ymin = this%grid(this%lay2grid(1))%coords(2,cell) - 0.5 * delc(row)
-      ymax = this%grid(this%lay2grid(1))%coords(2,cell) + 0.5 * delc(row)
+      xmin = this%loc_grid(this%lay2grid(1))%coords(1,cell) - 0.5 * delr(col)
+      xmax = this%loc_grid(this%lay2grid(1))%coords(1,cell) + 0.5 * delr(col)
+      ymin = this%loc_grid(this%lay2grid(1))%coords(2,cell) - 0.5 * delc(row)
+      ymax = this%loc_grid(this%lay2grid(1))%coords(2,cell) + 0.5 * delc(row)
     else
       ! TODO
     end if      
@@ -1430,7 +1464,7 @@ module m_flow_model
     if (IUNSTR) then
       ! TODO
     else
-      call this%calc_mfcell_centers_global()
+      call this%calc_mfcell_centers()
     end if
     
     ! Clean up

@@ -1,32 +1,33 @@
 module m_weights
+  use m_global, only: dp
 !-------------------------------------------------------------------------------------------------!  
   implicit none
 
   ! Define a custom type for managing weights
   type :: t_weights
-      integer                :: nin, nout     ! grid input point count, grid output point count
-      real, allocatable      :: values(:,:)  ! The weights (output_points, input_points)
+      integer            :: nin, nout     ! grid input point count, grid output point count
+      real, allocatable  :: values(:,:)  ! The weights (output_points, input_points)
       
   contains
-      procedure,public  :: initialize
-      procedure,public  :: save_to_file
-      procedure,public  :: load_from_file
-      procedure,private :: finalize
+      procedure,public   :: initialize
+      procedure,public   :: save_to_file
+      procedure,public   :: load_from_file
+      procedure,private  :: finalize
   end type t_weights
 !-------------------------------------------------------------------------------------------------!  
 ! Alternatively: single-output sparse (SOSA)
   
   type :: t_sosa_weights
-    integer             :: nin
-    integer             :: unit
-    integer,allocatable :: idx(:)
-    real,allocatable    :: values(:)
+    integer              :: nin
+    integer              :: unit
+    integer,allocatable  :: idx(:)
+    real(dp),allocatable :: values(:)
   contains
-      procedure,public  :: initialize => initialize_sosa
-      procedure,public  :: open_file => open_file_sosa
-      procedure,public  :: save_to_file => save_to_file_sosa
-      procedure,public  :: load_from_file => load_from_file_sosa
-      procedure,private :: finalize => finalize_sosa
+      procedure,public   :: initialize => initialize_sosa
+      procedure,public   :: open_file => open_file_sosa
+      procedure,public   :: save_to_file => save_to_file_sosa
+      procedure,public   :: load_from_file => load_from_file_sosa
+      procedure,private  :: finalize => finalize_sosa
   end type t_sosa_weights
   
 contains
@@ -49,6 +50,7 @@ contains
     this%nout = output_n
     if (allocated(this%values)) deallocate(this%values)
     allocate(this%values (output_n, input_n))
+    this%values = 0.0_dp
       
   end subroutine initialize
   

@@ -66,6 +66,7 @@ module m_interpolator
     generic                :: initialize => initialize_abc       ! placeholder
     procedure,public       :: calc_weights
     procedure,public       :: calc
+    procedure,private      :: single_point_full_weight
     procedure              :: setup
     procedure              :: predict_point
     procedure              :: wsize_estimate
@@ -128,19 +129,30 @@ module m_interpolator
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
     type(t_grid),intent(in)               :: to_grid
-    real(dp)                              :: weights(:,:)
+    real(dp)                              :: weights(:,:) !(output_points, input_points)
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
-    integer                               :: i, j, cat
+    integer                               :: i, j, cat, count_cat
     
     do i=1, size(catlist)
       ! Setup for each category
       cat = catlist(i)
-      call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
-      do j=1, to_grid%n
-        ! Interpolate for each point
-        if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(1:2,j), obs_data, cat, weights(j,:))
+      count_cat = 0
+      ! Count occurrences across datasets
+      do j = 1, size(obs_data)
+        count_cat = count_cat + count(obs_data(j)%category == cat)
+        if (count_cat > 1) exit
       end do
+      
+      if (count_cat>1) then ! more than one obs point
+        call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+        do j=1, to_grid%n
+          ! Interpolate for each point
+          if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(1:2,j), obs_data, cat, weights(j,:))
+        end do
+      else  ! only one point!
+        call this%single_point_full_weight(obs_data, cat, to_cats, weights)
+      end if
     end do
     
   end subroutine calc_weights
@@ -172,19 +184,47 @@ module m_interpolator
       
       do j=1, to_grid%n
         ! Interpolate for each point
-        if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(1:2,j), obs_data, cat, weights%values, weights%idx, ppd)
-        ! Calculate for each point
-        woffset = 0
-        do k=1, size(obs_data)
-          v_adjust = 0.0_dp
-          if (k>1) v_adjust = obs_data(1)%mean(i) - obs_data(k)%mean(val_idx(1))
-          results(j) = results(j) + dot_product(weights%values(woffset+1:woffset+ppd(k)), obs_data(k)%values(val_idx(k), weights%idx(woffset+1:woffset+ppd(k)))+v_adjust)
-          woffset = woffset + ppd(k)
-        end do
+        if (to_cats(j)==cat) then
+          call this%predict_point(j, to_grid%coords(1:2,j), obs_data, cat, weights%values, weights%idx, ppd)
+          ! Calculate for each point
+          woffset = 0
+          do k=1, size(obs_data)
+            v_adjust = 0.0_dp
+            if (k>1) v_adjust = obs_data(1)%mean(i) - obs_data(k)%mean(val_idx(1))
+            results(j) = results(j) + dot_product(weights%values(woffset+1:woffset+ppd(k)), obs_data(k)%values(val_idx(k), weights%idx(woffset+1:woffset+ppd(k)))+v_adjust)
+            woffset = woffset + ppd(k)
+          end do
+        end if
       end do
     end do
     
   end subroutine calc
+
+!-------------------------------------------------------------------------------------------------!
+subroutine single_point_full_weight(this, obs_data, cat, to_cats, weights)
+  implicit none
+  class(t_interpolator), intent(inout) :: this
+  class(t_dataset)                     :: obs_data(:)
+  real(dp)                             :: weights(:,:)
+  integer, intent(in)                  :: cat, to_cats(:)
+  integer                              :: i, j, k, obs_idx, w_offset
+
+  w_offset = 0
+
+  ! Loop over datasets to find the index of the ASSUMED SINGLE observation that matches cat
+  do i = 1, size(obs_data)
+    obs_idx = findloc(obs_data(i)%category, cat, dim=1)
+    if (obs_idx > 0) then  ! If found in dataset 'i'
+      obs_idx = obs_idx + w_offset
+      ! set weights for the found observation
+      do k = 1, size(to_cats)
+        if (to_cats(k) == cat) weights(k, obs_idx) = 1.0_dp
+      end do
+      exit
+    endif
+    w_offset = w_offset + obs_data(i)%grid%n
+  end do
+end subroutine single_point_full_weight
   
 !-------------------------------------------------------------------------------------------------!
 !> Initializes the interpolator before each loop over a set of points in a given category.
