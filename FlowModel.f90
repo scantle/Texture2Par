@@ -4,8 +4,15 @@ module m_flow_model
   use m_error_handler, only: error_handler
   use m_categories, only: t_category
   !use kdtree2_module, only: kdtree2, kdtree2_create
-  implicit none
 !-------------------------------------------------------------------------------------------------!
+! ADDING A NEW FLOW MODEL OR GRID TYPE
+! 1. Create a new child class inheriting from t_flow_model or t_flow_fdmodel
+! 2. The class need to override (at a minimum) the following methods from the base class:
+!   - read_model
+!   - find_in_grid
+!   Other methods may need to be overridden as well, for instance, `initialize()` or `get_elev_at_point()`
+!-------------------------------------------------------------------------------------------------!
+  implicit none
   ! Module variables
   type(t_file_reader), pointer :: reader          ! For reading input files
   integer,parameter            :: max_node_elem_members = 30
@@ -74,10 +81,9 @@ module m_flow_model
     contains
       procedure,private       :: read_gsf
       !procedure,private       :: add_node2vert2node
-      procedure,public        :: get_elev_at_point => get_elev_at_point_cell
   end type t_flow_fdmodel
 !-------------------------------------------------------------------------------------------------!
-  type, extends(t_flow_fdmodel) :: t_mgrid
+  type, extends(t_flow_fdmodel) :: t_mgrid  ! GSF - rename?
   
   contains
     procedure,public          :: initialize => init_mgrid
@@ -85,6 +91,13 @@ module m_flow_model
     procedure,public          :: find_in_grid => find_in_grid_gsf
   
   end type 
+!-------------------------------------------------------------------------------------------------!
+  type, extends(t_flow_model) :: t_simpgrid  ! X Y LayerElevations - "Finite Element" style
+  contains
+    procedure,public          :: initialize => init_simpgrid
+    procedure,public          :: read_model => read_simpgrid
+    procedure,public          :: find_in_grid => find_in_grid_simpgrid
+  end type t_simpgrid
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_flow_model) :: t_iwfm_model   ! I DO realize the "m" in IWFM is for model
   
@@ -154,12 +167,14 @@ module m_flow_model
     class(t_flow_model),pointer    :: object
     
     select case(model_type_char)
-      case ("GRID")
-        allocate(t_mgrid::object)
       case ("IWFM")
         allocate(t_iwfm_model::object)
       case ("MODFLOW")
         allocate(t_modflow_model::object)
+      case ("GSF_GRID")
+        allocate(t_mgrid::object)
+      case("SIMPLE_GRID")
+        allocate(t_simpgrid::object)
       case DEFAULT
         call error_handler(1,opt_msg="Unknown Flow Model Type Name: " // trim(model_type_char))
     end select
@@ -199,7 +214,6 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
   
   subroutine initialize(this)
-    ! Should not be run
     implicit none
     class(t_flow_model)       :: this
     
@@ -297,14 +311,21 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
   
   subroutine get_elev_at_point(this, coords, point_elevs, locid)
-    ! Base class method, should not be run
+    ! Returns elevations for each layer given coordinates.
     implicit none
     class(t_flow_model)     :: this
     real(dp), intent(in)    :: coords(:)
-    real(dp), intent(out)   :: point_elevs(this%nlayers)
-    integer, optional       :: locid    ! Cell id, element id
+    real(dp), intent(out)   :: point_elevs(0:this%nlayers)
+    integer, optional       :: locid      ! Containing cell id if known
+    integer                 :: id
     
-    point_elevs = 0
+    if (present(locid)) then
+      id = locid
+    else
+      id = this%find_in_grid(coords)
+    end if
+    
+    point_elevs = this%elev(id,:)
   
   end subroutine get_elev_at_point
 
@@ -605,7 +626,7 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!
-! GRID CLASS TYPE-BOUND PROCEDURES
+! GSF GRID CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
   subroutine init_mgrid(this)
@@ -672,6 +693,75 @@ module m_flow_model
   
 !-------------------------------------------------------------------------------------------------!
 
+!-------------------------------------------------------------------------------------------------!
+! SIMPLE GRID CLASS TYPE-BOUND PROCEDURES
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine init_simpgrid(this)
+    implicit none
+    class(t_simpgrid)       :: this
+    
+    call initialize(this)
+    this%model_type  = 1
+    this%name = "SIMPLE"
+    
+  end subroutine init_simpgrid  
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine read_simpgrid(this)
+    implicit none
+    class(t_simpgrid)       :: this
+    integer                 :: i, id, grid_nodes
+    integer,allocatable     :: lay2grid(:)
+    
+    ! Standard file reader variables
+    integer                    :: eof
+    type(t_vstringlist)        :: strings
+    
+    reader => open_file_reader(this%sim_file)
+    
+    ! Read in discretization line: nnodes, nlayers
+    call reader%next_item(eof, strings)
+    grid_nodes = item2int(strings, 1)
+    this%nlayers = item2int(strings, 2)
+
+    ! Allocate
+    allocate(lay2grid(this%nlayers))
+    lay2grid(:) = 1                           ! all layers use the same xy grid
+    call this%alloc_layers(lay2grid)
+    this%nnodes(:) = grid_nodes
+    call this%alloc_nodes()
+    
+    ! One node per line
+    call reader%read_to_next_line(eof)
+    do i=1,this%nnodes(1)
+      read(reader%unit,*) id, this%grid(1)%coords(1,i), this%grid(1)%coords(2,i), this%elev(i, :)
+    end do
+    
+    call reader%close_file()
+  
+  end subroutine read_simpgrid
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  function find_in_grid_simpgrid(this, coords) result(node)
+    ! Assumes coords is in GLOBAL coordinates
+    ! Assumes uniform xy layers
+    ! Returns 0 if not found
+    implicit none
+    class(t_simpgrid)   :: this
+    real(dp)            :: coords(:)
+    integer             :: i,j,node
+    integer             :: nodeids(5)
+    real(dp)            :: in_node
+    real(dp)            :: nodedist(5), elemx(max_node_elem_members), elemy(max_node_elem_members)
+    
+    node = 0
+    call this%grid(this%lay2grid(1))%get_nnear(coords, 1, nodeids, nodedist)
+    
+    
+  end function find_in_grid_simpgrid
   
 !-------------------------------------------------------------------------------------------------!
 ! IWFM CLASS TYPE-BOUND PROCEDURES
@@ -1140,25 +1230,6 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
 ! FINITE-DIFFERENCE CLASS TYPE-BOUND PROCEDURES (MODFLOW, GSF)
 !-------------------------------------------------------------------------------------------------!
-  
-  subroutine get_elev_at_point_cell(this, coords, point_elevs, locid)
-    ! Returns elevations for each layer given coordinates.
-    implicit none
-    class(t_flow_fdmodel)   :: this
-    real(dp), intent(in)    :: coords(:)
-    real(dp), intent(out)   :: point_elevs(0:this%nlayers)
-    integer, optional       :: locid      ! Containing cell id if known
-    integer                 :: cellid
-    
-    if (present(locid)) then
-      cellid = locid
-    else
-      cellid = this%find_in_grid(coords)
-    end if
-    
-    point_elevs = this%elev(cellid,:)
-  
-  end subroutine get_elev_at_point_cell
   
 !-------------------------------------------------------------------------------------------------!
   
