@@ -150,10 +150,11 @@ module m_flow_model
     procedure,public          :: read_model => read_modflow2000
     procedure,public          :: find_in_grid => find_in_grid_cell
     procedure,public          :: write_node_file => write_node_file_mf
+    procedure,public          :: write_fmodel_input => write_fmodel_input_mf
     procedure,public          :: cell2rowcol
     procedure,private         :: get_cell_local
     procedure,private         :: calc_mfcell_centers
-  
+      
   end type 
 !-------------------------------------------------------------------------------------------------!  
   
@@ -1516,7 +1517,40 @@ module m_flow_model
   
   end subroutine write_node_file_mf
 !-------------------------------------------------------------------------------------------------!
-  
+  subroutine write_fmodel_input_mf(this, par)
+    use GLOBAL, ONLY:IUNIT
+    use m_datasets, only: t_layerdata
+    use m_file_io, only: t_file_reader, t_file_writer, open_file_reader, open_file_writer
+    use m_write_fmodel
+    implicit none
+    class(t_modflow_model)     :: this
+    type(t_layerdata),pointer  :: par(:)
+  type(t_file_reader),pointer  :: fread
+  type(t_file_writer),pointer  :: fwrite
+    integer                    :: ierr, upwflag
+    character(300)             :: fname, cerr
+    logical                    :: lop
+
+    !write(*,'(2x,2(a,3a))') 'Reading temp ', this%gwftyp, ', writing new ', this%gwftyp
+
+    ! LPF/UPW [should be] open - close it. We're going to do a bait-and-switch on MODFLOW
+    inquire(unit=IUNIT(this%layfile), opened=lop, name=fname)
+    if (lop) close(IUNIT(this%layfile))
+
+    ! Initialize MODFLOW LPF values with template LPF file (user provided)
+    fread => open_file_reader(this%template_file)
+    upwflag = 0
+    if (this%gwftyp=='UPW') upwflag = 1
+    CALL GWF2BCFU1AR(IUNIT(1),IUNIT(22),fread%unit,IUNIT(64), upwflag)
+    call fread%close_file()
+
+    ! Re-open actual LPF file and OVERWRITE
+    fwrite => open_file_writer(fname)
+    
+    call writeGWFP(fwrite%unit, par, this%gwftyp)
+    call fwrite%close_file()
+    
+  end subroutine write_fmodel_input_mf  
 !-------------------------------------------------------------------------------------------------!
   
 end module m_flow_model
