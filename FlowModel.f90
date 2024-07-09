@@ -97,6 +97,7 @@ module m_flow_model
     procedure,public          :: initialize => init_simpgrid
     procedure,public          :: read_model => read_simpgrid
     procedure,public          :: find_in_grid => find_in_grid_simpgrid
+    procedure,public          :: write_node_file => write_node_file_simpgrid
   end type t_simpgrid
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_flow_model) :: t_iwfm_model   ! I DO realize the "m" in IWFM is for model
@@ -764,9 +765,41 @@ module m_flow_model
     
     node = 0
     call this%grid(this%lay2grid(1))%get_nnear(coords, 1, nodeids, nodedist)
-    
-    
   end function find_in_grid_simpgrid
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_node_file_simpgrid(this, fname, par, par_id)
+    use m_datasets, only: t_layerdata
+    implicit none
+    class(t_simpgrid)        :: this
+    character(*)               :: fname
+    type(t_layerdata),pointer  :: par(:)
+    integer,intent(in)         :: par_id
+    integer                    :: i, k, unit
+    character(60)              :: fmt(2)
+    type(t_file_writer),pointer:: fwrite
+
+    !write(*,'(4x,a,a35)') 'Writing:', trim(filename)
+
+    write(fmt(1),'("(1a8,2a18,",i5,"i14)")') this%nlayers
+    write(fmt(2),'("(1i8,2f18.5,",i5,"e14.5)")') this%nlayers
+
+    fwrite => open_file_writer(fname)
+    unit = fwrite%unit
+    
+    ! Header
+    write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, this%nlayers)
+    ! Values
+    do i = 1, this%nnodes(1)
+      write(unit,fmt(2)) i, this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1, this%nlayers)
+    end do
+
+    call fwrite%close_file()
+  
+  end subroutine write_node_file_simpgrid
+
+!-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!
 ! IWFM CLASS TYPE-BOUND PROCEDURES
@@ -1200,7 +1233,6 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
   
   subroutine write_node_file_iwfm(this, fname, par, par_id)
-    ! Base class method, should not be run
     use m_datasets, only: t_layerdata
     implicit none
     class(t_iwfm_model)        :: this
