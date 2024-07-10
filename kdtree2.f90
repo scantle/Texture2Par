@@ -619,7 +619,7 @@ module kdtree2_module
 
 contains
 
-  function kdtree2_create(input_data,dim,sort,rearrange,rotmat) result (mr)
+  function kdtree2_create(input_data,success,dim,sort,rearrange,rotmat) result (mr)
     !
     ! create the actual tree structure, given an input array of data.
     !
@@ -643,6 +643,8 @@ contains
     !                      building takes longer, and extra memory is used.
     !
     ! LS: Added anisotropic  support thru passing rotmatrix
+    ! LS: Added non-optional `success` argument to determine if tree was
+    !     created successfully. Added failure for >=1 input_data values.
     ! .. Function Return Cut_value ..
     type (kdtree2), pointer :: mr
     integer, intent(in), optional      :: dim
@@ -652,11 +654,13 @@ contains
     ! ..
     ! .. Array Arguments ..
     real(kdkind), target :: input_data(:,:)
+    integer, intent(inout) :: success   ! 1 is success, 0 is failure
     !
     integer :: i
     ! ..
     allocate (mr)
     mr%the_data => input_data
+    success = 1   ! Assume success
     ! pointer assignment
 
     if (present(dim)) then
@@ -672,7 +676,9 @@ contains
       mr%rotmat => rotmat
     end if
 
-    if (mr%dimen > mr%n) then
+    if (mr%n <= 1) then
+      success = 0
+    else if (mr%dimen > mr%n) then
        !  unlikely to be correct
        write (*,*) 'KD_TREE_TRANS: likely user error.'
        write (*,*) 'KD_TREE_TRANS: You passed in matrix with D=',mr%dimen
@@ -680,9 +686,12 @@ contains
        write (*,*) 'KD_TREE_TRANS: note, that new format is data(1:D,1:N)'
        write (*,*) 'KD_TREE_TRANS: with usually N >> D.   If N =approx= D, then a k-d tree'
        write (*,*) 'KD_TREE_TRANS: is not an appropriate data structure.'
-       stop
+       !stop
+       success = 0
     end if
 
+    if (success==0) return    ! EARLY RETURN
+    
     call build_tree(mr)
 
     if (present(sort)) then

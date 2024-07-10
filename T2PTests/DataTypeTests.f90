@@ -67,6 +67,7 @@ module DataTypeTests
     real*8, dimension(2) :: query
     real*8               :: expected_distance
     type(kdtree2_result), dimension(3) :: results
+    integer       :: success
 
     ! Setup a simple 2D dataset
     set(:, 1) = [1.0, 2.0]
@@ -75,7 +76,7 @@ module DataTypeTests
     set(:, 4) = [7.0, 8.0]
 
     ! Create k-d tree without a rotation matrix (using Euclidean distance)
-    tree => kdtree2_create(set, 2,sort=.true.)
+    tree => kdtree2_create(set, success, 2,sort=.true.)
 
     ! Perform a nearest neighbor search for a query point
     query = [3.1, 4.1]
@@ -114,6 +115,7 @@ module DataTypeTests
     real(8), dimension(2, 2) :: rotmat, rotmat_update
     real(8)               :: expected_distance
     type(kdtree2_result), dimension(3) :: results
+    integer   :: success
 
     ! Setup a simple 2D dataset
     set(:, 1) = [1.0, 2.0]
@@ -126,7 +128,7 @@ module DataTypeTests
     rotmat(2, :) = [0.707106781, 1.414213562]
 
     ! Create k-d tree with a rotation matrix (using anisotropic distance)
-    tree => kdtree2_create(set, 2, sort=.true., rotmat=rotmat)
+    tree => kdtree2_create(set, success, 2, sort=.true., rotmat=rotmat)
 
     ! Perform a nearest neighbor search for a query point
     query = [3.1, 4.1]

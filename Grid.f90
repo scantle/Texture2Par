@@ -61,23 +61,26 @@ module m_grid
 !-------------------------------------------------------------------------------------------------!
   
   subroutine build_tree(this, mask, rotmat)
+    use m_error_handler, only: error_handler
     implicit none
     class(t_Grid), intent(inout) :: this
     logical,intent(in),optional  :: mask(this%n)
     real(dp),optional            :: rotmat(:,:) ! Rotation Matrix
-    integer                      :: j
+    integer                      :: j, success
     
     allocate(this%tree)
     
     if (present(mask)) then
       allocate(this%true_idx(count(mask)))
       this%true_idx = pack([(j, j = 1, this%n)], mask)
-      this%tree => kdtree2_create(this%coords(:,this%true_idx), dim=this%dim, rotmat=rotmat)
+      this%tree => kdtree2_create(this%coords(:,this%true_idx), success, dim=this%dim, rotmat=rotmat)
     else
-      this%tree => kdtree2_create(this%coords, dim=this%dim, rotmat=rotmat)
+      this%tree => kdtree2_create(this%coords, success, dim=this%dim, rotmat=rotmat)
       allocate(this%true_idx(this%n))
       this%true_idx = [(j, j = 1, this%n)]
     end if
+    
+    if (success==0) call error_handler(9, opt_msg='Could not allocate kdtree - usually caused by not enough data')
     
   end subroutine build_tree
   
