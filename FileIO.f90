@@ -166,7 +166,10 @@ module m_file_io
     if(vstring_is(vstrlist_index(strings, i),'integer', strict=.true.)) then
       call vstring_cast(vstrlist_index(strings, i), out_int)
     else
-
+      call item2char(strings, i, temp)
+      write(*,'(3a)') 'Conversion Error - Could not convert '//trim(temp)//' to an integer value'
+      write(log_unit,'(3a)') 'Conversion Error - Could not convert '//trim(temp)//' to an integer value'
+      error stop
     end if
   end function item2int
   
@@ -181,7 +184,10 @@ module m_file_io
     if(vstring_is(vstrlist_index(strings, i),'real', strict=.true.)) then
       call vstring_cast(vstrlist_index(strings, i), out_real)
     else
-
+      call item2char(strings, i, temp)
+      write(*,'(3a)') 'Conversion Error - Could not convert '//trim(temp)//' to a numeric value'
+      write(log_unit,'(3a)') 'Conversion Error - Could not convert '//trim(temp)//' to a numeric value'
+      error stop
     end if
   end function item2real
   
@@ -196,7 +202,10 @@ module m_file_io
     if(vstring_is(vstrlist_index(strings, i),'real', strict=.true.)) then
       call vstring_cast(vstrlist_index(strings, i), out_dp)
     else
-
+      call item2char(strings, i, temp)
+      write(*,'(3a)') 'Conversion Error - Could not convert '//trim(temp)//' to a numeric value'
+      write(log_unit,'(3a)') 'Conversion Error - Could not convert '//trim(temp)//' to a numeric value'
+      error stop
     end if
   end function item2dp
   
