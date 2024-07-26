@@ -136,6 +136,8 @@ SUBROUTINE inputwells_modflow(readzones)
 
     ! Initialize (to prevent issues where compiler does not initilize to 0)
     nwellgeozones = 0
+    numZone = 0
+    wellelem = NODATA
 
     ! Read well file
     write(*,'(2x,2a)') 'Reading Well File ', trim(wellfile)

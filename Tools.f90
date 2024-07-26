@@ -14,22 +14,22 @@ subroutine IDW(nobs,x,y,ObsElem, InterpValues, nnodes,nlayers,nodex,nodey,NodeVa
   InterpValues=0
   do i=1,nobs
     wgt=0
-    do j=1,4
-      if (ObsElem(i).gt.0) then
-        nodeID = elements(ObsElem(i),j)
-        if (nodeID.gt.0) then
-         Distance = CalcDistance(x(i),y(i),nodex(NodeID),nodey(nodeID))
-         wgt_tmp = 1.0 / Distance;
-	       wgt =wgt+ wgt_tmp;
-         do k=1,nlayers
-          InterpValues(i,k) =InterpValues(i,k) + wgt_tmp * NodeVal(nodeID,k)
-         end do
-        end if
-      end if
-    end do
-    do k=1,nlayers
-        InterpValues(i,k) =InterpValues(i,k) / wgt
-    end do
+    if (ObsElem(i).gt.0) then
+      do j=1,4
+          nodeID = elements(ObsElem(i),j)
+          if (nodeID.gt.0) then
+           Distance = CalcDistance(x(i),y(i),nodex(NodeID),nodey(nodeID))
+           wgt_tmp = 1.0 / Distance;
+	         wgt =wgt+ wgt_tmp;
+           do k=1,nlayers
+            InterpValues(i,k) =InterpValues(i,k) + wgt_tmp * NodeVal(nodeID,k)
+           end do
+          end if
+      end do
+      do k=1,nlayers
+          InterpValues(i,k) = InterpValues(i,k) / wgt
+      end do
+    end if
   end do
   end subroutine IDW
 
