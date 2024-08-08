@@ -334,40 +334,48 @@ module m_file_io
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine read_to_next_iwfm_line(this, eof, skipped)
-    implicit none
-    class(t_file_reader)              :: this
-    type(t_file_reader),pointer       :: next_file
-    integer                           :: i, ierr
-    integer,intent(out)               :: eof
-    integer,intent(inout),optional    :: skipped
-    
-    ! For line splitting
-    integer             :: left(2), right(2)
+subroutine read_to_next_iwfm_line(this, eof, skipped)
+  implicit none
+  class(t_file_reader)              :: this
+  integer                           :: i, ierr
+  integer, intent(out)              :: eof
+  integer, intent(inout), optional  :: skipped
+  character(len=500)                :: line
+  character(len=1)                  :: first_char
+  character(len=1)                  :: second_char
 
-    eof = 0
-    i = 0
-    do while (eof == 0)
-      read(this%unit, '(a500)', iostat=ierr) line
-      line = adjustl(line)
-      ! Handle EOF
-      if (IS_IOSTAT_END(ierr)) then
-        call this%handle_eof(eof)
-      else if ((line(1:1) == 'C').or.(line(1:1) == 'c').or.(line(1:1) == '*')&
-           .or.(line(1:1) == '')) then
-        ! Comment line, blank line
-        i = i + 1
-        cycle
-      else
-        ! Data
-        backspace(this%unit)
-        exit
-      end if
-    end do
-    
-    if (present(skipped)) skipped = i
-  
-  end subroutine
+  eof = 0
+  i = 0
+  do while (eof == 0)
+    read(this%unit, '(a500)', iostat=ierr) line
+    line = adjustl(line)
+    first_char = line(1:1)
+    second_char = ' '
+
+    if (len_trim(line) > 1) second_char = line(2:2)
+
+    ! Handle EOF
+    if (IS_IOSTAT_END(ierr)) then
+      call this%handle_eof(eof)
+    else if (line == '') then
+      ! Blank line
+      i = i + 1
+      cycle
+    else if ((first_char == 'C' .or. first_char == 'c' .or. first_char == '*') .and. &
+             (second_char == ' ' .or. second_char == '/' .or. second_char == '-' .or. second_char == '*')) then
+      ! Comment line based on specific second character criteria
+      i = i + 1
+      cycle
+    else
+      ! Non-comment data line, backspace and exit
+      backspace(this%unit)
+      exit
+    end if
+  end do
+
+  if (present(skipped)) skipped = i
+
+end subroutine
   
 !-------------------------------------------------------------------------------------------------!
   
