@@ -149,13 +149,15 @@ module m_categories
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine read_file(this, file, nlayers, nnodes, datatype)
+  subroutine read_file(this, file, nlayers, nnodes, datatype, lay_aquitard_flag, arr_aquitard_flag)
     use m_file_io, only: t_file_reader, open_file_reader, item2int, item2char
     use m_error_handler, only: error_handler
     implicit none
     class(t_category), intent(inout) :: this
     character(*), intent(in)         :: file
     integer,intent(in)               :: datatype, nlayers, nnodes
+    logical,intent(in)               :: lay_aquitard_flag(nlayers)
+    logical,allocatable,intent(out)  :: arr_aquitard_flag(:)
     type(t_file_reader), pointer     :: reader
     type(t_vstringlist)              :: strings
     !type(t_vstring)                  :: temp
@@ -191,6 +193,19 @@ module m_categories
       call this%no_category_setup()
       return                   ! Early return if no file
     end if
+    
+    ! Initialize arr_aquitard_flag
+    allocate(arr_aquitard_flag(narr))
+    arr_aquitard_flag = .false.  ! Default to aquifer
+    
+    ! Check for re-use of arrays between aquifers and aquitards
+    do i = 1, nlayers
+      if (lay_aquitard_flag(i) .and. .not. arr_aquitard_flag(lay2arr(i))) then
+        arr_aquitard_flag(lay2arr(i)) = .true.
+      elseif (.not. lay_aquitard_flag(i) .and. arr_aquitard_flag(lay2arr(i))) then
+        call error_handler(1, filename=file, opt_msg="Array re-use between aquifer and aquitard layers is not allowed")
+      end if
+    end do
     
     ! Continue if file passed - Loop over arrays, skipping header
     do i=1, narr

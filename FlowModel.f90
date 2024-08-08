@@ -24,26 +24,28 @@ module m_flow_model
   ! The alternative was to write a lot of get/set-type methods that would have to be overwritten
   ! by each derived class.
     
-    integer                       :: model_type     ! 1 - grid, 2 - IWFM, 3 - MODFLOW 2000
-    real(dp)                      :: xoff,yoff,rot  ! Conversion from/to global coordinates
-    integer                       :: nlayers        ! Number of model layers
-    integer                       :: ngrids         ! Number of unique model grid (xy) layers
-    integer,allocatable           :: nnodes(:)      ! Number of nodes (points at which flow is solved) by layer
-    integer,pointer               :: lay2grid(:)    ! Which grid each layer uses (e.g., same xy between layers)
-    character(30)                 :: name           ! For printing nicely to log/screen
-    character(100)                :: preproc_file   ! IWFM main discretization file (empty for others)
-    character(100)                :: sim_file       ! Simulation File or MODFLOW name file
-    character(100)                :: ppzone_file    ! File of pilot point zones defined for each node
-    character(100)                :: hsu_file       ! File of Hydrostratigraphic Units (HSUs) defined for each node
-    character(100)                :: template_file  ! File copied for output_file
-    character(3)                  :: grd_file_type  ! Character string of grid file type (GSF, ...)
-    character(100)                :: grd_file       ! Grid specification file for grid type or MODFLOW-USG
-    character(100)                :: output_file    ! File where aquifer parameters are written
-    real(dp), allocatable         :: elev(:,:)      ! Bottom Elevations for each layer (node, layer) (indexed from zero = model top)
-    type(t_grid),pointer          :: grid(:)        ! xy grids for layers
-    type(t_category)              :: ppzones        ! Pilot point zone fmodel grid arrays & tracking
-    type(t_category)              :: hsus           ! HSU fmodel grid arrays & tracking
-    logical                       :: has_aquitards  ! For now, only in IWFM - but helps T2P w/ aquitard pilot points
+    integer                       :: model_type      ! 1 - grid, 2 - IWFM, 3 - MODFLOW 2000
+    real(dp)                      :: xoff,yoff,rot   ! Conversion from/to global coordinates
+    integer                       :: nlayers         ! Number of model layers
+    integer                       :: ngrids          ! Number of unique model grid (xy) layers
+    integer,allocatable           :: nnodes(:)       ! Number of nodes (points at which flow is solved) by layer
+    integer,pointer               :: lay2grid(:)     ! Which grid each layer uses (e.g., same xy between layers)
+    character(30)                 :: name            ! For printing nicely to log/screen
+    character(100)                :: preproc_file    ! IWFM main discretization file (empty for others)
+    character(100)                :: sim_file        ! Simulation File or MODFLOW name file
+    character(100)                :: ppzone_file     ! File of pilot point zones defined for each node
+    character(100)                :: hsu_file        ! File of Hydrostratigraphic Units (HSUs) defined for each node
+    character(100)                :: template_file   ! File copied for output_file
+    character(3)                  :: grd_file_type   ! Character string of grid file type (GSF, ...)
+    character(100)                :: grd_file        ! Grid specification file for grid type or MODFLOW-USG
+    character(100)                :: output_file     ! File where aquifer parameters are written
+    real(dp), allocatable         :: elev(:,:)       ! Bottom Elevations for each layer (node, layer) (indexed from zero = model top)
+    type(t_grid),pointer          :: grid(:)         ! xy grids for layers
+    type(t_category)              :: ppzones         ! Pilot point zone fmodel grid arrays & tracking
+    type(t_category)              :: hsus            ! HSU fmodel grid arrays & tracking
+    logical                       :: has_aquitards   ! For now, only in IWFM - but helps T2P w/ aquitard pilot points
+    logical,allocatable           :: lay_aqtard(:)   ! Tracks whether layer is an aquitard
+    logical,allocatable           :: pparr_aqtard(:) ! Tracks if a *pilot_point* array is an aquitard
   
     contains
       procedure,public            :: initialize
@@ -114,7 +116,6 @@ module m_flow_model
     integer,allocatable       :: nodenelem(:)   ! Number of elements that include each node
     integer,allocatable       :: node2elem(:,:) ! Elements that include each node (elemid,nodes)
     logical,allocatable       :: lay_exist(:)   ! Tracks whether layer has thickness > 0.00
-    logical,allocatable       :: lay_aqtard(:)  ! Tracks whether layer is an aquitard
   
   contains
     procedure,public          :: initialize => init_iwfm
@@ -258,9 +259,11 @@ module m_flow_model
     
     allocate(this%nnodes  (0:this%nlayers), &
              this%lay2grid(  this%nlayers), &  
-             this%grid    (  this%ngrids )  )
+             this%grid    (  this%ngrids ), &
+             this%lay_aqtard(this%nlayers)  )
              
     this%lay2grid = lay2grid
+    this%lay_aqtard = .false.
     
   end subroutine alloc_layers
   
@@ -390,12 +393,13 @@ module m_flow_model
     ! (Could be modified in the future by passing all this%nnodes)
     implicit none
     class(t_flow_model)     :: this
+    logical,allocatable     :: not_used(:)
     
     ! Read ppzones file
-    call this%ppzones%read_file(this%ppzone_file, this%nlayers, this%nnodes(1), 0)
+    call this%ppzones%read_file(this%ppzone_file, this%nlayers, this%nnodes(1), 0, this%lay_aqtard, this%pparr_aqtard)
     
     ! Read hsus file
-    call this%hsus%read_file(this%hsu_file, this%nlayers, this%nnodes(1), 1)
+    call this%hsus%read_file(this%hsu_file, this%nlayers, this%nnodes(1), 1, this%lay_aqtard, not_used)
     
   end subroutine read_category_files
   
@@ -822,16 +826,14 @@ module m_flow_model
     class(t_iwfm_model)       :: this
     integer                   :: i, lay2grid(this%nlayers)
     
-    allocate(this%lay_exist (this%nlayers),&
-             this%lay_aqtard(this%nlayers) )
+    allocate(this%lay_exist (this%nlayers))
     this%lay_exist = .true.
-    this%lay_aqtard = .false.
-    
-    ! Set lay_aqtard to true for every odd layer
-    this%lay_aqtard = mod((/(i, i=1, this%nlayers)/), 2) == 1
     
     ! Call super
     call alloc_layers(this, lay2grid)
+    
+    ! Set lay_aqtard to true for every odd layer
+    this%lay_aqtard = mod((/(i, i=1, this%nlayers)/), 2) == 1
     
   end subroutine alloc_layers_iwfm
   
