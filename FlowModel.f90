@@ -63,6 +63,7 @@ module m_flow_model
       procedure,public            :: write_fmodel_input
       procedure,public            :: write_node_files
       procedure,public            :: write_node_file
+      procedure,public            :: write_node_file_aqtard
       procedure,private           :: alloc_layers
       procedure,private           :: alloc_nodes
   
@@ -129,6 +130,7 @@ module m_flow_model
     !procedure,public          :: get_active_ppzones => get_active_ppzones_iwfm
     procedure,public          :: write_fmodel_input => write_fmodel_input_iwfm
     procedure,public          :: write_node_file => write_node_file_iwfm
+    procedure,public          :: write_node_file_aqtard => write_node_file_aqtard_iwfm
     procedure,private         :: iwfm_elem_elev_idw
     procedure,private         :: alloc_layers => alloc_layers_iwfm
     procedure,private         :: alloc_nodes  => alloc_nodes_iwfm
@@ -458,6 +460,12 @@ module m_flow_model
       write(fname,'(3a)') 't2p_', trim(temp), '.out'
       call this%write_node_file(fname, datasets, i)
     end do
+    
+    if (this%has_aquitards) then
+      call item2char(dat_names, 2, temp)
+      write(fname,'(3a)') 't2p_', trim(temp), '_aqtard.out'
+      call this%write_node_file_aqtard(fname, datasets, 2)  ! Only implemented for IWFM
+    end if
   
   end subroutine write_node_files
   
@@ -473,6 +481,19 @@ module m_flow_model
     integer,intent(in)         :: par_id
   
   end subroutine write_node_file
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_node_file_aqtard(this, fname, par, par_id)
+    ! Base class method, should not be run
+    use m_datasets, only: t_layerdata
+    implicit none
+    class(t_flow_model)        :: this
+    character(*)               :: fname
+    type(t_layerdata),pointer  :: par(:)
+    integer,intent(in)         :: par_id
+  
+  end subroutine write_node_file_aqtard
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -968,10 +989,11 @@ module m_flow_model
     ! Determine if layer exists based on max thickness > 0.0
     this%lay_exist = maxval(abs(this%elev(:, 1:this%nlayers) - this%elev(:, 0:this%nlayers-1)), dim=1) > 0.0_dp
     
-    ! See if any of these are aquitard layers
-    do i=1, this%nlayers
-      if (this%lay_exist(i).and.this%lay_aqtard(i)) this%has_aquitards = .true.
-    end do
+    ! See if any of these are aquitard layers and exist
+    this%has_aquitards = any(this%lay_aqtard .and. this%lay_exist)
+
+    ! Correct lay_aqtard flags if layers do not exist (screws up ppzone array reading)
+    this%lay_aqtard = this%lay_aqtard .and. this%lay_exist
     
   end subroutine process_iwfm_layers
   
@@ -1264,6 +1286,40 @@ module m_flow_model
     call fwrite%close_file()
   
   end subroutine write_node_file_iwfm
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_node_file_aqtard_iwfm(this, fname, par, par_id)
+    use m_datasets, only: t_layerdata
+    implicit none
+    class(t_iwfm_model)        :: this
+    character(*)               :: fname
+    type(t_layerdata),pointer  :: par(:)
+    integer,intent(in)         :: par_id
+    integer                    :: i, k, unit
+    character(60)              :: fmt(2)
+    type(t_file_writer),pointer:: fwrite
+
+    !write(*,'(4x,a,a35)') 'Writing:', trim(filename)
+
+    write(fmt(1),'("(1a8,2a18,",i5,"i14)")') this%nlayers
+    write(fmt(2),'("(1i8,2f18.5,",i5,"e14.5)")') this%nlayers
+
+    !open(20, file=trim(filename), status='replace', action='write', buffered='YES')
+    fwrite => open_file_writer(fname)
+    unit = fwrite%unit
+    
+    ! Header
+    write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, (this%nlayers/2))
+    ! Values
+    do i = 1, this%nnodes(1)
+      write(unit,fmt(2)) this%nodeid(i), this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1, this%nlayers, 2)  ! Only writes aquitard params
+    end do
+
+    call fwrite%close_file()
+  
+  end subroutine write_node_file_aqtard_iwfm
+  
 !-------------------------------------------------------------------------------------------------!
   
 !-------------------------------------------------------------------------------------------------!

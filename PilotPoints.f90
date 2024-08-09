@@ -8,7 +8,7 @@ module m_pilotpoints
   integer,parameter           :: nproperties = 9  ! Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, STp
   integer,parameter           :: global_props(3) = (/7,8,9/)
   integer,parameter           :: nglobal_props = size(global_props)
-  integer,parameter           :: aquitard_props(4) = (/1,2,5,6/)
+  integer,parameter           :: aquitard_props(7) = (/1,2,5,6,7,8,9/)
   integer,parameter           :: naquitard_props = size(aquitard_props)
   
 !-------------------------------------------------------------------------------------------------!
@@ -89,10 +89,17 @@ module m_pilotpoints
 !-------------------------------------------------------------------------------------------------!
   
   function get_pp_index(this, pp_id) result(index)
+    use m_error_handler, only: error_handler
     implicit none
     class(t_pilotpoints), intent(inout)   :: this
     integer,intent(in)                    :: pp_id
     integer                               :: index
+    character(4)                          :: temp
+    
+    if (pp_id > this%npp) then
+      write(temp, '(i2)') pp_id
+      call error_handler(1,"Pilot Point ID greater than number of pilot points locations: " // trim(temp))
+    end if
 
     do index=1, this%npp
       if (this%pp_id(index)==pp_id) exit
@@ -151,6 +158,10 @@ module m_pilotpoints
         this%values(pp_index,7, :) = item2dp(strings, 2)  ! KHp
         this%values(pp_index,8, :) = item2dp(strings, 3)  ! KVp
         this%values(pp_index,9, :) = item2dp(strings, 4)  ! STp
+      case("GLOBAL_AQUITARD")
+        ! Set for ALL classes
+        this%values(pp_index,7, :) = item2dp(strings, 2)  ! KHp
+        this%values(pp_index,8, :) = item2dp(strings, 3)  ! KVp
       case DEFAULT
         ! Outer routine prevents us from getting here
         call error_handler(1,"Unknown Pilot Point Type: " // trim(pp_type))

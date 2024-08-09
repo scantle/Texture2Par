@@ -164,6 +164,7 @@ module m_categories
     integer                          :: lay2arr(nlayers)
     integer                          :: eof, narr, cidx, i, j, inode, itemp
     character(30)                    :: chartemp(nnodes)
+    logical                          :: has_aquitard
     
     lay2arr = 0
     
@@ -188,9 +189,16 @@ module m_categories
       this%lay2arr = lay2arr
     else
       this%from_file = .false.
-      narr = 1
+      has_aquitard = any(lay_aquitard_flag)
+      narr = 1 + merge(1, 0, has_aquitard)  ! narr = 2 if there's any aquitard, otherwise 1
       call this%initialize(narr, nlayers, nnodes, datatype)
       call this%no_category_setup()
+      
+      ! Initialize arr_aquitard_flag
+      allocate(arr_aquitard_flag(narr))
+      arr_aquitard_flag = .false.
+      if (has_aquitard) arr_aquitard_flag(2) = .true.
+      
       return                   ! Early return if no file
     end if
     

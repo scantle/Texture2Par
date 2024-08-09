@@ -114,10 +114,11 @@ module m_datasets
 ! LAYER CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine init_layerdata(this, npoints, nclasses)
+  subroutine init_layerdata(this, npoints, nclasses, default_value)
     implicit none
     class(t_layerdata),intent(inout)  :: this
     integer,intent(in)                :: npoints, nclasses
+    real(dp),optional                 :: default_value
     
     allocate(this%category  (npoints), &
              this%fmodel_loc(npoints), &
@@ -127,6 +128,8 @@ module m_datasets
 
     ! By default
     this%category = 1
+    
+    if (present(default_value)) this%values = default_value
     
     !this%grid = create_grid_object(2, npoints)  ! X,Y,Z coords by n 
   

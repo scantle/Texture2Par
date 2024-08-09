@@ -1,6 +1,6 @@
 module m_T2P
-  use m_global, only: dp
-  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_append
+  use m_global, only: dp, NODATA
+  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_append, vstrlist_range
   use m_vstring, only: t_vstring, vstring_toupper
   use m_error_handler, only: error_handler,warnings
   use m_options, only: t_options
@@ -88,6 +88,7 @@ module m_T2P
     procedure,public   :: write_output
     procedure,public   :: write_dataset_files
     procedure,public   :: write_dataset_file
+    procedure,public   :: write_dataset_file_aqtard
     procedure,public,nopass   :: write_status
     procedure,public,nopass   :: write_minor_status
     
@@ -417,37 +418,29 @@ module m_T2P
 
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine setup_pplocs(this, pp_id, nzones, zone_tracker)
+  subroutine setup_pplocs(this, pp_id, nzones, zone_tracker, p)
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer, pointer              :: pp_id(:)
     integer, intent(in)           :: nzones, zone_tracker(:)
     integer                       :: i
+    type(t_pilotpoints),pointer   :: p
     
     ! Called for both aquifer & aquitard pilot points
+    ! p is a pointer to either the aquifer or aquitard pilot point t2p objects
     
-    ! AQUIFER
-    if (associated(this%pilot_points)) then
-      this%pilot_points%pp_id => pp_id
-      allocate(this%pilot_points%zonelist(nzones))
+    p%pp_id => pp_id
+    allocate(p%zonelist(nzones))
     
-      this%pilot_points%nppzones = nzones
-      do i=1, nzones
-        this%pilot_points%zonelist(i) = zone_tracker(i)
-      end do
+    p%nppzones = nzones
+    do i=1, nzones
+      p%zonelist(i) = zone_tracker(i)
+    end do
     
+    ! But at some point we have to know which it is!
+    if (associated(p, this%pilot_points)) then
       this%has_pplocs = .true.
-      
-    ! AQUITARD
-    elseif (associated(this%pilot_points_aquitard)) then
-      this%pilot_points_aquitard%pp_id => pp_id
-      allocate(this%pilot_points_aquitard%zonelist(nzones))
-    
-      this%pilot_points_aquitard%nppzones = nzones
-      do i=1, nzones
-        this%pilot_points_aquitard%zonelist(i) = zone_tracker(i)
-      end do
-    
+    else if (associated(p, this%pilot_points_aquitard)) then
       this%has_pplocs_aquitards = .true.
     end if
   
@@ -529,7 +522,7 @@ module m_T2P
     else if (this%opt%INTERP_ORDER=="AFTER") then
       call this%write_status("Interpolating Pilot Point Parameters to Dataset Grid")
       allocate(this%dset_intermediate(size(this%datasets,1),this%fmodel%nlayers))
-      this%dset_intermediate(2:,1:) => this%datasets(2:,1:)  ! All secondary data gets pointed over
+      this%dset_intermediate(this%nprimary:,1:) => this%datasets(this%nprimary:,1:)  ! All secondary data gets pointed over
       ! Uses primary dataset layer 1 grid
       ! Again, assumes uniformity of grid by layer
       pp_to => this%datasets(1,1)%grid
@@ -577,17 +570,24 @@ module m_T2P
     integer                         :: class_idx(1)
     type(t_pilotpoints)             :: obs_data(1)  ! a little trick to appease calc_weights
     
-    obs_data(1) = this%pilot_points
     class_idx(1) = 1
-    call weights%initialize(this%pilot_points%grid%n, to_grid%n)  !input_n, output_n
     
     ! Go by pilot point zone arrays (up to nlayers)
     do k=1, this%fmodel%ppzones%narr
       call this%write_minor_status('- Array:',k)
+      
+      ! Aquifer or Aquitard array?
+      if (.not. this%fmodel%pparr_aqtard(k)) then
+        obs_data(1) = this%pilot_points
+      else
+        obs_data(1) = this%pilot_points_aquitard
+      end if
     
-      ! Initialize results for this array
+      ! Initialize weights & results for this array
+      call weights%initialize(obs_data(1)%grid%n, to_grid%n)  !input_n, output_n
       call results(k)%initialize(to_grid%n, to_grid) ! Copies grid over
-      allocate(results(k)%values(to_grid%n, size(this%pilot_points%values,2), this%ntexclasses))
+      allocate(results(k)%values(to_grid%n, size(obs_data(1)%values,2), this%ntexclasses))
+      results(k)%values = NODATA
     
       ! Check if we have precalculated weights for the pilot point interpolation
       if (this%opt%READ_PP_WEIGHTS) then
@@ -608,53 +608,22 @@ module m_T2P
       end if
     
       ! Apply weights and create results
-      do i=1, this%ntexclasses
-        do j=1, nproperties
-          results(k)%values(:,j,i) = matmul(weights%values,this%pilot_points%values(:,j,i))
+      if (.not. this%fmodel%pparr_aqtard(k)) then
+        do i=1, this%ntexclasses
+          do j=1, nproperties
+            results(k)%values(:,j,i) = matmul(weights%values,obs_data(1)%values(:,j,i))
+          end do
         end do
-      end do
+      else ! Aquitard - subset of parameters
+        do i=1, this%ntexclasses
+          do j=1, naquitard_props
+            results(k)%values(:,aquitard_props(j),i) = matmul(weights%values,this%pilot_points_aquitard%values(:,aquitard_props(j),i))
+          end do
+        end do
+      end if
       ! reset weights
       weights%values = 0.0_dp
     end do
-    
-    ! Aquitards
-    if (this%fmodel%has_aquitards) then
-      obs_data(1) = this%pilot_points_aquitard
-      call weights%initialize(this%pilot_points%grid%n, to_grid%n)  !input_n, output_n
-    
-      ! Go by pilot point zone arrays (up to nlayers)
-      do k=1, this%fmodel%ppzones%narr
-      
-        call this%write_minor_status('Interpolating Aquitard Pilot Point Array:',k)
-    
-        ! Check if we have precalculated weights for the pilot point interpolation
-        if (this%opt%READ_PP_WEIGHTS) then
-          ! TODO READ
-        else
-          call this%interp_pp%calc_weights(obs_data, &
-                                           class_idx,  &
-                                           to_grid,  &
-                                           weights%values, &
-                                           to_categories%catlist(1:to_categories%arrncat(k),k), &
-                                           to_categories%array(:,k),&
-                                           this%opt)
-        end if
-    
-        ! Write PP weights
-        if (this%opt%WRITE_PP_WEIGHTS) then
-          ! TODO WRITE
-        end if
-    
-        ! Apply weights and create results - subset of properties
-        do i=1, this%ntexclasses
-          do j=1, naquitard_props
-            results(k)%values(:,aquitard_props(j),i) = matmul(weights%values,this%pilot_points%values(:,j,i))
-          end do
-        end do
-        ! reset weights
-        weights%values = 0.0_dp
-      end do
-    end if
     
   end subroutine interpolate_pp
 
@@ -676,18 +645,18 @@ module m_T2P
     
     ! Loop over model layers
     do k=1, this%fmodel%nlayers
-    
+          
+      ! Initialize results
+      if (this%opt%INFER_LAST_CLASS) then
+        call dout(k)%initialize(this%fmodel%grid(1)%n, this%nprimary+1, default_value=NODATA)
+      else
+        call dout(k)%initialize(this%fmodel%grid(1)%n, this%nprimary, default_value=NODATA)
+      end if
+      !dout(k)%values = 0.0
+      
       ! Check if layer is active (generally IWFM: means it has thickness)
       if (this%fmodel%is_active_layer(k)==.false.) cycle
       call this%write_minor_status('- Layer:',this%fmodel%get_layer_id(k))
-      
-      ! Initialize results
-      if (this%opt%INFER_LAST_CLASS) then
-        call dout(k)%initialize(this%fmodel%grid(1)%n, this%nprimary+1)
-      else
-        call dout(k)%initialize(this%fmodel%grid(1)%n, this%nprimary)
-      end if
-      dout(k)%values = 0.0
     
       ! Loop over primary classes
       do i=1, this%nprimary
@@ -741,13 +710,13 @@ module m_T2P
     ! Loop over layers
     do k=1, this%fmodel%nlayers
     
+      ! Initialize Par
+      call par_out(k)%initialize(this%fmodel%nnodes(k), this%npar, default_value=NODATA)
+      
       ! Check if layer is active (generally IWFM: means it has thickness)
       if (this%fmodel%is_active_layer(k)==.false.) cycle
+      par_out(k)%grid => this%fmodel%grid(this%fmodel%lay2grid(k))
       call this%write_minor_status('- Layer:',this%fmodel%get_layer_id(k))
-    
-      ! Initialize Par
-      call par_out(k)%initialize(this%fmodel%nnodes(k), this%npar)
-      par_out(k)%grid => this%fmodel%grid(k)
       
       ! Allocate arrays
       allocate(KhD(this%fmodel%nnodes(k), this%ntexclasses))
@@ -779,6 +748,13 @@ module m_T2P
       end do
       
       deallocate(KhD, KvD)
+      
+      ! To match T2P 1 (move somewhere else? Do for all layers?)
+      if (this%fmodel%lay_aqtard(k)) then
+        where ((this%fmodel%elev(:,k-1) - this%fmodel%elev(:,k)) < 1e-6)
+          par_out(k)%values(2,:) = 0.0_dp
+        end where
+      end if
     
     end do
   
@@ -801,7 +777,7 @@ module m_T2P
     if (this%opt%WRITE_NODE_FILES.and.this%opt%INTERP_ORDER=="BEFORE") then
       call this%write_minor_status('Writing Class Node Files')
       p=>this%dset_intermediate(1,:)
-      call this%fmodel%write_node_files(p, this%class_names)
+      call this%fmodel%write_node_files(p, vstrlist_range(this%class_names, 1, this%ntexclasses))
     end if
     
     ! Write the observed datasets that were averaged by layer
@@ -834,6 +810,10 @@ module m_T2P
       call item2char(this%class_names, i, temp)
       write(fname,'(3a)') 't2p_', trim(temp), '_layavg.out'
       call this%write_dataset_file(fname, p, i)
+      if (this%fmodel%has_aquitards) then
+        write(fname,'(3a)') 't2p_', trim(temp), '_aqtard_layavg.out'
+        call this%write_dataset_file_aqtard(fname, p, i)
+      end if
     end do
     
     do i=1, this%nsecondary
@@ -884,7 +864,7 @@ module m_T2P
     ! Header
     if (dim==1) then
       ! Header
-      write(unit,fmt(1)) 'Well', 'Element', (k, k=1, this%fmodel%nlayers/kintrvl, kintrvl)
+      write(unit,fmt(1)) 'Well', 'Element', (k, k=1, this%fmodel%nlayers/kintrvl)
       ! Values
       do i = 1, size(dataset(1)%values,2)
         write(unit,fmt(2)) i, dataset(1)%fmodel_loc(i), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
@@ -901,6 +881,65 @@ module m_T2P
     call fwrite%close_file()
   
   end subroutine write_dataset_file
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_dataset_file_aqtard(this, fname, dataset, idx)
+    use m_flow_model, only: t_flow_model,t_modflow_model, t_iwfm_model
+    use m_file_io, only: t_file_writer, open_file_writer
+    ! Only IWFM implemented - really should use fmodel%lay_aqtard(k) to determine aquitards
+    ! (not that there is another fmodel with aquitards we have implemented or plan to...)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    character(*)                  :: fname
+    type(t_layerdata),pointer     :: dataset(:)  ! (nlayers)
+    integer, intent(in)           :: idx
+    class(t_flow_model),pointer   :: fm
+    integer                       :: i, k, dim, unit, kstart, kintrvl
+    integer                       :: rowcol(2,this%fmodel%nnodes(1))
+    character(60)                 :: fmt(2)
+    type(t_file_writer),pointer   :: fwrite
+    
+    dim     = 1   ! Number of indices needed to express location, e.g. node # vs row col
+    kstart  = 1   ! Start layer
+    kintrvl = 1   ! Interval of layers
+    select type(fm=>this%fmodel)
+      class is(t_modflow_model)
+        if (fm%structured) dim=2
+        do i=1, this%fmodel%nnodes(1)
+          call fm%cell2rowcol(i, rowcol(1,i), rowcol(2,i))
+        end do
+      class is(t_iwfm_model)
+        kstart  = 1  ! Only aquitards
+        kintrvl = 2
+    end select
+    
+    write(fmt(1),'("(1a10,",i1,"a8,",i5,"i14)")') dim, this%fmodel%nlayers/kintrvl
+    write(fmt(2),'("(1i10,",i1,"i8,",i5,"es14.5)")') dim, this%fmodel%nlayers/kintrvl
+    
+    fwrite => open_file_writer(fname)
+    unit = fwrite%unit
+    
+    ! Header
+    if (dim==1) then
+      ! Header
+      write(unit,fmt(1)) 'Well', 'Element', (k, k=1, this%fmodel%nlayers/kintrvl)
+      ! Values
+      do i = 1, size(dataset(1)%values,2)
+        write(unit,fmt(2)) i, dataset(1)%fmodel_loc(i), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
+      end do
+    else
+      ! Header
+      write(unit,fmt(1)) 'Well', 'Row','Col', (k, k=1, this%fmodel%nlayers/kintrvl)
+      ! Values
+      do i = 1, size(dataset(1)%values,2)
+        write(unit,fmt(2)) i, rowcol(1:2,dataset(1)%fmodel_loc(i)), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
+      end do
+    end if
+
+    call fwrite%close_file()
+  
+  end subroutine write_dataset_file_aqtard
   
 !-------------------------------------------------------------------------------------------------!
   

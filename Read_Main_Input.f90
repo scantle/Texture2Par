@@ -539,7 +539,7 @@ subroutine read_pploc_block(t2p, reader, p)
   end if
   
   ! Run pplocs setup hook
-  call t2p%setup_pplocs(pp_id, nzones, zone_tracker)
+  call t2p%setup_pplocs(pp_id, nzones, zone_tracker, p)
   
 end subroutine read_pploc_block
 
@@ -577,11 +577,13 @@ subroutine read_ppparm_block(t2p, reader)
             exit
           end if
           select case(value)
+            case("GLOBAL","GLOBAL_AQUIFER")
+              call t2p%pilot_points%read_pp_line(id, value, strings, length, 0)
+            case("GLOBAL_AQUITARD")
+              call t2p%pilot_points_aquitard%read_pp_line(id, value, strings, length, 0)
             case("AQUIFER")
               class_id = t2p%get_class_id(vstrlist_index(strings, 2))
               call t2p%pilot_points%read_pp_line(id, value, strings, length, class_id)
-            case("GLOBAL")
-              call t2p%pilot_points%read_pp_line(id, value, strings, length, class_id)  
             case("AQUITARD")
               class_id = t2p%get_class_id(vstrlist_index(strings, 2))
               call t2p%pilot_points_aquitard%read_pp_line(id, value, strings, length, class_id)
