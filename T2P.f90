@@ -760,10 +760,12 @@ module m_T2P
       r = this%fmodel%ppzones%lay2arr(k)
       
       do i=1, this%fmodel%nnodes(k)
+        ! Skip if any texture class value is missing/invalid
+        if (any(tex_obs(k)%values(:,i) < 0.0_dp)) cycle
         ! Ensure classes add to one
         tex_obs(k)%values(:,i) = tex_obs(k)%values(:,i) / sum(tex_obs(k)%values(:,i))
         ! Kh - Depth adjusted
-        KhD(i,:) = pp_obj(r)%values(i, 1, :) + pp_obj(r)%values(i, 2, :) * exp(-1_dp *pp_obj(r)%values(1, 6, :) * depths(i))
+        KhD(i,:) = pp_obj(r)%values(i, 1, :) + pp_obj(r)%values(i, 2, :) * exp(-1_dp *pp_obj(r)%values(i, 6, :) * depths(i))
         ! Kv - Depth adjusted, calculated from anisotropy
         KvD(i,:) = KhD(i,:) / pp_obj(r)%values(i, 5, :)
         ! Kh
