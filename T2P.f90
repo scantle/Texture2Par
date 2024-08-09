@@ -453,6 +453,9 @@ module m_T2P
     implicit none
     class(t_T2P), intent(inout)   :: this
     
+    ! A real simple one - you can't just have one texture class (what about ONLY_TEXTURE?)
+    if (this%ntexclasses < 2) call error_handler(1,opt_msg="Must have at least 2 texture classes")
+    
     ! Do we have everything we need to run the model?
     if(this%has_opt      ==.false.) call error_handler(1,opt_msg="Missing Required OPTIONS Block")
     if(this%has_classes  ==.false.) call error_handler(1,opt_msg="Missing Required CLASSES Block")
