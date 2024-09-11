@@ -78,9 +78,9 @@ subroutine writeIWFMgwfile(gwtemp, gwfile, par, nlayers, nnodes, nodeid, is_aqui
       KvB_aquitard = 0.0
       if (is_aquitard(k-1).and.is_active_layer(k-1))  KvB_aquitard = par(k-1)%values(2,i)
       if (k.eq.2) then  ! nodeid, Kh, Ss, Sy, KvB_aquitard KvB
-        write(wu,'(i13,f14.8,e12.3,f14.8,f14.8,f14.8)') nodeid(i), par(k)%values(1,i), par(k)%values(3:4,i), KvB_aquitard, par(k)%values(2,i)
+        write(wu,'(i13,5es20.10)') nodeid(i), par(k)%values(1,i), par(k)%values(3:4,i), KvB_aquitard, par(k)%values(2,i)
       else
-        write(wu,'(13x,f14.8,e12.3,f14.8,f14.8,f14.8)') par(k)%values(1,i), par(k)%values(3:4,i), KvB_aquitard, par(k)%values(2,i)
+        write(wu,'(13x,5es20.10)') par(k)%values(1,i), par(k)%values(3:4,i), KvB_aquitard, par(k)%values(2,i)
       end if
       read(ru,*)
     end do
