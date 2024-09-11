@@ -597,9 +597,9 @@ subroutine writeIWFMgwfile()
   do i=1, nnodes
     do ilay=1, nlayers
       if (ilay.eq.1) then
-        write(12,'(i13,f14.8,e12.3,f14.8,f14.8,f14.8)') nodeid(i), KhB(i, ilay), SsB(i, ilay), SyB(i, ilay), KvB_aqtard(i, ilay), KvB(i, ilay)
+        write(12,'(i13,5es20.10)') nodeid(i), KhB(i, ilay), SsB(i, ilay), SyB(i, ilay), KvB_aqtard(i, ilay), KvB(i, ilay)
       else
-        write(12,'(13x,f14.8,e12.3,f14.8,f14.8,f14.8)') KhB(i, ilay), SsB(i, ilay), SyB(i, ilay), KvB_aqtard(i, ilay), KvB(i, ilay)
+        write(12,'(13x,5es20.10)') KhB(i, ilay), SsB(i, ilay), SyB(i, ilay), KvB_aqtard(i, ilay), KvB(i, ilay)
       end if
       read(13,*)
     end do

@@ -9,7 +9,7 @@ Module kd_tree
   ! kennel@lyapunov.ucsd.edu
   ! .. Parameters ..
   ! you choose this.
-  Integer, Parameter :: bucket_size = 50
+  Integer, Parameter :: bucket_size = 128
   ! ..
   ! .. Derived Type Declarations ..
   ! Global information about the tree
