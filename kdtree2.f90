@@ -7,6 +7,8 @@
 ! Modfied 5/10/2024 by Leland Scantlebury at SSP&A to accept a rotational
 ! matrix for anistropic distance calculations
 !
+! 2024/05/28 Michael Ou: add mask during search, only search for mask==.true.
+!
 module kdtree2_precision_module
   
   integer, parameter :: sp = kind(0.0)
@@ -567,7 +569,9 @@ module kdtree2_module
       integer, pointer :: ind(:) => null()
       ! permuted index into the data, so that indexes[l..u] of some
       ! bucket represent the indexes of the actual points in that
-      ! bucket.
+
+      logical, pointer :: mask(:) => null()
+
       logical       :: sort = .false.
       ! do we always sort output results?
       logical       :: rearrange = .false. 
@@ -607,6 +611,7 @@ module kdtree2_module
       type(pq) :: pq
       real(kdkind), pointer :: data(:,:)  ! temp pointer to data
       integer, pointer      :: ind(:)     ! temp pointer to indexes
+      logical, pointer      :: mask(:)     ! temp pointer to masks
       ! LS additions for anisotropic  distance
       integer :: dist_type = 0  ! 0 for Euclidean, 1 for rotated/anisotropic
       real(kdkind),pointer :: rotmat(:,:) => null()! Rotation Matrix
@@ -724,9 +729,10 @@ contains
       integer :: j
       type(tree_node), pointer :: dummy => null()
       ! ..
-      allocate (tp%ind(tp%n))
+      allocate (tp%ind(tp%n),tp%mask(tp%n))
       forall (j=1:tp%n)
          tp%ind(j) = j
+         tp%mask(j) = .true.
       end forall
       tp%root => build_tree_for_range(tp,1,tp%n, dummy)
     end subroutine build_tree
@@ -1055,13 +1061,14 @@ contains
 
   end subroutine kdtree2_destroy
 
-  subroutine kdtree2_n_nearest(tp,qv,nn,results, rotmat)
+  subroutine kdtree2_n_nearest(tp,qv,nn,results,rotmat,mask)
     ! Find the 'nn' vectors in the tree nearest to 'qv' in euclidean norm
     ! returning their indexes and distances in 'indexes' and 'distances'
     ! arrays already allocated passed to this subroutine.
     type (kdtree2), pointer      :: tp
     real(kdkind), target, intent (In)    :: qv(:)
     integer, intent (In)         :: nn
+    logical, intent (In), target, optional :: mask(1:)
     type(kdtree2_result), target :: results(:)
     real(kdkind), target, optional  :: rotmat(:,:) ! Rotation Matrix
 
@@ -1093,6 +1100,7 @@ contains
     else
        sr%Data => tp%the_data
     endif
+    if (present(mask)) then; sr%mask => mask; else; sr%mask => tp%mask; end if; if (tp%rearrange) sr%mask = sr%mask(sr%ind)
     sr%dimen = tp%dimen
 
     call validate_query_storage(nn) 
@@ -1107,12 +1115,13 @@ contains
     return
   end subroutine kdtree2_n_nearest
 
-  subroutine kdtree2_n_nearest_around_point(tp,idxin,correltime,nn,results)
+  subroutine kdtree2_n_nearest_around_point(tp,idxin,correltime,nn,results,mask)
     ! Find the 'nn' vectors in the tree nearest to point 'idxin',
     ! with correlation window 'correltime', returing results in
     ! results(:), which must be pre-allocated upon entry.
     type (kdtree2), pointer        :: tp
     integer, intent (In)           :: idxin, correltime, nn
+    logical, intent (In), target, optional :: mask(1:)
     type(kdtree2_result), target   :: results(:)
 
     allocate (sr%qv(tp%dimen))
@@ -1137,6 +1146,7 @@ contains
     else
        sr%Data => tp%the_data
     endif
+    if (present(mask)) then; sr%mask => mask; else; sr%mask => tp%mask; end if; if (tp%rearrange) sr%mask = sr%mask(sr%ind)
 
     call validate_query_storage(nn)
     sr%pq = pq_create(results)
@@ -1150,7 +1160,7 @@ contains
     return
   end subroutine kdtree2_n_nearest_around_point
 
-  subroutine kdtree2_r_nearest(tp,qv,r2,nfound,nalloc,results) 
+  subroutine kdtree2_r_nearest(tp,qv,r2,nfound,nalloc,results,mask)
     ! find the nearest neighbors to point 'idxin', within SQUARED
     ! Euclidean distance 'r2'.   Upon ENTRY, nalloc must be the
     ! size of memory allocated for results(1:nalloc).  Upon
@@ -1166,6 +1176,7 @@ contains
     real(kdkind), intent(in)             :: r2
     integer, intent(out)         :: nfound
     integer, intent (In)         :: nalloc
+    logical, intent (In), target, optional :: mask(1:)
     type(kdtree2_result), target :: results(:)
 
     !
@@ -1189,6 +1200,7 @@ contains
     else
        sr%Data => tp%the_data
     endif
+    if (present(mask)) then; sr%mask => mask; else; sr%mask => tp%mask; end if; if (tp%rearrange) sr%mask = sr%mask(sr%ind)
     sr%dimen = tp%dimen
 
     !
@@ -1212,7 +1224,7 @@ contains
   end subroutine kdtree2_r_nearest
 
   subroutine kdtree2_r_nearest_around_point(tp,idxin,correltime,r2,&
-   nfound,nalloc,results)
+   nfound,nalloc,results,mask)
     !
     ! Like kdtree2_r_nearest, but around a point 'idxin' already existing
     ! in the data set. 
@@ -1223,6 +1235,7 @@ contains
     integer, intent (In)         :: idxin, correltime, nalloc
     real(kdkind), intent(in)             :: r2
     integer, intent(out)         :: nfound
+    logical, intent (In), target, optional :: mask(1:)
     type(kdtree2_result), target :: results(:)
     ! ..
     ! .. Intrinsic Functions ..
@@ -1255,6 +1268,7 @@ contains
        sr%Data => tp%the_data
     endif
     sr%rearrange = tp%rearrange
+    if (present(mask)) then; sr%mask => mask; else; sr%mask => tp%mask; end if; if (tp%rearrange) sr%mask = sr%mask(sr%ind)
     sr%dimen = tp%dimen
 
     !
@@ -1278,11 +1292,12 @@ contains
     return
   end subroutine kdtree2_r_nearest_around_point
 
-  function kdtree2_r_count(tp,qv,r2) result(nfound)
+  function kdtree2_r_count(tp,qv,r2,mask) result(nfound)
     ! Count the number of neighbors within square distance 'r2'. 
     type (kdtree2), pointer   :: tp
     real(kdkind), target, intent (In) :: qv(:)
     real(kdkind), intent(in)          :: r2
+    logical, intent (In), target, optional :: mask(1:)
     integer                   :: nfound
     ! ..
     ! .. Intrinsic Functions ..
@@ -1307,6 +1322,7 @@ contains
     else
        sr%Data => tp%the_data
     endif
+    if (present(mask)) then; sr%mask => mask; else; sr%mask => tp%mask; end if; if (tp%rearrange) sr%mask = sr%mask(sr%ind)
     sr%dimen = tp%dimen
 
     !
@@ -1322,7 +1338,7 @@ contains
     return
   end function kdtree2_r_count
 
-  function kdtree2_r_count_around_point(tp,idxin,correltime,r2) &
+  function kdtree2_r_count_around_point(tp,idxin,correltime,r2,mask) &
    result(nfound)
     ! Count the number of neighbors within square distance 'r2' around
     ! point 'idxin' with decorrelation time 'correltime'.
@@ -1330,6 +1346,7 @@ contains
     type (kdtree2), pointer :: tp
     integer, intent (In)    :: correltime, idxin
     real(kdkind), intent(in)        :: r2
+    logical, intent (In), target, optional :: mask(1:)
     integer                 :: nfound
     ! ..
     ! ..
@@ -1357,6 +1374,7 @@ contains
     else
        sr%Data => tp%the_data
     endif
+    if (present(mask)) then; sr%mask => mask; else; sr%mask => tp%mask; end if; if (tp%rearrange) sr%mask = sr%mask(sr%ind)
     sr%dimen = tp%dimen
 
     !
@@ -1541,6 +1559,7 @@ contains
     !
     real(kdkind), pointer          :: qv(:)
     integer, pointer       :: ind(:)
+    logical, pointer       :: mask(:)
     real(kdkind), pointer          :: data(:,:)
     !
     integer                :: dimen, i, indexofi, k, centeridx, correltime
@@ -1560,6 +1579,7 @@ contains
     ballsize = sr%ballsize 
     rearrange = sr%rearrange
     ind => sr%ind(1:)
+    mask => sr%mask(1:)
     data => sr%Data(1:,1:)     
     centeridx = sr%centeridx
     correltime = sr%correltime
@@ -1570,6 +1590,7 @@ contains
 
     mainloop: do i = node%l, node%u
        if (rearrange) then
+          if (.not. mask(i)) cycle mainloop
           sd = 0.0
           if (sr%dist_type == 0) then
             do k = 1,dimen
@@ -1583,6 +1604,7 @@ contains
           indexofi = ind(i)  ! only read it if we have not broken out
        else
           indexofi = ind(i)
+          if (.not. mask(indexofi)) cycle mainloop
           sd = 0.0
           if (sr%dist_type == 0) then
             do k = 1,dimen
@@ -1657,6 +1679,7 @@ contains
     !
     real(kdkind), pointer          :: qv(:)
     integer, pointer       :: ind(:)
+    logical, pointer       :: mask(:)
     real(kdkind), pointer          :: data(:,:)
     !
     integer                :: nfound
@@ -1674,6 +1697,7 @@ contains
     rearrange = sr%rearrange
     ind => sr%ind(1:)
     data => sr%Data(1:,1:)
+    mask => sr%mask(1:)
     centeridx = sr%centeridx
     correltime = sr%correltime
     nn = sr%nn ! number to search for
@@ -1703,6 +1727,7 @@ contains
        ! which index to the point do we use? 
 
        if (rearrange) then
+          if (.not. mask(i)) cycle mainloop
           sd = 0.0
           do k = 1,dimen
              sd = sd + (data(k,i) - qv(k))**2
@@ -1711,6 +1736,7 @@ contains
           indexofi = ind(i)  ! only read it if we have not broken out
        else
           indexofi = ind(i)
+          if (.not.  mask(indexofi)) cycle mainloop
           sd = 0.0
           do k = 1,dimen
              sd = sd + (data(k,indexofi) - qv(k))**2

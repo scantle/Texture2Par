@@ -8,15 +8,18 @@ module m_options
 !  5. If necessary, add a handler for the option to the t2p%process_options() hook that is called
 !     after the options are read.
 !-------------------------------------------------------------------------------------------------!
+  use m_global, only: dp
   type t_options
     ! Required Options:
     integer                  :: MAX_VSTRUCT           ! Maximum variogram structures
     !integer                  :: DATA_CLASSES          ! Number of texture & covariate classes
     ! "Optional" Options - Default Value and Settings
-    real                     :: NO_DATA_VALUE         !
-    real                     :: IDW_POWER             ! Inverse Distance Weighting Power Parameter
-    real                     :: MAX_SECONDARY_DIST
+    real(dp)                 :: NO_DATA_VALUE         !
+    real(dp)                 :: IDW_POWER             ! Inverse Distance Weighting Power Parameter
+    real(dp)                 :: MAX_SECONDARY_DIST
     integer                  :: INTERP_DIM            ! 2D, 3D, stored as integer, read as string
+    integer                  :: NSIM                  ! number of sequential gaussian simulation; default is zero which is Kriging
+    integer                  :: SEED                  ! seed number for generating random path and samples for SGSIM
     character(10)            :: INTERP_METHOD         ! KRIGING, IDW
     character(10)            :: INTERP_ORDER          ! Interpolate to grid: [BEFORE, AFTER] upscaling/aggegating?
     character(60)            :: MAIN_OUTPUT           ! 
@@ -62,6 +65,8 @@ module m_options
     this%IDW_POWER            = 2.0
     this%MAX_SECONDARY_DIST   = 0.0 
     this%INTERP_DIM           = 2
+    this%NSIM                 = 0
+    this%SEED                 = 0
     this%INTERP_METHOD        = 'OK'
     this%INTERP_ORDER         = 'BEFORE'
     this%MAIN_OUTPUT          = 't2p_log.txt'
@@ -91,6 +96,7 @@ subroutine read_options(this, reader)
   use m_file_io, only: t_file_reader, item2int, item2char, item2real
   use m_vstringlist, only: t_vstringlist
   use m_error_handler, only: error_handler
+  use tools
   implicit none
   class(t_options)           :: this
   type(t_file_reader), pointer :: reader
@@ -116,6 +122,10 @@ subroutine read_options(this, reader)
           case DEFAULT
             call error_handler(1,reader%file,"Invalid INTERP_DIM: " // trim(id))
         end select
+      case("SGSIM")
+        this%NSIM              = 1
+      case("SEED")
+        this%SEED              = item2int(strings, 2)
       case("INTERP_METHOD")
         call item2char(strings, 2, this%INTERP_METHOD,toupper=.true.)
       case("INTERP_ORDER")
@@ -168,7 +178,7 @@ subroutine read_options(this, reader)
         call error_handler(1,reader%file,"Unknown Option Name: " // trim(id))
     end select
   end do
-  
+  call random_seed_initialize(this%SEED)
   ! Handle EOF
     
 end subroutine read_options
@@ -200,6 +210,8 @@ subroutine write_input_summary(this)
     end select
     call log%write_valueline('Interpolation Method:',trim(interp_text))
     call log%write_valueline('Interpolation Order:',this%INTERP_ORDER)
+    write(interp_text, *) this%NSIM; call log%write_valueline('Realization Number:', trim(interp_text))
+    write(interp_text, *) this%SEED; call log%write_valueline('Random Seed Number:', trim(interp_text))
     !call log%write_valueline('',this%MAIN_OUTPUT) ! unneeded (we're writing to that file!)
     !call log%write_valueline('',this%OUTPUT_DIR)  ! unimplemented
     !call log%write_valueline('',this%INPUT_DIR)   ! unimplemented

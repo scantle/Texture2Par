@@ -358,7 +358,11 @@ end subroutine single_point_full_weight
     
     ! Calculate distances for points matching the mask
     distances = huge(dp)
-    distances(this%catmask) = dist_2D_vector(p, obs_data(1)%grid%coords(:, this%catmask))
+    block
+      integer, allocatable          :: ii(:)
+      ii = pack([(i,i=1,this%nobs)], this%catmask)
+      distances(ii) = dist_2D_vector(p, obs_data(1)%grid%coords(:, ii))
+    end block
     where(this%catmask)
       weights = 1.0_dp / distances**this%power
     elsewhere

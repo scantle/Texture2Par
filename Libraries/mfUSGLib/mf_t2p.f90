@@ -106,8 +106,8 @@
       USE GWFBASMODULE,  ONLY : IHEDUN,IATS
       implicit none
 
-      integer                  :: n, cmaxunit, lop
-
+      integer                  :: n, cmaxunit
+      logical                  :: lop
       ! clear MODFLOW memory
 !9------CLOSE FILES AND DEALLOCATE MEMORY.  GWF2BAS7U1DA MUST BE CALLED
 !9------LAST BECAUSE IT DEALLOCATES IUNIT.

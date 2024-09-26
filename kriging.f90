@@ -68,7 +68,7 @@ subroutine decomp(p,id,ntot,ier)
     implicit none
 !*** DECOMPOSITION TO GET LOWER TRIANGULAR S MATRIX
     integer                :: id,ier,ks,jm1,k,js,is,is1,j,i,i1,ntot
-    real                   :: p,sum,p1,p2
+    real(dp)               :: p,sum,p1,p2
     dimension              :: p(1),id(1)
 
           IER=0
@@ -106,7 +106,7 @@ subroutine doolittle(r,p,id,w,ntot)
 
     implicit none
           integer   :: id,ntot,i,is,js,im1,j,ii,iip1,iis
-          real      :: r,p,w,sum
+          real(dp)  :: r,p,w,sum
       dimension     :: r(1),p(1),w(1),id(1)
 !***  START OF DOOLITTLE ***
 !***  FORWARD SUBSTITUTION FOR SYSTEM S*W = R

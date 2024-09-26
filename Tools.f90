@@ -30,6 +30,45 @@ module tools
 !-----------------------------------------------------------------------------!
   
 !-----------------------------------------------------------------------------!
+  subroutine random_seed_initialize (key)
+    !*****************************************************************************
+    !
+    !! random_seed_initialize() initializes the FORTRAN90 random number generator.
+    !
+    !  Discussion:
+    !
+    !    This is the stupidest, most awkward procedure I have seen!
+    !
+    !  Modified:
+    !
+    !    27 October 2021
+    !
+    !  Author:
+    !
+    !    John Burkardt
+    !
+    !  Input:
+    !
+    !    integer KEY: an initial seed for the random number generator.
+    !
+    implicit none
+
+    integer key
+    integer, allocatable :: seed(:)
+    integer seed_size
+
+    if (key<=0) key = huge(seed_size) / 17
+    call random_seed ( size = seed_size )
+    allocate ( seed(seed_size) )
+    seed(1:seed_size) = key
+    call random_seed ( put = seed )
+    deallocate ( seed )
+
+    return
+  end subroutine random_seed_initialize
+!-----------------------------------------------------------------------------!
+
+!-----------------------------------------------------------------------------!
 function pinpol(px, py, polyx, polyy, npoly) result(inpoly)
   implicit none
   !---------------------------------------------------------------------------!

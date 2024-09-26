@@ -98,7 +98,7 @@ module m_grid
     logical,intent(in),optional  :: mask(this%n)
     real(kdkind), target, optional  :: rotmat(:,:) ! Rotation Matrix
 
-    if (associated(this%tree)==.false.) call this%build_tree(mask=mask)
+    if (.not. associated(this%tree)) call this%build_tree(mask=mask)
     call kdtree2_n_nearest(this%tree, qpoint, nnear, res, rotmat)
     
     ! Worth getting fancier than copying? Pointers?
@@ -125,7 +125,7 @@ module m_grid
     type(kdtree2_result),allocatable :: res(:)
     logical,intent(in),optional      :: mask(this%n)
     
-    if (associated(this%tree)==.false.) call this%build_tree(mask=mask)
+    if (.not. associated(this%tree)) call this%build_tree(mask=mask)
     nfound = kdtree2_r_count(this%tree,qpoint,r2)
     if (associated(idx)) deallocate(idx)
     if (associated(dis)) deallocate(dis)

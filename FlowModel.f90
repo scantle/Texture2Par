@@ -204,7 +204,7 @@ module m_flow_model
     integer,optional             :: valid_type
     
     ! Is type set?
-    if (ASSOCIATED(fmodel)==.false.) then
+    if (.not. ASSOCIATED(fmodel)) then
       call error_handler(2,opt_msg="Must specify flow model type before other settings")
     else if (present(valid_type)) then
       ! Is it the right type for this setting?
@@ -567,7 +567,7 @@ module m_flow_model
                 exit
               end if
             end do
-            if (found == .false.) then
+            if (.not. found) then
               ngrids = ngrids + 1
               grid_count(ngrids) = nnodes(i)
               lay2grid(i) = ngrids
@@ -1163,7 +1163,7 @@ module m_flow_model
       do j=1,4
         if (this%elements(j,i) > 0) then
           if (this%nodebyid(this%elements(j,i)) < 1) then
-            write(ctemp,'(i)') this%elemid(i)
+            write(ctemp,'(i0)') this%elemid(i)
             call error_handler(2,opt_msg='Invalid node ID in Element File. Element Number = ' // trim(ctemp))
           end if
           this%elements(j,i) = this%nodebyid(this%elements(j,i))
@@ -1514,7 +1514,7 @@ module m_flow_model
     
     ! Check out if/how unstructured the model is
     ngrids = 1
-    if (IUNSTR) then
+    if (IUNSTR/=0) then
       this%structured = .false.
       ! Equal nodes each layer?
       allocate(grid_count(nlay))
@@ -1529,7 +1529,7 @@ module m_flow_model
             exit
           end if
         end do
-        if (found == .false.) then
+        if (.not. found) then
           ngrids = ngrids + 1
           grid_count(ngrids) = n
           lay2grid(i) = ngrids
@@ -1553,7 +1553,7 @@ module m_flow_model
     end do
     
     ! Get cell/node centers
-    if (IUNSTR) then
+    if (IUNSTR/=0) then
       ! TODO
     else
       call this%calc_mfcell_centers()

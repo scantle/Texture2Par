@@ -9,6 +9,7 @@ module m_T2P
   use m_pilotpoints, only: t_pilotpoints
   use m_interpolator, only: t_interpolator, t_idw
   use m_kriging, only: t_krige, t_simpkrige, t_ordkrige
+  use m_sgsim, only: t_sgsim
   use m_categories, only: t_category
   use m_vario, only: t_vgm
 !-------------------------------------------------------------------------------------------------!
@@ -170,7 +171,11 @@ module m_T2P
     ! Handle Interpolation Method
     select case (this%opt%INTERP_METHOD)
       case("OK")
+        if (this%opt%NSIM == 0) then
         allocate(t_ordkrige::this%interp_data)
+        else
+          allocate(t_sgsim::this%interp_data)
+        end if
         allocate(t_ordkrige::this%interp_pp)
       case("SK")
         allocate(t_simpkrige::this%interp_data)
@@ -208,8 +213,8 @@ module m_T2P
     if (len_trim(this%fmodel%sim_file)>0.or.len_trim(this%fmodel%grd_file)>0) then
       this%has_fmodel = .true.
     end if
-    if (len_trim(this%fmodel%hsu_file))     this%has_hsus = .true.
-    if (len_trim(this%fmodel%ppzone_file))  this%has_ppzones = .true.
+    if (len_trim(this%fmodel%hsu_file)>0   )  this%has_hsus = .true.
+    if (len_trim(this%fmodel%ppzone_file)>0)  this%has_ppzones = .true.
     
   end subroutine setup_flow_model
   
@@ -346,13 +351,13 @@ module m_T2P
     end select
     
     ! Add Pilot Point variogram
-    if (this%opt%ONLY_TEXTURE==.false.) then
+    if (.not. this%opt%ONLY_TEXTURE) then
       this%nvario = this%nvario + 1  
     
       ! Allocate variogram matrix for pp
       select type(p => this%interp_pp)
         class is(t_krige)
-          if (allocated(p%global_vario_idx)==.false.) allocate(p%global_vario_idx(1,1))
+          if (.not. allocated(p%global_vario_idx)) allocate(p%global_vario_idx(1,1))
           p%global_vario_idx(1,1) = 1  ! Is passed only this variogram
       end select
     end if
@@ -457,12 +462,12 @@ module m_T2P
     if (this%ntexclasses < 2) call error_handler(1,opt_msg="Must have at least 2 texture classes")
     
     ! Do we have everything we need to run the model?
-    if(this%has_opt      ==.false.) call error_handler(1,opt_msg="Missing Required OPTIONS Block")
-    if(this%has_classes  ==.false.) call error_handler(1,opt_msg="Missing Required CLASSES Block")
-    if(this%has_fmodel   ==.false.) call error_handler(1,opt_msg="Missing Required FLOW_MODEL Block")
-    if(this%has_datafiles==.false.) call error_handler(1,opt_msg="Missing Required DATASET Block(s)")
-    if(this%has_covar    ==.false.) call this%no_covariates()  ! Allowable, just needs to be handled
-    if(this%has_interp   ==.false.) then
+    if(.not. this%has_opt      ) call error_handler(1,opt_msg="Missing Required OPTIONS Block")
+    if(.not. this%has_classes  ) call error_handler(1,opt_msg="Missing Required CLASSES Block")
+    if(.not. this%has_fmodel   ) call error_handler(1,opt_msg="Missing Required FLOW_MODEL Block")
+    if(.not. this%has_datafiles) call error_handler(1,opt_msg="Missing Required DATASET Block(s)")
+    if(.not. this%has_covar    ) call this%no_covariates()  ! Allowable, just needs to be handled
+    if(.not. this%has_interp   ) then
       if (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK") then
         call error_handler(1,opt_msg="Missing Required VARIOGRAMS Block")
       else  ! Unknown interpolator parameters required??
@@ -470,9 +475,9 @@ module m_T2P
       end if
     end if
     
-    if (this%opt%ONLY_TEXTURE==.false.) then  ! Pilot point info
-      if(this%has_pplocs   ==.false.) call error_handler(1,opt_msg="Missing Required PP_LOCS Block")
-      if(this%has_pp       ==.false.) call error_handler(1,opt_msg="Missing Required PP_PARAMETERS Block")
+    if (.not. this%opt%ONLY_TEXTURE) then  ! Pilot point info
+      if(.not. this%has_pplocs) call error_handler(1,opt_msg="Missing Required PP_LOCS Block")
+      if(.not. this%has_pp    ) call error_handler(1,opt_msg="Missing Required PP_PARAMETERS Block")
       ! Check pilot point zones
       ! Doesn't ensure they are the same ID values...
       if (this%pilot_points%nppzones /= this%fmodel%get_active_ppzones()) then
@@ -481,7 +486,7 @@ module m_T2P
     
       ! Make sure pilot points and flow model agree on existance of aquitards
       ! TODO - more robust? Nothing checks to ensure values at this points
-      if (this%has_pplocs_aquitards /= this%fmodel%has_aquitards) then
+      if (this%has_pplocs_aquitards .neqv. this%fmodel%has_aquitards) then
         call error_handler(1,opt_msg="Mismatch in aquitard existance between Pilot Points and Model")
       end if
     end if
@@ -658,7 +663,7 @@ module m_T2P
       !dout(k)%values = 0.0
       
       ! Check if layer is active (generally IWFM: means it has thickness)
-      if (this%fmodel%is_active_layer(k)==.false.) cycle
+      if (.not. this%fmodel%is_active_layer(k)) cycle
       call this%write_minor_status('- Layer:',this%fmodel%get_layer_id(k))
     
       ! Loop over primary classes
@@ -773,7 +778,7 @@ module m_T2P
     call this%write_status("Writing output files")
     
     ! Write parameters by node/cell, and if texture was kriged, textures by node/cell
-    if (this%opt%WRITE_NODE_FILES.and.this%opt%ONLY_TEXTURE==.false.) then
+    if (.not. (this%opt%WRITE_NODE_FILES.and.this%opt%ONLY_TEXTURE)) then
       call this%write_minor_status('Writing Parameter Node Files')
       call this%fmodel%write_node_files(this%par, this%parnames)
     end if
@@ -789,7 +794,7 @@ module m_T2P
       call this%write_dataset_files()
     end if
     
-    if (this%opt%WRITE_NONE==.false.) then    
+    if (.not. this%opt%WRITE_NONE) then
       ! Write out flow model input files
       call this%write_minor_status("Writing "//trim(this%fmodel%name)//" Input Files")
       call this%fmodel%write_fmodel_input(this%par)

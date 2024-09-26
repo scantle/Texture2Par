@@ -54,3 +54,4 @@ Libraries/*/Debug/**
 *.lock
 
 *.vsidx
+Example*

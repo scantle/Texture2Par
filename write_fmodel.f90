@@ -246,7 +246,7 @@ end subroutine
       WRITE(OUT,fmt(2)) (CHANI(K),K=1,NLAY)
       !WRITE(OUT,fmt(1)) (LAYVKA(K),K=1,NLAY)
       WRITE(OUT,fmt(1)) (0,K=1,NLAY) ! LAYVKA Forced to 0 - LS, VB 5/24/2022
-      if (gwftype=='UPW') then
+      if (gwftyp=='UPW') then
         WRITE(OUT,fmt(1)) (0,K=1,NLAY)
       else
         WRITE(OUT,fmt(1)) (LAYWET(K),K=1,NLAY)
@@ -260,8 +260,8 @@ end subroutine
 !6------WRITE PARAMETER DEFINITIONS
       IF(NPLPF.GT.0) THEN
         ! Parameters are not supported by Texture2Par
-        write(*,'(4x,a,4a,a)') 'Warning - ', gwftype, ' file contains parameters (Incompatable)'
-        write(*,'(4x,a,4a,a)') 'Parameters NOT written to new ', gwftype, ' file'
+        write(*,'(4x,a,4a,a)') 'Warning - ', gwftyp, ' file contains parameters (Incompatable)'
+        write(*,'(4x,a,4a,a)') 'Parameters NOT written to new ', gwftyp, ' file'
       end if
 
 !7------READ PARAMETERS AND CONVERT FOR UNSTRUCTURED AND STRUCTURED GRIDS
