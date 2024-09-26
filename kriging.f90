@@ -29,6 +29,8 @@ module m_kriging
     integer,allocatable       :: vario_idx(:,:)        ! Variogram index given (class_id, class_id) for local classes passed to setup/point
     real(dp),allocatable      :: w(:)                  ! Internally calculated weights
     integer,allocatable       :: pset_id(:)            ! ID vector used for kriging matrix
+    ! Some kriging-specific settings
+    logical                   :: no_negative_weights   ! Flag to zero negative weights and rebalance (True = zero, rebalance)
     ! Attributes for KD-tree and search parameters could be added here
   contains
     procedure               :: intialize => initialize_kriging
@@ -167,6 +169,9 @@ end subroutine doolittle
     this%ndrift = 0  ! Hardcoded out for now
     this%unbias = 0 
     this%nsets  = size(obs_data)
+    this%no_negative_weights = .false.
+    
+    if (opt%CORRECT_WEIGHTS) this%no_negative_weights = .true.
     
     ! If MAX_SECONDARY_DIST is zero, will use 3x the largest structure range
     this%max_sdist = opt%MAX_SECONDARY_DIST
@@ -390,9 +395,8 @@ end subroutine doolittle
     ! Solve & Out
     call doolittle(this%rhsB,this%matA,this%pset_id,this%w,matsize)
     
-    ! Only for kriging - recalculate if weights are below zero
-    ! TODO make an option
-    if (this%nsets==1.and.minval(this%w(1:osize))<0.0) then
+    ! If CORRECT_WEIGHTS, zero negative weights and rebalance
+    if (this%no_negative_weights.and.minval(this%w(1:osize))<0.0) then
       where (this%w(1:osize) < 0.0) this%w(1:osize) = 0.0
       this%w(1:osize) = this%w(1:osize)/sum(this%w(1:osize))
     end if

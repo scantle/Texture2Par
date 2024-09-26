@@ -37,6 +37,7 @@ module m_options
     logical                  :: OUTPUT_ARRAY          !
     logical                  :: LOG_KRIGE_K           !
     logical                  :: INFER_LAST_CLASS      ! For classic T2P, where the data is only percent coarse
+    logical                  :: CORRECT_WEIGHTS       ! Zero negative (kriging) weights and rebalance if true, see Deutsch (1996) (only for OK, COK)
     
     contains
       procedure, public :: initialize
@@ -81,6 +82,7 @@ module m_options
     this%OUTPUT_ARRAY         = .false.
     this%LOG_KRIGE_K          = .false.
     this%INFER_LAST_CLASS     = .false.
+    this%CORRECT_WEIGHTS      = .false.
   end subroutine initialize
 
 !-------------------------------------------------------------------------------------------------!
@@ -160,6 +162,8 @@ subroutine read_options(this, reader)
         this%LOG_KRIGE_K          = .true.
       case("INFER_LAST_CLASS")
         this%INFER_LAST_CLASS     = .true.
+      case("CORRECT_WEIGHTS")
+        this%CORRECT_WEIGHTS      = .true.
       case DEFAULT
         call error_handler(1,reader%file,"Unknown Option Name: " // trim(id))
     end select
@@ -219,6 +223,7 @@ subroutine write_input_summary(this)
     if (this%OUTPUT_ARRAY       ) logic_true = trim(logic_true) // "OUTPUT_ARRAY"        // ","
     if (this%LOG_KRIGE_K        ) logic_true = trim(logic_true) // "LOG_KRIGE_K"         // ","
     if (this%INFER_LAST_CLASS   ) logic_true = trim(logic_true) // "INFER_LAST_CLASS"    // ","
+    if (this%CORRECT_WEIGHTS    ) logic_true = trim(logic_true) // "CORRECT_WEIGHTS"     // ","
     
     if (len(trim(logic_true)) > no_true_len) then
       !call log%write_line(logic_true)
