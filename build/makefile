@@ -2,13 +2,13 @@
 FC = gfortran
 
 # compile flags
-FCFLAGS =  -cpp -fbacktrace -ffree-line-length-none  -ffixed-line-length-none -fdec -fallow-argument-mismatch -freal-4-real-8
+FCFLAGS =  -O2 -cpp -fbacktrace -ffree-line-length-none  -ffixed-line-length-none -fdec -fallow-argument-mismatch
 #
-TMPDIR := .mod
-ifneq ($(TMPDIR),)
-  $(shell mkdir -p $(TMPDIR))
-  FCFLAGS+= -J $(TMPDIR)
-endif
+#TMPDIR := .mod
+#ifneq ($(TMPDIR),)
+#  $(shell mkdir -p $(TMPDIR))
+#  FCFLAGS+= -J $(TMPDIR)
+#endif
 
 # link flags
 FLFLAGS =
@@ -22,7 +22,7 @@ VPATH =                                \
     
 # source files and objects
 flibs = \
-    m_vstring.F90               \
+    m_vstring.f90               \
     m_vstringlist.F90
 
 #    pmmodule_usg.f90            \
@@ -106,33 +106,41 @@ t2p2 = \
     Read_Main_Input.f90         \
     Texture2Par.f90
 
-srcs    = $(flibs) $(mfusg) $(t2p2)
-objects = $(addsuffix .o, $(srcs))
-$(info $$objects = $(objects))
+objflibs = $(addsuffix .o, $(flibs))
+objother = $(addsuffix .o, $(mfusg) $(t2p2))
+objects = $(objflibs) $(objother)
+# display all targets
+$(info $$objflibs = $(objflibs))
+$(info $$objother = $(objother))
 
 # program name
 PROGRAM = texture2par
 
 all: $(PROGRAM)
 
-# $@ -- target name
-# $< -- prerequisites
+# gnu.org/software/make/manual/html_node/Automatic-Variables.html
+# % match any part of the target name
+# $@ -- The file name of the target of the rule.In a pattern rule that has multiple targets, $@ is the name of whichever target caused the rule's recipe to be run.
+# $% -- The target member name, when the target is an archive member.
+# $< -- The name of the first prerequisite.
+# $? -- The names of all the prerequisites that are newer than the target, with spaces between them.
+# $^ -- The names of all the prerequisites, with spaces between them.
+# $+ -- This is like ‘$^’, but prerequisites listed more than once are duplicated in the order they were listed in the makefile.
+# $| -- The names of all the order-only prerequisites, with spaces between them.
+# $* -- The stem with which an implicit rule matches
+
 $(PROGRAM): $(objects)
-	$(FC) -static -o $@ $<
+	$(FC) -static -o $@ $^
 
-# % is the 
-%.o: %
-	$(FC) $(FCFLAGS) -c -o $@ $<
+$(objflibs): %.o: %
+	$(FC) $(FCFLAGS) -c                 -o $@ $<
 
-%.F90:
+$(objother): %.o: %
+	$(FC) $(FCFLAGS) -c -freal-4-real-8 -o $@ $<
 
-%.f90:
-
-%.f:
-
-%.F:
 
 clean:
-	rm -rf $(TMPDIR)\*
+	rm -rf *.mod
 	rm -rf *.o
 	rm -rf $(PROGRAM)*
+	#rm -rf $(TMPDIR)\*

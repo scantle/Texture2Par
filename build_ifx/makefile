@@ -2,14 +2,14 @@
 FC = ifx
 
 # compile flags
-FCFLAGS = -traceback -heap-arrays -O2 -fpe:0 -fpp -nologo -static -real-size:64
+FCFLAGS = -traceback -heap-arrays -O2 -fpe:0 -fpp -nologo -libs:static
 #
-TMPDIR := .temp
-ifneq ($(TMPDIR),)
-  $(shell mkdir $(TMPDIR))
-  MODSWITCH = -module:$(TMPDIR)
-  FCFLAGS+= $(MODSWITCH)
-endif
+#TMPDIR := .temp
+#ifneq ($(TMPDIR),)
+#  $(shell mkdir $(TMPDIR))
+#  MODSWITCH = -module:$(TMPDIR)
+#  FCFLAGS+= $(MODSWITCH)
+#endif
 
 # link flags
 FLFLAGS =
@@ -23,11 +23,11 @@ VPATH =                                \
 
 # source files and objects
 flibs = \
-    m_vstring.F90               \
+    m_vstring.f90               \
     m_vstringlist.F90
 
-#    ppcgu1.f                    \
 #    pmmodule_usg.f90            \
+#    ppcgu1.f                    \
 
 mfusg = \
     mf_fpath.f90                \
@@ -107,35 +107,41 @@ t2p2 = \
     Read_Main_Input.f90         \
     Texture2Par.f90
 
-srcs    = $(flibs) $(mfusg) $(t2p2)
-objects = $(addsuffix .obj, $(srcs))
-object2 = $(addprefix $(TMPDIR)/, $(objects))
+objflibs = $(addsuffix .obj, $(flibs))
+objother = $(addsuffix .obj, $(mfusg) $(t2p2))
+objects = $(objflibs) $(objother)
 # display all targets
-$(info $$objects = $(objects))
+$(info $$objflibs = $(objflibs))
+$(info $$objother = $(objother))
 
 # program name
 PROGRAM = texture2par
 
 all: $(PROGRAM)
 
-# $@ -- target name
-# $< -- prerequisites
+# gnu.org/software/make/manual/html_node/Automatic-Variables.html
+# % match any part of the target name
+# $@ -- The file name of the target of the rule.In a pattern rule that has multiple targets, $@ is the name of whichever target caused the rule's recipe to be run.
+# $% -- The target member name, when the target is an archive member.
+# $< -- The name of the first prerequisite.
+# $? -- The names of all the prerequisites that are newer than the target, with spaces between them.
+# $^ -- The names of all the prerequisites, with spaces between them.
+# $+ -- This is like ‘$^’, but prerequisites listed more than once are duplicated in the order they were listed in the makefile.
+# $| -- The names of all the order-only prerequisites, with spaces between them.
+# $* -- The stem with which an implicit rule matches
+
 $(PROGRAM): $(objects)
-	$(FC) $(MODSWITCH) -o $@ $(objects)
+	$(FC) $(MODSWITCH) -o $@ $^
 
-# % is the
-%.obj: %
-	$(FC) $(FCFLAGS) -c -o $@ $<
+$(objflibs): %.obj: %
+	$(FC) $(FCFLAGS) -c               -o $@ $<
 
-%.F90:
+$(objother): %.obj: %
+	$(FC) $(FCFLAGS) -c -real-size:64 -o $@ $<
 
-%.f90:
-
-%.f:
-
-%.F:
 
 clean:
-	rm -rf $(TMPDIR)\*
+	rm -rf *.mod
 	rm -rf *.obj
 	rm -rf $(PROGRAM)*
+	#rm -rf $(TMPDIR)\*

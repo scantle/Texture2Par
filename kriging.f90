@@ -14,7 +14,7 @@ module m_kriging
   type, extends(t_interpolator) :: t_krige
     integer                   :: nvario                ! Number of variograms stored for interpolator
     integer                   :: maxnear               ! Maximum number of nearest points used for interpolation for all classes
-    integer                   :: nsets                 ! Number of datasets involved 
+    integer                   :: nsets                 ! Number of datasets involved
     integer                   :: ndim                  ! Number of dimensions being kriged (code may be hardcoded to 2 in places)
     integer                   :: unbias                ! Unbias term (0 - SK, 1 - OK)
     integer                   :: ndrift                ! Number of drift terms (unimplemented)
@@ -39,14 +39,14 @@ module m_kriging
     procedure               :: finalize => finalize_krige
   end type t_krige
 !-------------------------------------------------------------------------------------------------!
-  
+
   type, extends(t_krige) :: t_simpkrige
   contains
     procedure               :: setup => setup_sk
     procedure               :: predict_point => predict_point_sk
   end type t_simpkrige
 !-------------------------------------------------------------------------------------------------!
-  
+
   type, extends(t_krige) :: t_ordkrige
     real(dp),allocatable    :: matA(:), rhsB(:)
   contains
@@ -140,16 +140,16 @@ end subroutine doolittle
 !-------------------------------------------------------------------------------------------------!
 ! KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine initialize_kriging(this)
     implicit none
     class(t_krige)                :: this
-    
-    
+
+
   end subroutine initialize_kriging
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
   !  ! Does everything common to all kriging
   !  ! Intended to be called by subclasses during their setup
@@ -163,27 +163,27 @@ end subroutine doolittle
     integer,intent(in)                    :: to_cats(:)
     type(t_options),intent(in)            :: opt
     integer                     :: i
-    
+
     ! Defaults
     this%ndim   = opt%INTERP_DIM
     this%ndrift = 0  ! Hardcoded out for now
-    this%unbias = 0 
+    this%unbias = 0
     this%nsets  = size(obs_data)
     this%no_negative_weights = .false.
-    
+
     if (opt%CORRECT_WEIGHTS) this%no_negative_weights = .true.
-    
+
     ! If MAX_SECONDARY_DIST is zero, will use 3x the largest structure range
     this%max_sdist = opt%MAX_SECONDARY_DIST
-    
+
     if (allocated(this%vario_idx)) deallocate(this%vario_idx)
     allocate(this%vario_idx(this%nsets,this%nsets))
     this%vario_idx(:,:) = this%global_vario_idx(obs_idx(:),obs_idx(:))  ! subset to local datasets
-    
+
   end subroutine setup_krige
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine filter_near_points(this, usenear, inear, dist, vidx)
     implicit none
     class(t_krige),intent(inout)  :: this
@@ -194,7 +194,7 @@ end subroutine doolittle
     real(dp)                      :: max_sdist
 
     integer :: count, j
-    
+
     max_sdist = this%max_sdist
     if (this%max_sdist < 0.1) max_sdist = maxval(this%variograms(:,vidx)%a_hmax)
 
@@ -213,13 +213,13 @@ end subroutine doolittle
     ! Update usenear to the new count of valid points
     usenear = count
   end subroutine filter_near_points
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine finalize_krige(this)
     implicit none
     class(t_krige),intent(inout)  :: this
-    
+
     if (associated(this%nnear)) deallocate(this%nnear)
     if (associated(this%nstruct)) deallocate(this%nstruct)
     if (associated(this%obs_idx)) deallocate(this%obs_idx)
@@ -228,9 +228,9 @@ end subroutine doolittle
     if (allocated(this%vario_idx)) deallocate(this%vario_idx)
     if (allocated(this%w)) deallocate(this%w)
     if (allocated(this%pset_id)) deallocate(this%pset_id)
-    
+
   end subroutine finalize_krige
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! SIMPLE KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -247,29 +247,29 @@ end subroutine doolittle
     type(t_options),intent(in)            :: opt
     ! Local
     integer                     :: i,matsize
-    
+
     ! Call super setup
     call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
-    
+
     matsize = 0
     do i=1, this%nsets
       matsize = obs_data(i)%grid%n
     end do
-    
+
     matsize = to_grid%n+matsize+this%unbias+this%ndrift
     allocate(this%w(matsize))
     !allocate(this%matA(matsize, matsize), this%rhsB(matsize))
-    
+
     !this%matA = 0.0
     !this%rhsB = 0.0
-    
+
     !pre-calculate distances
     !call setdist()
-    
+
   end subroutine setup_sk
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine predict_point_sk(this, idx, p, obs_data, cat, weights, widx, ppd)
     implicit none
     class(t_simpkrige),intent(inout)  :: this
@@ -279,11 +279,11 @@ end subroutine doolittle
     real(dp)                          :: weights(:)
     integer, optional                 :: widx(:)              ! idx associated with weights
     integer, optional                 :: ppd(size(obs_data))  ! points per dataset
-  
+
   end subroutine predict_point_sk
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! ORDINARY KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -300,17 +300,17 @@ end subroutine doolittle
     type(t_options),intent(in)            :: opt
     ! Local
     integer                     :: i,class_id,matsize,vidx, mat_tot
-    
+
     ! Call super setup
     call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
     ! OK uses unbias
     this%unbias = 1
-    
+
     ! Setup usenear for problem
     if (allocated(this%usenear)) deallocate(this%usenear)
     allocate(this%usenear(this%nsets))
     this%usenear = this%nnear(obs_idx)
-    
+
     ! Build search trees in observed grid objects
     ! Also, figure out number of datasets in each category
     do i=1, this%nsets
@@ -322,22 +322,22 @@ end subroutine doolittle
       ! Maybe we could check before here?
       this%usenear(i) = min(this%usenear(i), obs_data(i)%grid%tree%n)
     end do
-    
+
     this%maxnear =  maxval(this%usenear)  !this%nnear(1)
     !if (this%nsets > 1) this%maxnear = this%maxnear + maxval(this%nnear)
     matsize = sum(this%usenear)+this%unbias+this%ndrift
     mat_tot = matsize * (matsize + 1) / 2
-    
+
     if (allocated(this%matA)) deallocate(this%matA)
     if (allocated(this%rhsB)) deallocate(this%rhsB)
     if (allocated(this%pset_id)) deallocate(this%pset_id)
     if (allocated(this%w)) deallocate(this%w)
     allocate(this%matA(mat_tot), this%rhsB(matsize), this%pset_id(matsize), this%w(matsize))
-    
+
   end subroutine setup_ok
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine predict_point_ok(this, idx, p, obs_data, cat, weights, widx, ppd)
     implicit none
     class(t_ordkrige),intent(inout)  :: this
@@ -352,7 +352,7 @@ end subroutine doolittle
     integer                          :: inear(this%maxnear,this%nsets), loc_usenear(this%nsets)
     real(dp)                         :: value
     real(dp)                         :: dist(this%maxnear,this%nsets)
-    
+
     ! Get nearest for each obs dataset
     loc_usenear = this%usenear  ! LOCAL VERSION
     do i=1, this%nsets
@@ -361,23 +361,23 @@ end subroutine doolittle
       ! Filter out points beyond max_sdist for covariate datasets
       if (i > 1) call this%filter_near_points(loc_usenear(i), inear(:,i), dist(:,vidx), vidx)
     end do
-    
+
     if (present(ppd)) ppd = loc_usenear
-    
+
     osize   = sum(loc_usenear)
     matsize = osize+this%unbias+this%ndrift
     mat_tot = matsize * (matsize + 1) / 2
-    
+
     ! Create obs-obs matrix
     call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, inear, loc_usenear, this%ndim)
     call decomp(this%matA, this%pset_id, matsize, ier)
-    
+
     if (ier == 1) call error_handler(4,opt_msg="Kriging Matrix Decomposition Failure. This is often caused by co-located wells")
-    
+
     ! Create RHS
     this%rhsB = 0.d0
     this%w = 0
-    if (this%unbias) this%rhsB(matsize) = 1.0d0
+    if (this%unbias==1) this%rhsB(matsize) = 1.0d0
     rcount = 1
     ! Loop over datasets
     do d = 1, this%nsets
@@ -391,16 +391,16 @@ end subroutine doolittle
         rcount = rcount + 1
       end do
     end do
-      
+
     ! Solve & Out
     call doolittle(this%rhsB,this%matA,this%pset_id,this%w,matsize)
-    
+
     ! If CORRECT_WEIGHTS, zero negative weights and rebalance
     if (this%no_negative_weights.and.minval(this%w(1:osize))<0.0) then
       where (this%w(1:osize) < 0.0) this%w(1:osize) = 0.0
       this%w(1:osize) = this%w(1:osize)/sum(this%w(1:osize))
     end if
-    
+
     wi = 0
     woffset = 0
     if (present(widx)) then
@@ -418,7 +418,7 @@ end subroutine doolittle
         woffset = woffset + obs_data(i)%grid%n
       end do
     end if
-    
+
     ! TEMP
     !open(100, file='WEIGHT_DEBUG.txt', action='WRITE', STATUS='REPLACE')
     !write(100, *) p
@@ -428,18 +428,18 @@ end subroutine doolittle
     !!write(100, *) dist
     !write(100, *) this%w
     !close(100)
-  
+
   end subroutine predict_point_ok
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine pset_cok(this, obs_data, ntot, p, id, maxpt, inear, nnear,  dim)
     implicit none
     ! Rewrite of PSET routine for ordinary cokriging
     ! Author Leland Scantlebury
     !
     ! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
-    
+
     ! Inputs
     class(t_ordkrige),intent(inout) :: this
     type(t_dataset)        :: obs_data(:)
@@ -447,20 +447,20 @@ end subroutine doolittle
     integer,intent(in)     :: inear(this%maxnear,this%nsets), nnear(this%nsets)
     integer,intent(inout)  :: id(ntot)
     real(dp),intent(inout) :: p(maxpt)
-    
+
     ! Subroutine variables
     integer             :: i,ii,j,jj,n,ind,JS, rowcount, nobs
     integer,allocatable :: colcount(:)
     real(dp)            :: coordi(dim),coordj(dim),value,value_sum
-    
+
     nobs = this%nsets
     allocate(colcount(nobs))
-    
+
     colcount = 0
     do i=1, (nobs-1)
       colcount(i+1) = colcount(i) + nnear(i)  !obs_data(i)%grid%n
     end do
-    
+
 !***  ZERO OUT ELEMENTS OF P-MATRIX NEEDED FOR KRIGING
     P=0.0
 !***  CALCULATE THE POINTERS FOR ID
@@ -502,14 +502,14 @@ end subroutine doolittle
         P(ID(I)+ntot-I)=1
       END DO
     end if
-      
+
     deallocate(colcount)
     RETURN
 
   end subroutine pset_cok
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function wsize_estimate_ok(this, obs_data, obs_idx)
     implicit none
     class(t_ordkrige),intent(inout)  :: this
@@ -521,20 +521,20 @@ end subroutine doolittle
   end function wsize_estimate_ok
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine finalize_ok(this)
     implicit none
     class(t_ordkrige),intent(inout)  :: this
-    
+
     if (allocated(this%matA))    deallocate(this%matA)
     if (allocated(this%rhsB))    deallocate(this%rhsB)
     if (allocated(this%usenear)) deallocate(this%usenear)
-    
+
     ! call super
     call finalize_krige(this)
-  
+
   end subroutine finalize_ok
-  
-!-------------------------------------------------------------------------------------------------!  
-  
+
+!-------------------------------------------------------------------------------------------------!
+
 end module m_kriging

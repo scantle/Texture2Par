@@ -136,13 +136,13 @@ module m_sgsim
 
 !-------------------------------------------------------------------------------------------------!
 
-  function predict_point_sgsim(this, idx, obsxy, gridxy) result(res)
+  function predict_point_sgsim(this, idx, obsxy, gridxy, nsim) result(res)
     use kdtree2_module
     implicit none
     class(t_sgsim),intent(inout)    :: this
     type(t_randgrid)                :: obsxy(:)
     type(t_randgrid)                :: gridxy
-    integer                         :: idx
+    integer                         :: idx, nsim
 
     ! local
     real(dp)                        :: res, std             ! store kriged estimate and standard deviation
@@ -157,11 +157,11 @@ module m_sgsim
     ! local
     integer                         :: j, d, vidx, wi, osize, matsize, mat_tot, ier
 
-    print*, "debug predict_point_sgsim 00", idx, gridxy%order(idx)
+    ! print*, "debug predict_point_sgsim 00", idx, gridxy%order(idx)
     ! Get nearest for each obs dataset
     newloc = gridxy%coords(:, idx)
     loc_usenear = this%usenear  ! LOCAL VERSION
-    obsxy(1)%mask(idx-1) = .true.
+    if (nsim>0) obsxy(1)%mask(idx-1) = .true.
 
     do iset=1, this%nsets
       loc_usenear(iset) = min(loc_usenear(iset), count(obsxy(iset)%mask))
@@ -354,13 +354,13 @@ module m_sgsim
         ! Step 2: estimate values
         do j=1, gridxy%n
           ! Interpolate for each point
-          obsxy(1)%values(nobs1+j) = this%predict_point_sgsim(j, obsxy, gridxy)
+          obsxy(1)%values(nobs1+j) = this%predict_point_sgsim(j, obsxy, gridxy, opt%NSIM)
         end do
         ! Step 3: put back the values
         results(gridxy%order) = obsxy(1)%values(nobs1+1:)
         ! Step 4: clean up
-        call gridxy%finalize()
-        do iset=1, this%nsets; call obsxy(iset)%finalize(); end do
+        !call gridxy%finalize()
+        !do iset=1, this%nsets; call obsxy(iset)%finalize(); end do
       end block
     end do
 
@@ -368,7 +368,7 @@ module m_sgsim
 
 !-------------------------------------------------------------------------------------------------!
   subroutine finalize_randgrid(this)
-    class(t_randgrid)  :: this
+    class(t_randgrid),intent(inout)  :: this
     if (associated(this%order))      deallocate(this%order)
     if (associated(this%order_inv))  deallocate(this%order_inv)
     if (associated(this%sample))     deallocate(this%sample)
