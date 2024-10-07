@@ -79,6 +79,7 @@ module m_read_datasets
         call t2p%datasets(didx,k)%initialize(npoints, nsets)
         t2p%datasets(didx,k)%values = NODATA
         t2p%datasets(didx,k)%grid => grid
+        t2p%datasets(didx,k)%id = didx
       end do
       
       ! For texture classes, if opt%INTERP_ORDER=AFTER we need to store ppzones for these points, too!
@@ -142,7 +143,7 @@ module m_read_datasets
         else
           thick = depth - prev_depth
           intv_top = z - prev_depth
-        end if  ! End of new log hanlding
+        end if  ! End of new log handling
         
         ! Start of accumulator
         ! Transform values

@@ -33,7 +33,7 @@ module m_datasets
   type, extends(t_dataset) :: t_layerdata
     ! Intended for input data
     character(30)                  :: name             ! Class Name  (UNUSED? TODO)
-    integer                        :: class_id         ! Class ID    (UNUSED? TODO)
+    integer                        :: id               ! Index within t2p%datasets
     real(dp),allocatable           :: values(:,:)      ! Data values associated with each grid point for each class (nclasses, npoints)
     integer,allocatable            :: fmodel_loc(:)    ! Containing model element/cell
     real(dp),allocatable           :: mean(:)          ! Mean of values, used for cokriging standardization (generally globally, not by layer)

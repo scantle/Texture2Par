@@ -403,19 +403,22 @@ module m_T2P
     select type(p => this%interp_data)
       class is(t_krige)
         ! First n are for classes/properties
-        p%nvario     = this%nvario -1
-        p%nstruct    => nstruct(1:this%nvario-1)
+        p%nvario     = this%nvario
+        if (.not. this%opt%ONLY_TEXTURE) p%nvario = this%nvario -1
+        p%nstruct    => nstruct(1:p%nvario)
         p%variograms => variograms(:,1:p%nvario)
         p%nnear      => nnear(1:p%nvario)
     end select
     ! PP is the last one
-    select type(p => this%interp_pp)
-      class is(t_krige)
-        p%nvario     = 1
-        p%nstruct    => nstruct(this%nvario:this%nvario)
-        p%variograms => variograms(:,this%nvario:this%nvario)
-        p%nnear      => nnear(this%nvario:this%nvario)
-    end select
+    if (.not. this%opt%ONLY_TEXTURE) then
+      select type(p => this%interp_pp)
+        class is(t_krige)
+          p%nvario     = 1
+          p%nstruct    => nstruct(this%nvario:this%nvario)
+          p%variograms => variograms(:,this%nvario:this%nvario)
+          p%nnear      => nnear(this%nvario:this%nvario)
+      end select
+    end if
     
     this%has_interp = .true.
     this%has_vario  = .true.

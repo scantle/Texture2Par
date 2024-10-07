@@ -78,10 +78,23 @@
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
 		<Filter Name="Modules">
 		<File RelativePath=".\Assert.f90"/>
-		<File RelativePath=".\DataTypeTests.f90"/></Filter>
+		<File RelativePath=".\DataTypeTests.f90"/>
+		<File RelativePath=".\InterpTests.f90"/></Filter>
 		<Filter Name="T2P Files">
+		<File RelativePath="..\Categories.f90"/>
+		<File RelativePath="..\DataSets.f90"/>
+		<File RelativePath="..\ErrorHandler.f90"/>
+		<File RelativePath="..\FileIO.f90"/>
+		<File RelativePath="..\global.f90"/>
+		<File RelativePath="..\Grid.f90"/>
+		<File RelativePath="..\Interpolators.f90"/>
 		<File RelativePath="..\kdtree2.f90"/>
-		<File RelativePath="..\Lists.f90"/></Filter>
+		<File RelativePath="..\kriging.f90"/>
+		<File RelativePath="..\Lists.f90"/>
+		<File RelativePath="..\Options.f90"/>
+		<File RelativePath="..\Str_Module.f90"/>
+		<File RelativePath="..\variogram.f90"/>
+		<File RelativePath="..\weights.f90"/></Filter>
 		<File RelativePath=".\T2PTests.f90"/></Filter>
 		<File RelativePath=".\ReadMe.txt"/>
 	</Files>

@@ -7,7 +7,7 @@ module m_kriging
   use m_datasets, only: t_dataset, t_layerdata
   use m_error_handler, only: error_handler
   use m_options, only: t_options
-  use m_sparse_symmetric, only: t_sparse_sym
+!  use m_sparse_symmetric, only: t_sparse_sym
   implicit none
 !-------------------------------------------------------------------------------------------------!
 
