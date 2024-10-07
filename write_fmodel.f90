@@ -1,5 +1,5 @@
 module m_write_fmodel
-  use m_global, only: dp
+  
 
   contains
 !-----------------------------------------------------------------------------!
@@ -19,7 +19,7 @@ subroutine writeIWFMgwfile(gwtemp, gwfile, par, nlayers, nnodes, nodeid, is_aqui
   integer                    :: i, k, ierr, nouth, noutf, ngroup, ru, wu
   character(256)             :: cerr
   character(1000)            :: line
-  real(dp)                   :: KvB_aquitard
+  real                       :: KvB_aquitard
   type(t_file_reader),pointer:: fread
   type(t_file_writer),pointer:: fwrite
 

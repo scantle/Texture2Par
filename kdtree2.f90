@@ -4,8 +4,8 @@
 ! Licensed under the Academic Free License version 1.1 found in file LICENSE
 ! with additional provisions found in that same file.
 !
-! Modfied 5/10/2024 by Leland Scantlebury at SSP&A to accept a rotational
-! matrix for anistropic distance calculations
+! 5/10/2024 Leland Scantlebury: accepts a rotational matrix for anistropic 
+! distance calculations
 !
 ! 2024/05/28 Michael Ou: add mask during search, only search for mask==.true.
 !

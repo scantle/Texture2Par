@@ -25,7 +25,7 @@ module m_flow_model
   ! by each derived class.
     
     integer                       :: model_type      ! 1 - grid, 2 - IWFM, 3 - MODFLOW 2000
-    real(dp)                      :: xoff,yoff,rot   ! Conversion from/to global coordinates
+    real                          :: xoff,yoff,rot   ! Conversion from/to global coordinates
     integer                       :: nlayers         ! Number of model layers
     integer                       :: ngrids          ! Number of unique model grid (xy) layers
     integer,allocatable           :: nnodes(:)       ! Number of nodes (points at which flow is solved) by layer
@@ -39,7 +39,7 @@ module m_flow_model
     character(3)                  :: grd_file_type   ! Character string of grid file type (GSF, ...)
     character(100)                :: grd_file        ! Grid specification file for grid type or MODFLOW-USG
     character(100)                :: output_file     ! File where aquifer parameters are written
-    real(dp), allocatable         :: elev(:,:)       ! Bottom Elevations for each layer (node, layer) (indexed from zero = model top)
+    real    , allocatable         :: elev(:,:)       ! Bottom Elevations for each layer (node, layer) (indexed from zero = model top)
     type(t_grid),pointer          :: grid(:)         ! xy grids for layers
     type(t_category)              :: ppzones         ! Pilot point zone fmodel grid arrays & tracking
     type(t_category)              :: hsus            ! HSU fmodel grid arrays & tracking
@@ -311,7 +311,7 @@ module m_flow_model
     ! Base class method, should not be run
     implicit none
     class(t_flow_model)     :: this
-    real(dp)                :: coords(:)
+    real                    :: coords(:)
     integer                 :: res
     
     res = 0
@@ -324,8 +324,8 @@ module m_flow_model
     ! Returns elevations for each layer given coordinates.
     implicit none
     class(t_flow_model)     :: this
-    real(dp), intent(in)    :: coords(:)
-    real(dp), intent(out)   :: point_elevs(0:this%nlayers)
+    real    , intent(in)    :: coords(:)
+    real    , intent(out)   :: point_elevs(0:this%nlayers)
     integer, optional       :: locid      ! Containing cell id if known
     integer                 :: id
     
@@ -346,7 +346,7 @@ module m_flow_model
     implicit none
     class(t_flow_model)                :: this
     integer,intent(in)                 :: k
-    real(dp)                           :: depths(this%nnodes(k))
+    real                               :: depths(this%nnodes(k))
     
     depths = this%elev(:,0) - ((this%elev(:,k-1) + this%elev(:,k)) / 2.0)
     
@@ -528,7 +528,7 @@ module m_flow_model
     integer                   :: i, j, total_nodes, ngrids, nvert, node, lay, grid, itemp, &
                                  gridcount, nodevert
     integer,allocatable       :: nnodes(:), grid_count(:), lay2grid(:),temp_node_vert(:)
-    real(dp)                  :: rtemp(3)
+    real                      :: rtemp(3)
     character(200)            :: ctemp
     logical                   :: found
     
@@ -697,11 +697,11 @@ module m_flow_model
     ! let the calling routine handle the error - it has more context.
     implicit none
     class(t_mgrid)   :: this
-    real(dp)                :: coords(:)
+    real                    :: coords(:)
     integer                 :: i,j,node
     integer                 :: nodeids(5)
-    real(dp)                :: in_node
-    real(dp)                :: nodedist(5), elemx(max_node_elem_members), elemy(max_node_elem_members)
+    real                    :: in_node
+    real                    :: nodedist(5), elemx(max_node_elem_members), elemy(max_node_elem_members)
     
     node = 0
     call this%grid(this%lay2grid(1))%get_nnear(coords, 5, nodeids, nodedist)
@@ -782,11 +782,11 @@ module m_flow_model
     ! Returns 0 if not found
     implicit none
     class(t_simpgrid)   :: this
-    real(dp)            :: coords(:)
+    real                :: coords(:)
     integer             :: i,j,node
     integer             :: nodeids(5)
-    real(dp)            :: in_node
-    real(dp)            :: nodedist(5), elemx(max_node_elem_members), elemy(max_node_elem_members)
+    real                :: in_node
+    real                :: nodedist(5), elemx(max_node_elem_members), elemy(max_node_elem_members)
     
     node = 0
     call this%grid(this%lay2grid(1))%get_nnear(coords, 1, nodeids, nodedist)
@@ -888,10 +888,10 @@ module m_flow_model
     ! let the calling routine handle the error - it has more context.
     implicit none
     class(t_iwfm_model)     :: this
-    real(dp)                :: coords(:)
+    real                    :: coords(:)
     integer                 :: element
     integer                 :: nodeids(5)
-    real(dp)                :: nodedist(5), elemx(4), elemy(4), inelem
+    real                    :: nodedist(5), elemx(4), elemy(4), inelem
     integer                 :: inode, i, j, count, elem
     
     element = 0
@@ -927,8 +927,8 @@ module m_flow_model
     ! Returns elevations for each layer given coordinates.
     implicit none
     class(t_iwfm_model)   :: this
-    real(dp), intent(in)    :: coords(:)
-    real(dp), intent(out)   :: point_elevs(0:this%nlayers)
+    real    , intent(in)    :: coords(:)
+    real    , intent(out)   :: point_elevs(0:this%nlayers)
     integer, optional       :: locid      ! Containing cell id if known
     integer                 :: elemid
     
@@ -987,7 +987,7 @@ module m_flow_model
     
     ! Calculate maximum thickness (differences) between consecutive layers
     ! Determine if layer exists based on max thickness > 0.0
-    this%lay_exist = maxval(abs(this%elev(:, 1:this%nlayers) - this%elev(:, 0:this%nlayers-1)), dim=1) > 0.0_dp
+    this%lay_exist = maxval(abs(this%elev(:, 1:this%nlayers) - this%elev(:, 0:this%nlayers-1)), dim=1) > 0.0
     
     ! See if any of these are aquitard layers and exist
     this%has_aquitards = any(this%lay_aqtard .and. this%lay_exist)
@@ -1052,15 +1052,14 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
   
   subroutine read_iwfm(this)
-    use m_global, only: dp
     use fpath
     use m_vstringlist, only: t_vstringlist
     implicit none
     type(t_file_reader), pointer :: reader2
     class(t_iwfm_model)          :: this
     character(200)               :: path, ctemp
-    real(dp)                     :: factor, rtemp1, rtemp2
-    real(dp),allocatable         :: rarray(:)
+    real                         :: factor, rtemp1, rtemp2
+    real    ,allocatable         :: rarray(:)
     integer                      :: i, j, itemp, inode, maxnodeid
     integer, allocatable         :: lay2grid(:)
     
@@ -1199,9 +1198,9 @@ module m_flow_model
     class(t_iwfm_model)   :: this
     integer               :: j,k,nodeID
     integer               :: ObsElem
-    real(dp)              :: dist
-    real(dp)              :: coords(2),InterpValues(:)
-    real(dp)              :: wgt_tmp,wgt
+    real                  :: dist
+    real                  :: coords(2),InterpValues(:)
+    real                  :: wgt_tmp,wgt
     InterpValues=0
     wgt=0
     do j=1,4
@@ -1381,7 +1380,7 @@ module m_flow_model
     ! Calculates cell centers in global coordinates  
     class(t_modflow_model)       :: this
     integer                :: i, j, n
-    real(dp)               :: xbase, ybase
+    real                   :: xbase, ybase
   
     ybase = sum(delc)
     do i=1, nrow
@@ -1409,9 +1408,9 @@ module m_flow_model
     ! let the calling routine handle the error - it has more context.
     implicit none
     class(t_modflow_model)  :: this
-    real(dp)                :: coords(:)
+    real                    :: coords(:)
     integer                 :: cellids(4)
-    real(dp)                :: celldist(4), xmin,xmax,ymin,ymax,xl,yl
+    real                    :: celldist(4), xmin,xmax,ymin,ymax,xl,yl
     integer                 :: cell, i
     
     cell = 0
@@ -1455,7 +1454,7 @@ module m_flow_model
     implicit none
     class(t_modflow_model)  :: this
     integer,intent(in)     :: cell
-    real(dp),intent(out)       :: xmin,xmax,ymin,ymax
+    real    ,intent(out)       :: xmin,xmax,ymin,ymax
     integer                :: row, col
     
     if (this%structured) then

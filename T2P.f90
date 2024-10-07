@@ -1,5 +1,5 @@
 module m_T2P
-  use m_global, only: dp, NODATA
+  use m_global, only: NODATA
   use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_append, vstrlist_range
   use m_vstring, only: t_vstring, vstring_toupper
   use m_error_handler, only: error_handler,warnings
@@ -633,7 +633,7 @@ module m_T2P
         end do
       end if
       ! reset weights
-      weights%values = 0.0_dp
+      weights%values = 0.0
     end do
     
   end subroutine interpolate_pp
@@ -651,7 +651,7 @@ module m_T2P
     integer                       :: k, i, j, x, k_active
     integer                       :: wstart, wend
     integer,allocatable           :: class_idx(:), dataset_idx(:), dataval_idx(:)
-    real(dp)                      :: v_adjust
+    real                          :: v_adjust
     !type(t_weights)               :: weights
     
     ! Loop over model layers
@@ -697,12 +697,12 @@ module m_T2P
           ! TODO WRITE
         end if
         ! Enforce values must be greater than zero
-        where(dout(k)%values(i,1:) < 0.0) dout(k)%values(i,1:) = 0.0_dp
+        where(dout(k)%values(i,1:) < 0.0) dout(k)%values(i,1:) = 0.0
         ! If we're kriging texture - must be below 1.0
-        if (this%opt%INTERP_ORDER=="BEFORE") where(dout(k)%values(i,1:) > 1.0) dout(k)%values(i,1:) = 1.0_dp
+        if (this%opt%INTERP_ORDER=="BEFORE") where(dout(k)%values(i,1:) > 1.0) dout(k)%values(i,1:) = 1.0
       end do
       ! If we need to, infer the last class
-      if (this%opt%INFER_LAST_CLASS) dout(k)%values(this%nprimary+1,1:) = 1.0_dp - sum(dout(k)%values(1:this%nprimary,1:), dim=1)
+      if (this%opt%INFER_LAST_CLASS) dout(k)%values(this%nprimary+1,1:) = 1.0 - sum(dout(k)%values(1:this%nprimary,1:), dim=1)
     end do
     
   end subroutine interpolate_model
@@ -716,7 +716,7 @@ module m_T2P
     type(t_layerdata),intent(inout):: tex_obs(this%fmodel%nlayers)  !  values(ntexclasses, npoints)
     type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !values([Kh, Kv, Ss, Sy], npoints)
     integer                        :: i, k, r
-    real(dp),allocatable           :: depths(:),KhD(:,:),KvD(:,:)
+    real    ,allocatable           :: depths(:),KhD(:,:),KvD(:,:)
     
     ! Loop over layers
     do k=1, this%fmodel%nlayers
@@ -741,21 +741,21 @@ module m_T2P
       
       do i=1, this%fmodel%nnodes(k)
         ! Skip if any texture class value is missing/invalid
-        if (any(tex_obs(k)%values(:,i) < 0.0_dp)) cycle
+        if (any(tex_obs(k)%values(:,i) < 0.0)) cycle
         ! Ensure classes add to one
         tex_obs(k)%values(:,i) = tex_obs(k)%values(:,i) / sum(tex_obs(k)%values(:,i))
         ! Kh - Depth adjusted
-        KhD(i,:) = pp_obj(r)%values(i, 1, :) + pp_obj(r)%values(i, 2, :) * exp(-1_dp *pp_obj(r)%values(i, 6, :) * depths(i))
+        KhD(i,:) = pp_obj(r)%values(i, 1, :) + pp_obj(r)%values(i, 2, :) * exp(-1 *pp_obj(r)%values(i, 6, :) * depths(i))
         ! Kv - Depth adjusted, calculated from anisotropy
         KvD(i,:) = KhD(i,:) / pp_obj(r)%values(i, 5, :)
         ! Kh
-        par_out(k)%values(1,i) = DOT_PRODUCT(KhD(i,:)**pp_obj(r)%values(i, 7, :), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 7, 1))
+        par_out(k)%values(1,i) = DOT_PRODUCT(KhD(i,:)**pp_obj(r)%values(i, 7, :), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, 7, 1))
         ! Kv
-        par_out(k)%values(2,i) = DOT_PRODUCT(KvD(i,:)**pp_obj(r)%values(i, 8, :), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 8, 1))
+        par_out(k)%values(2,i) = DOT_PRODUCT(KvD(i,:)**pp_obj(r)%values(i, 8, :), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, 8, 1))
         ! Ss
-        par_out(k)%values(3,i) = DOT_PRODUCT(pp_obj(r)%values(i,3,:)**pp_obj(r)%values(i, 9, :), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 9, 1))
+        par_out(k)%values(3,i) = DOT_PRODUCT(pp_obj(r)%values(i,3,:)**pp_obj(r)%values(i, 9, :), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, 9, 1))
         ! Sy
-        par_out(k)%values(4,i) = DOT_PRODUCT(pp_obj(r)%values(i,4,:)**pp_obj(r)%values(i, 9, :), tex_obs(k)%values(:,i)) ** (1.0_dp / pp_obj(r)%values(i, 9, 1))
+        par_out(k)%values(4,i) = DOT_PRODUCT(pp_obj(r)%values(i,4,:)**pp_obj(r)%values(i, 9, :), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, 9, 1))
       end do
       
       deallocate(KhD, KvD)
@@ -763,7 +763,7 @@ module m_T2P
       ! To match T2P 1 (move somewhere else? Do for all layers?)
       if (this%fmodel%lay_aqtard(k)) then
         where ((this%fmodel%elev(:,k-1) - this%fmodel%elev(:,k)) < 1e-6)
-          par_out(k)%values(2,:) = 0.0_dp
+          par_out(k)%values(2,:) = 0.0
         end where
       end if
     

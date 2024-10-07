@@ -1,5 +1,5 @@
 module m_sparse_symmetric
-  use m_global, only: dp
+  
   use m_error_handler, only: error_handler
 !-------------------------------------------------------------------------------------------------!
 type :: t_sparse_sym
@@ -12,7 +12,7 @@ type :: t_sparse_sym
   integer               :: next_internal_index = 1  ! Counter for assigning new internal indices
   integer, allocatable  :: idxs(:,:)                ! Internal index mapping to position in values
   integer, allocatable  :: translation(:)           ! Array for translating original to internal indices
-  real(dp), allocatable :: values(:)                ! Array storing values for feasible pairs
+  real    , allocatable :: values(:)                ! Array storing values for feasible pairs
 
 
   contains
@@ -45,7 +45,7 @@ end type t_sparse_sym
 
     ! Initialize
     this%idxs = 0          ! Zero indicates no mapping yet
-    this%values = 0.0_dp   ! Should this be editable??
+    this%values = 0.0   ! Should this be editable??
     this%translation = -1
   end subroutine initialize
 
@@ -77,7 +77,7 @@ end type t_sparse_sym
     implicit none
     class(t_sparse_sym), intent(inout) :: this
     integer, intent(in)                :: orig_idx1, orig_idx2
-    real(dp), intent(in)               :: value
+    real    , intent(in)               :: value
     integer                            :: internal_idx1, internal_idx2, row, col, position
 
     internal_idx1 = translate_and_add(this, orig_idx1)
@@ -111,7 +111,7 @@ end type t_sparse_sym
     implicit none
     class(t_sparse_sym), intent(in) :: this
     integer, intent(in)             :: orig_idx1, orig_idx2
-    real(dp)                        :: v
+    real                            :: v
     integer                         :: internal_idx1, internal_idx2, row, col
 
     internal_idx1 = this%translation(orig_idx1)

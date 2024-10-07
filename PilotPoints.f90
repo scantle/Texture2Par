@@ -1,6 +1,6 @@
 module m_pilotpoints
   use m_datasets, only: t_dataset
-  use m_global, only: dp, NODATA
+  use m_global, only: NODATA
   use m_grid, only: t_grid, create_grid_object
   implicit none
   
@@ -19,7 +19,7 @@ module m_pilotpoints
   
     integer,pointer                :: pp_id(:)         ! ID value of each pilot point (index matches pilot_points)
     integer,allocatable            :: zonelist(:)      ! List of "categories" assigned to each pilot point (pilot point zone)
-    real(dp),allocatable           :: values(:,:,:)    ! Data values by parameter (point, parameter, class_id)
+    real    ,allocatable           :: values(:,:,:)    ! Data values by parameter (point, parameter, class_id)
     
     ! Counters
     integer                        :: npp              ! Number of pilot points

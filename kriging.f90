@@ -1,5 +1,5 @@
 module m_kriging
-  use m_global, only: dp
+  
   use m_interpolator, only: t_interpolator
   use m_weights, only: t_weights
   use m_grid, only: t_grid, create_grid_object
@@ -19,7 +19,7 @@ module m_kriging
     integer                   :: unbias                ! Unbias term (0 - SK, 1 - OK)
     integer                   :: ndrift                ! Number of drift terms (unimplemented)
     integer                   :: nsim                  ! Number of simulations (unimplemented)
-    real(dp)                  :: max_sdist             ! Maximum inclusion distance for secondary data
+    real                      :: max_sdist             ! Maximum inclusion distance for secondary data
     integer,pointer           :: nnear(:)              ! Number of nearest points used for interpolation, for each dataset/class (nvario) (0 for cross)
     integer,allocatable       :: usenear(:)            ! NNear but local to problem (nsets) and limited by tree size
     integer,pointer           :: nstruct(:)            ! Number of structures for each variogram
@@ -27,7 +27,7 @@ module m_kriging
     type(t_vgm),pointer       :: variograms(:,:)       ! (stuctures, variogram)
     integer,allocatable       :: global_vario_idx(:,:) ! Variogram index given (class_id, class_id) for ALL classes
     integer,allocatable       :: vario_idx(:,:)        ! Variogram index given (class_id, class_id) for local classes passed to setup/point
-    real(dp),allocatable      :: w(:)                  ! Internally calculated weights
+    real    ,allocatable      :: w(:)                  ! Internally calculated weights
     integer,allocatable       :: pset_id(:)            ! ID vector used for kriging matrix
     ! Some kriging-specific settings
     logical                   :: no_negative_weights   ! Flag to zero negative weights and rebalance (True = zero, rebalance)
@@ -48,7 +48,7 @@ module m_kriging
 !-------------------------------------------------------------------------------------------------!
 
   type, extends(t_krige) :: t_ordkrige
-    real(dp),allocatable    :: matA(:), rhsB(:)
+    real    ,allocatable    :: matA(:), rhsB(:)
   contains
     procedure               :: setup => setup_ok
     procedure               :: predict_point => predict_point_ok
@@ -68,7 +68,7 @@ subroutine decomp(p,id,ntot,ier)
     implicit none
 !*** DECOMPOSITION TO GET LOWER TRIANGULAR S MATRIX
     integer                :: id,ier,ks,jm1,k,js,is,is1,j,i,i1,ntot
-    real(dp)               :: p,sum,p1,p2
+    real                   :: p,sum,p1,p2
     dimension              :: p(1),id(1)
 
           IER=0
@@ -106,7 +106,7 @@ subroutine doolittle(r,p,id,w,ntot)
 
     implicit none
           integer   :: id,ntot,i,is,js,im1,j,ii,iip1,iis
-          real(dp)  :: r,p,w,sum
+          real      :: r,p,w,sum
       dimension     :: r(1),p(1),w(1),id(1)
 !***  START OF DOOLITTLE ***
 !***  FORWARD SUBSTITUTION FOR SYSTEM S*W = R
@@ -158,7 +158,7 @@ end subroutine doolittle
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
     type(t_grid),intent(in)               :: to_grid
-    real(dp)                              :: weights(:,:)
+    real                                  :: weights(:,:)
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
     type(t_options),intent(in)            :: opt
@@ -189,9 +189,9 @@ end subroutine doolittle
     class(t_krige),intent(inout)  :: this
     integer, intent(inout)        :: usenear
     integer, intent(inout)        :: inear(:)
-    real(dp), intent(inout)       :: dist(:)
+    real    , intent(inout)       :: dist(:)
     integer, intent(in)           :: vidx
-    real(dp)                      :: max_sdist
+    real                          :: max_sdist
 
     integer :: count, j
 
@@ -241,7 +241,7 @@ end subroutine doolittle
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
     type(t_grid),intent(in)               :: to_grid
-    real(dp)                              :: weights(:,:)
+    real                                  :: weights(:,:)
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
     type(t_options),intent(in)            :: opt
@@ -274,9 +274,9 @@ end subroutine doolittle
     implicit none
     class(t_simpkrige),intent(inout)  :: this
     integer,intent(in)                :: idx, cat
-    real(dp),intent(in)               :: p(2)
+    real    ,intent(in)               :: p(2)
     class(t_dataset)                  :: obs_data(:)
-    real(dp)                          :: weights(:)
+    real                              :: weights(:)
     integer, optional                 :: widx(:)              ! idx associated with weights
     integer, optional                 :: ppd(size(obs_data))  ! points per dataset
 
@@ -294,7 +294,7 @@ end subroutine doolittle
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
     type(t_grid),intent(in)               :: to_grid
-    real(dp)                              :: weights(:,:)
+    real                                  :: weights(:,:)
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
     type(t_options),intent(in)            :: opt
@@ -342,16 +342,16 @@ end subroutine doolittle
     implicit none
     class(t_ordkrige),intent(inout)  :: this
     integer,intent(in)               :: idx, cat
-    real(dp),intent(in)              :: p(2)
+    real    ,intent(in)              :: p(2)
     class(t_dataset)                 :: obs_data(:)
-    real(dp)                         :: weights(:)
+    real                             :: weights(:)
     integer, optional                :: widx(:)              ! idx associated with weights
     integer, optional                :: ppd(size(obs_data))  ! points per dataset
     ! local
     integer                          :: i, j, d, vidx, wi, osize, matsize, mat_tot, ier, rcount, woffset
     integer                          :: inear(this%maxnear,this%nsets), loc_usenear(this%nsets)
-    real(dp)                         :: value
-    real(dp)                         :: dist(this%maxnear,this%nsets)
+    real                             :: value
+    real                             :: dist(this%maxnear,this%nsets)
 
     ! Get nearest for each obs dataset
     loc_usenear = this%usenear  ! LOCAL VERSION
@@ -446,12 +446,12 @@ end subroutine doolittle
     integer,intent(in)     :: maxpt, ntot, dim
     integer,intent(in)     :: inear(this%maxnear,this%nsets), nnear(this%nsets)
     integer,intent(inout)  :: id(ntot)
-    real(dp),intent(inout) :: p(maxpt)
+    real    ,intent(inout) :: p(maxpt)
 
     ! Subroutine variables
     integer             :: i,ii,j,jj,n,ind,JS, rowcount, nobs
     integer,allocatable :: colcount(:)
-    real(dp)            :: coordi(dim),coordj(dim),value,value_sum
+    real                :: coordi(dim),coordj(dim),value,value_sum
 
     nobs = this%nsets
     allocate(colcount(nobs))

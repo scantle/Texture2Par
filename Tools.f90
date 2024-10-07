@@ -1,13 +1,13 @@
 module tools
-  use m_global, only: dp
+  
   contains
 !-----------------------------------------------------------------------------!
   subroutine loc2glo(locx, locy, xoff, yoff, rot, glox, gloy)
     implicit none
 
-    real(dp),intent(in)        :: locx, locy, xoff, yoff, rot
-    real(dp),intent(out)       :: glox, gloy
-    real(dp), parameter        :: DEG2RAD = 3.141592654/180.0
+    real    ,intent(in)        :: locx, locy, xoff, yoff, rot
+    real    ,intent(out)       :: glox, gloy
+    real    , parameter        :: DEG2RAD = 3.141592654/180.0
 
     glox = xoff + locx * cos(rot*DEG2RAD) - locy * sin(rot*DEG2RAD)
     gloy = yoff + locy * cos(rot*DEG2RAD) + locx * sin(rot*DEG2RAD)
@@ -19,9 +19,9 @@ module tools
   subroutine glo2loc(glox, gloy, xoff, yoff, rot, locx, locy)
     implicit none
 
-    real(dp),intent(in)        :: glox, gloy, xoff, yoff, rot
-    real(dp),intent(out)       :: locx, locy
-    real(dp), parameter        :: DEG2RAD = 3.141592654/180.0
+    real    ,intent(in)        :: glox, gloy, xoff, yoff, rot
+    real    ,intent(out)       :: locx, locy
+    real    , parameter        :: DEG2RAD = 3.141592654/180.0
 
     locx = (glox-xoff) * cos(rot*DEG2RAD) + (gloy-yoff) * sin(rot*DEG2RAD)
     locy = (gloy-yoff) * cos(rot*DEG2RAD) - (glox-xoff) * sin(rot*DEG2RAD)
@@ -103,11 +103,11 @@ function pinpol(px, py, polyx, polyy, npoly) result(inpoly)
 
   integer, intent(in)      :: npoly
   integer                  :: i, next, prev, j
-  real(dp), intent(in)     :: px, py, polyx(npoly), polyy(npoly)
-  real(dp)                 :: x1, y1, x21, y21, x1p, y1p, t, d, dx, dy, area
-  real(dp), parameter      :: smalld = 1e-6
+  real    , intent(in)     :: px, py, polyx(npoly), polyy(npoly)
+  real                     :: x1, y1, x21, y21, x1p, y1p, t, d, dx, dy, area
+  real    , parameter      :: smalld = 1e-6
   logical                  :: snear
-  real(dp)                 :: inpoly
+  real                     :: inpoly
 
   inpoly = HUGE(1.0)
 
@@ -198,8 +198,8 @@ function tridet(x1, y1, x2, y2, x3, y3) result(det)
 !
 ! Useful for determining what side of a line a point (x3, y3) is on.
 !-----------------------------------------------------------------------------!
-  real(dp), intent(in)     :: x1, y1, x2, y2, x3, y3
-  real(dp)                 :: det
+  real    , intent(in)     :: x1, y1, x2, y2, x3, y3
+  real                     :: det
 
   det = (x1-x3)*(y2-y3)-(x2-x3)*(y1-y3)
 

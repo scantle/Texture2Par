@@ -1,5 +1,4 @@
 module m_grid
-  use m_global, only: dp
   use kdtree2_module
   implicit none
   
@@ -8,7 +7,7 @@ module m_grid
   
     integer                   :: n
     integer                   :: dim
-    real(dp), allocatable     :: coords(:,:)    ! xy by n points
+    real    , allocatable     :: coords(:,:)    ! xy by n points
     type(kdtree2),pointer     :: tree           ! Tree for locating model nodes
     integer, allocatable      :: true_idx(:)    ! Mapping of indices from masked to full dataset
     
@@ -65,7 +64,7 @@ module m_grid
     implicit none
     class(t_Grid), intent(inout) :: this
     logical,intent(in),optional  :: mask(this%n)
-    real(dp),optional            :: rotmat(:,:) ! Rotation Matrix
+    real    ,optional            :: rotmat(:,:) ! Rotation Matrix
     integer                      :: j, success
     
     allocate(this%tree)
@@ -90,10 +89,10 @@ module m_grid
     implicit none
     ! Uses tree to return n nearest grid indeces and distances
     class(t_Grid), intent(inout) :: this
-    real(dp),intent(in)          :: qpoint(this%dim)
+    real    ,intent(in)          :: qpoint(this%dim)
     integer, intent(in)          :: nnear
     integer, intent(out)         :: idx(nnear)
-    real(dp),intent(out)         :: dis(nnear)
+    real    ,intent(out)         :: dis(nnear)
     type(kdtree2_result)         :: res(nnear)
     logical,intent(in),optional  :: mask(this%n)
     real(kdkind), target, optional  :: rotmat(:,:) ! Rotation Matrix
@@ -117,10 +116,10 @@ module m_grid
   subroutine get_r2near(this, qpoint, r2, idx, dis, mask)
     implicit none
     class(t_Grid), intent(inout)     :: this
-    real(dp),intent(in)              :: qpoint(this%dim)
-    real(dp),intent(in)              :: r2
+    real    ,intent(in)              :: qpoint(this%dim)
+    real    ,intent(in)              :: r2
     integer, pointer                 :: idx(:)
-    real(dp),pointer                 :: dis(:)
+    real    ,pointer                 :: dis(:)
     integer                          :: nfound
     type(kdtree2_result),allocatable :: res(:)
     logical,intent(in),optional      :: mask(this%n)

@@ -8,15 +8,15 @@ module m_options
 !  5. If necessary, add a handler for the option to the t2p%process_options() hook that is called
 !     after the options are read.
 !-------------------------------------------------------------------------------------------------!
-  use m_global, only: dp
+  
   type t_options
     ! Required Options:
     integer                  :: MAX_VSTRUCT           ! Maximum variogram structures
     !integer                  :: DATA_CLASSES          ! Number of texture & covariate classes
     ! "Optional" Options - Default Value and Settings
-    real(dp)                 :: NO_DATA_VALUE         !
-    real(dp)                 :: IDW_POWER             ! Inverse Distance Weighting Power Parameter
-    real(dp)                 :: MAX_SECONDARY_DIST
+    real                     :: NO_DATA_VALUE         !
+    real                     :: IDW_POWER             ! Inverse Distance Weighting Power Parameter
+    real                     :: MAX_SECONDARY_DIST
     integer                  :: INTERP_DIM            ! 2D, 3D, stored as integer, read as string
     integer                  :: NSIM                  ! number of sequential gaussian simulation; default is zero which is Kriging
     integer                  :: SEED                  ! seed number for generating random path and samples for SGSIM
@@ -96,7 +96,7 @@ subroutine read_options(this, reader)
   use m_file_io, only: t_file_reader, item2int, item2char, item2real
   use m_vstringlist, only: t_vstringlist
   use m_error_handler, only: error_handler
-  use tools
+  use tools, only: random_seed_initialize
   implicit none
   class(t_options)           :: this
   type(t_file_reader), pointer :: reader
@@ -178,7 +178,7 @@ subroutine read_options(this, reader)
         call error_handler(1,reader%file,"Unknown Option Name: " // trim(id))
     end select
   end do
-  call random_seed_initialize(this%SEED)
+  !call random_seed_initialize(this%SEED)
   ! Handle EOF
     
 end subroutine read_options

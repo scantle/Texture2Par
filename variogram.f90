@@ -1,23 +1,23 @@
 module m_vario
-  use m_global, only: dp
+  
 !-------------------------------------------------------------------------------------------------!
 
-  real(dp), parameter   :: pi = 3.141592653589793d0
+  real    , parameter   :: pi = 3.141592653589793d0
   
 type :: t_vgm
 ! Variogram or cross variogram structure
   integer                 :: itype       ! Variogram model (0-linear, 1-spherical, 2-exponential)
-  real(dp)                :: sill        ! Contribution of each structure, when summed (with nugget) the sill
-  real(dp)                :: a_hmax      ! Range: distance where data are no longer correlated
-  real(dp)                :: a_hmin      ! Range min (equal to amax when anis1/anis2 ==1)
-  real(dp)                :: a_vert      ! Vertical range
-  real(dp)                :: nugget      ! Nugget: sill immediately at distances > 0
-  real(dp)                :: ang1        ! Angle 1 (azimuth correction)
-  real(dp)                :: ang2        ! Angle 2 (dip correction)
-  real(dp)                :: ang3        ! Angle 3 (plunge correction)
-  real(dp)                :: anis1       ! Anisotropy 1 (horizontal)
-  real(dp)                :: anis2       ! Anisotropy 2 (vertical)
-  real(dp)                :: rotmat(3,3) ! Rotation Matrix
+  real                    :: sill        ! Contribution of each structure, when summed (with nugget) the sill
+  real                    :: a_hmax      ! Range: distance where data are no longer correlated
+  real                    :: a_hmin      ! Range min (equal to amax when anis1/anis2 ==1)
+  real                    :: a_vert      ! Vertical range
+  real                    :: nugget      ! Nugget: sill immediately at distances > 0
+  real                    :: ang1        ! Angle 1 (azimuth correction)
+  real                    :: ang2        ! Angle 2 (dip correction)
+  real                    :: ang3        ! Angle 3 (plunge correction)
+  real                    :: anis1       ! Anisotropy 1 (horizontal)
+  real                    :: anis2       ! Anisotropy 2 (vertical)
+  real                    :: rotmat(3,3) ! Rotation Matrix
 
   contains
     procedure,public        :: initialize
@@ -201,7 +201,7 @@ end type t_vgm
     implicit none
     class(t_vgm)            :: this
     integer, intent(in)     :: dim
-    real(dp), intent(in)    :: p1(dim), p2(dim)
+    real    , intent(in)    :: p1(dim), p2(dim)
   !
   ! Compute component distance vectors and the squared distance:
     !dd = p1 - p2
@@ -218,10 +218,10 @@ end type t_vgm
     implicit none
     class(t_vgm)            :: this
     integer, intent(in)     :: dim, n
-    real(dp), intent(in)    :: p(dim)
-    real(dp)                :: sqdist_vec(n)
-    real(dp), intent(in)    :: points(dim, n)
-    real(dp)                :: dd(dim, n)
+    real    , intent(in)    :: p(dim)
+    real                    :: sqdist_vec(n)
+    real    , intent(in)    :: points(dim, n)
+    real                    :: dd(dim, n)
 
     dd = points - spread(p, 2, n)
     sqdist_vec = sum(matmul(this%rotmat(1:dim, 1:dim), dd)**2, dim=1)
@@ -233,12 +233,12 @@ end type t_vgm
   function cov(this, p1,p2) result(cov_value)
     implicit none
     
-    real(dp),parameter       :: epsilon=1.e-10
+    real    ,parameter       :: epsilon=1.e-10
     class(t_vgm)          :: this
-    real(dp), intent(in)  :: p1(:), p2(:)
-    real(dp)              :: dist
-    real(dp)              :: cov_value
-    real(dp)              :: hr
+    real    , intent(in)  :: p1(:), p2(:)
+    real                  :: dist
+    real                  :: cov_value
+    real                  :: hr
 
     dist = sqrt(this%sqdist(size(p1,1),p1,p2))
     cov_value = 0.0
@@ -270,7 +270,7 @@ end type t_vgm
     end select
 
     if (this%itype /= 7) cov_value = this%sill * cov_value
-    if (this%nugget > 0.0_dp) then
+    if (this%nugget > 0.0) then
       if (dist < epsilon) cov_value = cov_value + this%nugget
     end if
   
@@ -280,12 +280,12 @@ end type t_vgm
   
   function cov_vec(this, dist, n) result(cov)
     implicit none
-    real(dp),parameter    :: epsilon=1.e-10
+    real    ,parameter    :: epsilon=1.e-10
     class(t_vgm)          :: this
     integer               :: n
-    real(dp)              :: dist(n)
-    real(dp)              :: cov(n)
-    real(dp)              :: hr(n)
+    real                  :: dist(n)
+    real                  :: cov(n)
+    real                  :: hr(n)
 
     cov = 0.0
     hr = dist / this%a_hmax
@@ -319,7 +319,7 @@ end type t_vgm
     end select
 
     if (this%itype /= 7) cov = this%sill * cov
-    if (this%nugget > 0.0_dp) then
+    if (this%nugget > 0.0) then
       where (dist < epsilon) cov = cov + this%nugget
     end if
 
@@ -330,9 +330,9 @@ end type t_vgm
   !  implicit none
   !  class(t_vgm)         :: this
 ! !     common block/vario/slope,sill,a
-  !  real(dp)                 :: x1,y1,z1,x2,y2,z2,h,tmp
-  !  real(dp),parameter       :: epsilon=1.e-10
-  !  real(dp)                 :: value
+  !  real                     :: x1,y1,z1,x2,y2,z2,h,tmp
+  !  real    ,parameter       :: epsilon=1.e-10
+  !  real                     :: value
   !
   !  h = this%sqdist(x1,y1,z1,x2,y2,z2)
   !

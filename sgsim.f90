@@ -1,5 +1,4 @@
 module m_sgsim
-  use m_global, only: dp
   use m_interpolator, only: t_interpolator
   use m_weights, only: t_weights
   use m_grid, only: t_grid, create_grid_object
@@ -15,8 +14,8 @@ module m_sgsim
   type, extends(t_grid)     :: t_randgrid
     integer , pointer      :: order(:)              ! cell visit order for SGSIM
     integer , pointer      :: order_inv(:)          ! inverse SGSIM cell visit order; result_of_random_cell(order_inv) will put back in order of the original grid
-    real(dp), pointer      :: sample(:)             ! random sample used in SGSIM
-    real(dp), pointer      :: values(:)             ! values on the random grid
+    real, pointer      :: sample(:)             ! random sample used in SGSIM
+    real, pointer      :: values(:)             ! values on the random grid
     logical , pointer      :: mask(:)               ! logical array mask the data points used for kriging
   contains
     procedure                  :: finalize => finalize_randgrid
@@ -49,7 +48,7 @@ module m_sgsim
     class(t_layerdata)                    :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:), val_idx(:)
     type(t_grid),intent(in)               :: to_grid
-    real(dp)                              :: weights(:,:)
+    real                                  :: weights(:,:)
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
     type(t_options),intent(in)            :: opt
@@ -83,7 +82,7 @@ module m_sgsim
     !do i=1, to_grid%n
     !  gridxy%order_inv(gridxy%order(i)) = igrid(i)
     !end do
-    if (opt%NSIM>0) then; gridxy%sample = rnorm_box_muller_vec(gridxy%n); else; gridxy%sample = 0.0_dp; end if
+    if (opt%NSIM>0) then; gridxy%sample = rnorm_box_muller_vec(gridxy%n); else; gridxy%sample = 0.0d0; end if
     gridxy%coords = to_grid%coords(:, gridxy%order)
 
     ! set up the obs
@@ -145,14 +144,14 @@ module m_sgsim
     integer                         :: idx, nsim
 
     ! local
-    real(dp)                        :: res, std             ! store kriged estimate and standard deviation
+    real                            :: res, std             ! store kriged estimate and standard deviation
 
     ! local
     integer                         :: iset
     integer                         :: inear(this%maxnear,this%nsets), loc_usenear(this%nsets)
-    real(dp)                        :: dist(this%maxnear,this%nsets)
+    real                            :: dist(this%maxnear,this%nsets)
     type(kdtree2_result)            :: kdnearest(this%maxnear)
-    real(dp)                        :: newloc(2)
+    real                            :: newloc(2)
 
     ! local
     integer                         :: j, d, vidx, wi, osize, matsize, mat_tot, ier
@@ -197,22 +196,22 @@ module m_sgsim
     call this%pset_rhs(matsize, obsxy, newloc, inear, loc_usenear)
 
     ! Solve & Out
-    this%w = 0.0_dp
+    this%w = 0.0d0
     call doolittle(this%rhsB,this%matA,this%pset_id,this%w,matsize)
 
     ! calculate kriging result and standard deviation
-    res = 0.0_dp
+    res = 0.0d0
     osize = 0
     do iset=1, this%nsets
       res = res + sum(obsxy(iset)%values(inear(1:loc_usenear(iset), iset)) * this%w(osize+1:osize+loc_usenear(iset)))
       osize = osize + loc_usenear(iset)
     end do
-    std = 0.0_dp
+    std = 0.0d0
     vidx = this%vario_idx(1,1)
     do j=1, this%nstruct(vidx)
       std = std + this%variograms(j,vidx)%cov(newloc,newloc)
     end do
-    std = sqrt(max(std - sum(this%w(1:matsize) * this%rhsB(1:matsize)), 0.0_dp))
+    std = sqrt(max(std - sum(this%w(1:matsize) * this%rhsB(1:matsize)), 0.0d0))
     res = res + gridxy%sample(idx) * std
   end function predict_point_sgsim
 
@@ -229,12 +228,12 @@ module m_sgsim
     integer,intent(in)     :: maxpt, ntot, dim
     integer,intent(in)     :: inear(this%maxnear,this%nsets), nnear(this%nsets)
     integer,intent(inout)  :: id(ntot)
-    real(dp),intent(inout) :: p(maxpt)
+    real    ,intent(inout) :: p(maxpt)
 
     ! Subroutine variables
     integer             :: i,ii,j,jj,n,ind,JS, rowcount, nobs
     integer,allocatable :: colcount(:)
-    real(dp)            :: coordi(dim),coordj(dim),value,value_sum
+    real                :: coordi(dim),coordj(dim),value,value_sum
 
     nobs = this%nsets
     allocate(colcount(nobs))
@@ -297,7 +296,7 @@ module m_sgsim
     class(t_sgsim),intent(inout) :: this
     type(t_randgrid)       :: obsxy(:)
     integer,intent(in)     :: inear(this%maxnear,this%nsets), nnear(this%nsets), matsize
-    real(dp),intent(in)    :: newloc(:)
+    real    ,intent(in)    :: newloc(:)
     ! local
     integer                :: i, j, rcount, d, vidx
     ! Create RHS
@@ -326,15 +325,15 @@ module m_sgsim
     class(t_layerdata)                    :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:), val_idx(:)
     type(t_grid),intent(in)               :: to_grid
-    real(dp)                              :: results(:)
+    real                                  :: results(:)
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
 
     ! local
     integer                               :: i, j, iset, cat,  nobs1
-    real(dp), allocatable                 :: weights(:,:)
+    real    , allocatable                 :: weights(:,:)
 
-    results = 0.0_dp  ! necessary?
+    results = 0.0d0  ! necessary?
 
     ! Call super setup
     call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
@@ -417,9 +416,9 @@ module m_sgsim
   function rnorm_box_muller_vec(n,mu,sigma) result(variates)
     ! https://fortran-lang.discourse.group/t/normal-random-number-generator/3724/7
     integer      , intent(in)           :: n     ! # of normal variates
-    real(kind=dp), intent(in), optional :: mu    ! target mean
-    real(kind=dp), intent(in), optional :: sigma ! target standard deviation
-    real(kind=dp)                       :: variates(n) ! normal variates
+    real         , intent(in), optional :: mu    ! target mean
+    real         , intent(in), optional :: sigma ! target standard deviation
+    real                                :: variates(n) ! normal variates
     integer                             :: i,j
     logical                             :: n_odd
     n_odd = mod(n,2) /= 0
@@ -435,12 +434,12 @@ module m_sgsim
     !
   function rnorm_box_muller() result(variates) ! coded formulas from https://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform
     ! return two uncorrelated standard normal variates
-    real(kind=dp) :: variates(2)
-    real(kind=dp) :: u(2), factor, arg
-    real(kind=dp), parameter  :: two_pi=8.0*atan(1.0)
+    real          :: variates(2)
+    real          :: u(2), factor, arg
+    real         , parameter  :: two_pi=8.0*atan(1.0)
     do
         call random_number(u)
-        if (u(1) > 0.0_dp) exit
+        if (u(1) > 0.0d0) exit
     end do
     factor = sqrt(-2 * log(u(1)))
     arg = two_pi*u(2)
@@ -449,9 +448,9 @@ module m_sgsim
     !
   function rnorm_box_muller_single_variate() result(variate)
     ! return a standard normal variate
-    real(kind=dp) :: variate
-    real(kind=dp) :: u(2), factor, arg
-    real(kind=dp), parameter  :: two_pi=8.0*atan(1.0)
+    real          :: variate
+    real          :: u(2), factor, arg
+    real         , parameter  :: two_pi=8.0*atan(1.0)
     call random_number(u)
     factor = sqrt(-2 * log(u(1)))
     arg = two_pi*u(2)

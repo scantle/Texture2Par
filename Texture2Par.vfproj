@@ -92,6 +92,7 @@
 		<Filter Name="Interpolators">
 		<File RelativePath=".\Interpolators.f90"/>
 		<File RelativePath=".\kriging.f90"/>
+		<File RelativePath=".\sgsim.f90"/>
 		<File RelativePath=".\variogram.f90"/></Filter>
 		<Filter Name="Objects">
 		<File RelativePath=".\Categories.f90"/>

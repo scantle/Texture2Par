@@ -193,14 +193,14 @@ module m_file_io
   
 !-------------------------------------------------------------------------------------------------!
   
-  function item2dp(strings, i) result(out_dp)
+  function item2dp(strings, i) result(out)
     implicit none
     class(t_vstringlist),intent(in)   :: strings
     integer, intent(in)               :: i
-    real(dp)                          :: out_dp
+    real                              :: out
     character(30)                     :: temp
     if(vstring_is(vstrlist_index(strings, i),'real', strict=.true.)) then
-      call vstring_cast(vstrlist_index(strings, i), out_dp)
+      call vstring_cast(vstrlist_index(strings, i), out)
     else
       call item2char(strings, i, temp)
       write(*,'(3a)') 'Conversion Error - Could not convert '//trim(temp)//' to a numeric value'
@@ -734,7 +734,7 @@ end subroutine
     implicit none
     class(t_file_writer), intent(inout) :: this
     character(*), intent(in)            :: line
-    real(dp)                            :: value
+    real                                :: value
     character(*), optional              :: fmt
     character(24)                       :: fmt_use,full_fmt
     integer                             :: line_length, spaces

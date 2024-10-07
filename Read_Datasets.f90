@@ -1,5 +1,5 @@
 module m_read_datasets
-  use m_global, only: dp, NODATA
+  use m_global ,only: NODATA
 !  use m_datasets
   use m_T2P, only: t_t2p
   use m_vstring, only: t_vstring, vstring_is
@@ -24,9 +24,9 @@ module m_read_datasets
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
     integer                       :: prev_idx, idx, iint, fmodel_loc, didx
     integer,allocatable           :: cids(:), all_count(:)
-    real(dp)                      :: x, y, z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
-    real(dp),allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:)
-    real(dp),allocatable          :: all_sum(:)
+    real                          :: x, y, z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
+    real    ,allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:)
+    real    ,allocatable          :: all_sum(:)
     type(t_grid),pointer          :: grid
     type(t_data_transformer)      :: data_transformer
     
@@ -110,8 +110,8 @@ module m_read_datasets
             end do
           end if
           ! And reset for new log
-          wv_accumulator = 0.0_dp
-          total_thick = 0.0_dp
+          wv_accumulator = 0.0
+          total_thick = 0.0
           intv_top = z
           thick = depth
           grid%coords(1,idx) = x

@@ -1,5 +1,4 @@
 module m_datasets
-  use m_global, only: dp
   use m_grid, only: t_grid, create_grid_object
   implicit none
 !-------------------------------------------------------------------------------------------------!
@@ -22,7 +21,7 @@ module m_datasets
 !    character(30)                  :: name             ! Texture class
 !    integer                        :: class_id         ! Class ID
 !    integer,allocatable            :: nearest_node(:)  ! Nearest model node (cell) to data point
-!    real(dp),allocatable           :: values(:,:)      ! Data values associated with intervals at each point (interval, point)
+!    real    ,allocatable           :: values(:,:)      ! Data values associated with intervals at each point (interval, point)
 !    
 !    contains
 !    
@@ -34,9 +33,9 @@ module m_datasets
     ! Intended for input data
     character(30)                  :: name             ! Class Name  (UNUSED? TODO)
     integer                        :: id               ! Index within t2p%datasets
-    real(dp),allocatable           :: values(:,:)      ! Data values associated with each grid point for each class (nclasses, npoints)
+    real    ,allocatable           :: values(:,:)      ! Data values associated with each grid point for each class (nclasses, npoints)
     integer,allocatable            :: fmodel_loc(:)    ! Containing model element/cell
-    real(dp),allocatable           :: mean(:)          ! Mean of values, used for cokriging standardization (generally globally, not by layer)
+    real    ,allocatable           :: mean(:)          ! Mean of values, used for cokriging standardization (generally globally, not by layer)
     
     contains
       procedure                    :: init_layerdata
@@ -48,7 +47,7 @@ module m_datasets
 !    ! Intended for intermediate data
 !    character(30)                  :: name             ! Class Name
 !    integer                        :: class_id         ! Class ID
-!    real(dp),allocatable           :: values(:,:)      ! Data values associated with each grid point for each class (nclasses, npoints)
+!    real    ,allocatable           :: values(:,:)      ! Data values associated with each grid point for each class (nclasses, npoints)
 !    integer,allocatable            :: fmodel_loc(:)    ! Containing model element/cell
 !    
 !    contains
@@ -85,7 +84,7 @@ module m_datasets
     class(t_dataset),intent(inout)  :: this
     integer, intent(in)             :: cat, class_idx
     logical                         :: catmask(this%grid%n), na_mask(this%grid%n)
-    real(dp),optional               :: rotmat(:,:) ! Rotation Matrix
+    real    ,optional               :: rotmat(:,:) ! Rotation Matrix
     
     call this%grid%burn_tree()  ! Clear out previous tree
     catmask = (this%category==cat)
@@ -118,7 +117,7 @@ module m_datasets
     implicit none
     class(t_layerdata),intent(inout)  :: this
     integer,intent(in)                :: npoints, nclasses
-    real(dp),optional                 :: default_value
+    real    ,optional                 :: default_value
     
     allocate(this%category  (npoints), &
              this%fmodel_loc(npoints), &

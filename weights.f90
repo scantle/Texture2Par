@@ -1,12 +1,12 @@
 module m_weights
-  use m_global, only: dp
+  
 !-------------------------------------------------------------------------------------------------!  
   implicit none
 
   ! Define a custom type for managing weights
   type :: t_weights
       integer            :: nin, nout     ! grid input point count, grid output point count
-      real(dp), allocatable  :: values(:,:)  ! The weights (output_points, input_points)
+      real    , allocatable  :: values(:,:)  ! The weights (output_points, input_points)
       
   contains
       procedure,public   :: initialize
@@ -21,7 +21,7 @@ module m_weights
     integer              :: nin
     integer              :: unit
     integer,allocatable  :: idx(:)
-    real(dp),allocatable :: values(:)
+    real    ,allocatable :: values(:)
   contains
       procedure,public   :: initialize => initialize_sosa
       procedure,public   :: open_file => open_file_sosa
@@ -50,7 +50,7 @@ contains
     this%nout = output_n
     if (allocated(this%values)) deallocate(this%values)
     allocate(this%values (output_n, input_n))
-    this%values = 0.0_dp
+    this%values = 0.0
       
   end subroutine initialize
   

@@ -1,5 +1,5 @@
 module m_interpolator
-  use m_global, only: dp
+  
   use m_weights, only: t_weights
   use m_grid, only: t_grid, create_grid_object
   use m_datasets, only: t_dataset, t_layerdata
@@ -75,7 +75,7 @@ module m_interpolator
 !-------------------------------------------------------------------------------------------------!
   
   type, extends(t_interpolator) :: t_idw
-    real(dp)               :: power
+    real                   :: power
     integer                :: nobs
     logical,allocatable    :: catmask(:)
     
@@ -96,8 +96,8 @@ module m_interpolator
 !-------------------------------------------------------------------------------------------------!
   
   function dist_2D(point1, point2) result(distance)
-    real(dp), intent(in) :: point1(2), point2(2)  ! Input: Coordinates of the two points
-    real(dp)             :: distance              ! Output: Euclidean distance
+    real    , intent(in) :: point1(2), point2(2)  ! Input: Coordinates of the two points
+    real                 :: distance              ! Output: Euclidean distance
 
     distance = sqrt((point2(1) - point1(1))**2 + (point2(2) - point1(2))**2)
   end function dist_2D
@@ -105,9 +105,9 @@ module m_interpolator
 !-------------------------------------------------------------------------------------------------!
   
   function dist_2D_vector(p, point_array) result(distances)
-    real(dp), intent(in)                      :: p(2)          
-    real(dp), dimension(:, :), intent(in)     :: point_array
-    real(dp), dimension(size(point_array, 2)) :: distances
+    real    , intent(in)                      :: p(2)          
+    real    , dimension(:, :), intent(in)     :: point_array
+    real    , dimension(size(point_array, 2)) :: distances
     distances = sqrt((point_array(1, :) - p(1)) ** 2 + (point_array(2, :) - p(2)) ** 2)
   end function dist_2D_vector
   
@@ -129,7 +129,7 @@ module m_interpolator
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
     type(t_grid),intent(in)               :: to_grid
-    real(dp)                              :: weights(:,:) !(output_points, input_points)
+    real                                  :: weights(:,:) !(output_points, input_points)
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
     integer                               :: i, j, cat, count_cat
@@ -166,15 +166,15 @@ module m_interpolator
     class(t_layerdata)                    :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:), val_idx(:)
     type(t_grid),intent(in)               :: to_grid
-    real(dp)                              :: results(:)
+    real                                  :: results(:)
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
     type(t_sosa_weights)                  :: weights
     integer                               :: i, j, k, woffset, cat, wlen
-    real(dp)                              :: fake_weights(1,1), v_adjust
+    real                                  :: fake_weights(1,1), v_adjust
     integer                               :: ppd(size(obs_data))
     
-    results = 0.0_dp  ! necessary?
+    results = 0.0  ! necessary?
     call weights%initialize(this%wsize_estimate(obs_data, obs_idx))
     
     do i=1, size(catlist)
@@ -189,7 +189,7 @@ module m_interpolator
           ! Calculate for each point
           woffset = 0
           do k=1, size(obs_data)
-            v_adjust = 0.0_dp
+            v_adjust = 0.0
             if (k>1) v_adjust = obs_data(1)%mean(i) - obs_data(k)%mean(val_idx(1))
             results(j) = results(j) + dot_product(weights%values(woffset+1:woffset+ppd(k)), obs_data(k)%values(val_idx(k), weights%idx(woffset+1:woffset+ppd(k)))+v_adjust)
             woffset = woffset + ppd(k)
@@ -205,7 +205,7 @@ subroutine single_point_full_weight(this, obs_data, cat, to_cats, weights)
   implicit none
   class(t_interpolator), intent(inout) :: this
   class(t_dataset)                     :: obs_data(:)
-  real(dp)                             :: weights(:,:)
+  real                                 :: weights(:,:)
   integer, intent(in)                  :: cat, to_cats(:)
   integer                              :: i, j, k, obs_idx, w_offset
 
@@ -218,7 +218,7 @@ subroutine single_point_full_weight(this, obs_data, cat, to_cats, weights)
       obs_idx = obs_idx + w_offset
       ! set weights for the found observation
       do k = 1, size(to_cats)
-        if (to_cats(k) == cat) weights(k, obs_idx) = 1.0_dp
+        if (to_cats(k) == cat) weights(k, obs_idx) = 1.0
       end do
       exit
     endif
@@ -245,7 +245,7 @@ end subroutine single_point_full_weight
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
     type(t_grid),intent(in)               :: to_grid
-    real(dp)                              :: weights(:,:)
+    real                                  :: weights(:,:)
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
     type(t_options),intent(in)            :: opt
@@ -269,9 +269,9 @@ end subroutine single_point_full_weight
     implicit none
     class(t_interpolator),intent(inout)  :: this
     integer,intent(in)                   :: idx, cat
-    real(dp),intent(in)                  :: p(2)
+    real    ,intent(in)                  :: p(2)
     class(t_dataset)                     :: obs_data(:)
-    real(dp)                             :: weights(:)
+    real                                 :: weights(:)
     integer, optional                    :: widx(:)              ! idx associated with weights
     integer, optional                    :: ppd(size(obs_data))  ! points per dataset
   
@@ -321,7 +321,7 @@ end subroutine single_point_full_weight
     class(t_dataset)              :: obs_data(:)
     integer,intent(in)            :: obs_idx(:)
     type(t_grid),intent(in)       :: to_grid
-    real(dp)                      :: weights(:,:)
+    real                          :: weights(:,:)
     integer,intent(in)            :: cat
     integer,intent(in)            :: to_cats(:)
     type(t_options),intent(in)    :: opt
@@ -347,35 +347,35 @@ end subroutine single_point_full_weight
     implicit none
     class(t_idw),intent(inout)    :: this
     integer,intent(in)            :: idx, cat
-    real(dp),intent(in)           :: p(2)
+    real    ,intent(in)           :: p(2)
     class(t_dataset)              :: obs_data(:)
-    real(dp)                      :: weights(:)
-    real(dp)                      :: distances(this%nobs)
-    real(dp)                      :: total_weight
+    real                          :: weights(:)
+    real                          :: distances(this%nobs)
+    real                          :: total_weight
     integer                       :: zero_count, i
     integer, optional             :: widx(:)              ! idx associated with weights
     integer, optional             :: ppd(size(obs_data))  ! points per dataset
     
     ! Calculate distances for points matching the mask
-    distances = huge(dp)
+    distances = huge(0.0d0)
     block
       integer, allocatable          :: ii(:)
       ii = pack([(i,i=1,this%nobs)], this%catmask)
       distances(ii) = dist_2D_vector(p, obs_data(1)%grid%coords(:, ii))
     end block
     where(this%catmask)
-      weights = 1.0_dp / distances**this%power
+      weights = 1.0 / distances**this%power
     elsewhere
-      weights = 0.0_dp
+      weights = 0.0
     end where
     
      ! Check if there are any zero distances
-    zero_count = count(distances == 0.0_dp)
+    zero_count = count(distances == 0.0)
     if (zero_count > 0) then
       ! Assign equal weight to all zero-distance points (TODO should this produce a warning?)
-      weights(:) = 0.0_dp
-      where (distances == 0.0_dp)
-        weights = 1.0_dp / zero_count
+      weights(:) = 0.0
+      where (distances == 0.0)
+        weights = 1.0 / zero_count
       end where
     else
       ! Normalize weights to sum up to 1

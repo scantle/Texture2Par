@@ -1,9 +1,9 @@
 module m_data_transformer
-  use m_global, only: dp
+
   implicit none
 !-------------------------------------------------------------------------------------------------!
   type t_data_transformer
-    real(dp)                                      :: param
+    real                                          :: param
     procedure(transform), pointer,nopass, private :: transform_ptr => null()
     contains
       procedure,public                              :: set_transform
@@ -20,44 +20,44 @@ contains
 !-------------------------------------------------------------------------------------------------!
 ! DATA TRANSFORM FUNCTIONS
 !-------------------------------------------------------------------------------------------------!
-  real(dp) function identity_transform(x, param)  ! Returns the input unchanged
-    real(dp), intent(in) :: x, param
+  real     function identity_transform(x, param)  ! Returns the input unchanged
+    real    , intent(in) :: x, param
     identity_transform = x
   end function identity_transform
 !-------------------------------------------------------------------------------------------------!
-  real(dp) function log10_transform(x, param)
+  real     function log10_transform(x, param)
     implicit none
-    real(dp), intent(in) :: x, param
+    real    , intent(in) :: x, param
     log10_transform = log10(x)
   end function log10_transform
 !-------------------------------------------------------------------------------------------------!
-  real(dp) function ln_transform(x, param)
+  real     function ln_transform(x, param)
     implicit none
-    real(dp), intent(in) :: x, param
+    real    , intent(in) :: x, param
     ln_transform = log(x)
   end function ln_transform
 !-------------------------------------------------------------------------------------------------!
-  real(dp) function sqrt_transform(x, param)
+  real     function sqrt_transform(x, param)
     implicit none
-    real(dp), intent(in) :: x, param
+    real    , intent(in) :: x, param
     sqrt_transform = sqrt(x)
   end function sqrt_transform
 !-------------------------------------------------------------------------------------------------!
-  real(dp) function exp_transform(x, param)
+  real     function exp_transform(x, param)
     implicit none
-    real(dp), intent(in) :: x, param
+    real    , intent(in) :: x, param
     exp_transform = exp(x)
   end function exp_transform
 !-------------------------------------------------------------------------------------------------!
-  real(dp) function inverse_transform(x, param)
+  real     function inverse_transform(x, param)
     implicit none
-    real(dp), intent(in) :: x, param
+    real    , intent(in) :: x, param
     inverse_transform = 1.0 / x
   end function inverse_transform
 !-------------------------------------------------------------------------------------------------!
-  real(dp) function power_transform(x, param)
+  real     function power_transform(x, param)
     implicit none
-    real(dp), intent(in) :: x, param
+    real    , intent(in) :: x, param
     power_transform = x**param
   end function power_transform
 !-------------------------------------------------------------------------------------------------!
@@ -98,7 +98,7 @@ contains
   subroutine apply(this, values)
     implicit none
     class(t_data_transformer), intent(inout) :: this
-    real(dp), intent(inout)                  :: values(:)
+    real    , intent(inout)                  :: values(:)
     integer                                  :: i
     do i=1, size(values)
       values(i) = this%transform_ptr(values(i), this%param)
