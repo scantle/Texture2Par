@@ -83,18 +83,21 @@ module m_datasets
     implicit none
     class(t_dataset),intent(inout)  :: this
     integer, intent(in)             :: cat, class_idx
-    logical                         :: catmask(this%grid%n), na_mask(this%grid%n)
+    !logical                         :: catmask(this%grid%n), na_mask(this%grid%n)
+    logical,allocatable             :: catmask(:), na_mask(:)
     real    ,optional               :: rotmat(:,:) ! Rotation Matrix
     
     call this%grid%burn_tree()  ! Clear out previous tree
+    allocate(catmask(this%grid%n), na_mask(this%grid%n))  ! Avoids stack overflow issue (?)
     catmask = (this%category==cat)
     na_mask = .true.
     ! For dataset, ignore all NA values
     select type(this)
       class is (t_layerdata)
-        na_mask = (this%values(class_idx,1:) > -999.0)
+        na_mask = (this%values(class_idx,1:this%grid%n) > -999.0)
     end select
     call this%grid%build_tree(catmask.and.na_mask, rotmat=rotmat)
+    deallocate(catmask, na_mask)
   
   end subroutine build_tree_by_category
   

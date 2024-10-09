@@ -7,9 +7,10 @@ module m_grid
   
     integer                   :: n
     integer                   :: dim
-    real    , allocatable     :: coords(:,:)    ! xy by n points
-    type(kdtree2),pointer     :: tree           ! Tree for locating model nodes
-    integer, allocatable      :: true_idx(:)    ! Mapping of indices from masked to full dataset
+    real    , allocatable     :: coords(:,:)         ! xy by n points
+    real    , allocatable     :: masked_coords(:,:)  ! xy by n points, subject to a mask (for kdtree)
+    type(kdtree2),pointer     :: tree                ! Tree for locating model nodes
+    integer, allocatable      :: true_idx(:)         ! Mapping of indices from masked to full dataset
     
     contains
       procedure,private        :: initialize
@@ -61,6 +62,7 @@ module m_grid
   
   subroutine build_tree(this, mask, rotmat)
     use m_error_handler, only: error_handler
+    use tools, only: indices_from_mask
     implicit none
     class(t_Grid), intent(inout) :: this
     logical,intent(in),optional  :: mask(this%n)
@@ -71,16 +73,18 @@ module m_grid
     
     if (present(mask)) then
       allocate(this%true_idx(count(mask)))
-      this%true_idx = pack([(j, j = 1, this%n)], mask)
-      this%tree => kdtree2_create(this%coords(:,this%true_idx), success, dim=this%dim, rotmat=rotmat)
+      allocate(this%masked_coords(this%dim, count(mask)))
+      this%true_idx = indices_from_mask(mask)
+      this%masked_coords = this%coords(1:,this%true_idx)  ! Copy subset to prevent pointer to temporary array
+      this%tree => kdtree2_create(this%masked_coords, success, dim=this%dim, rotmat=rotmat)
     else
       this%tree => kdtree2_create(this%coords, success, dim=this%dim, rotmat=rotmat)
       allocate(this%true_idx(this%n))
       this%true_idx = [(j, j = 1, this%n)]
     end if
-    
+  
     if (success==0) call error_handler(9, opt_msg='Could not allocate kdtree - usually caused by not enough data')
-    
+  
   end subroutine build_tree
   
 !-------------------------------------------------------------------------------------------------!
@@ -131,7 +135,6 @@ module m_grid
     allocate(idx(nfound), dis(nfound), res(nfound))
     call kdtree2_r_nearest(this%tree, qpoint, r2, nfound, nfound, res)
     
-    ! Worth getting fancier than copying? Pointers?
     if (allocated(this%true_idx)) then
       ! Map indices back to original dataset
       idx = this%true_idx(res(:)%idx)
@@ -150,6 +153,7 @@ module m_grid
     class(t_Grid), intent(inout)     :: this
     if (associated(this%tree)) deallocate(this%tree)
     if (allocated(this%true_idx)) deallocate(this%true_idx)
+    if (allocated(this%masked_coords)) deallocate(this%masked_coords)
   end subroutine burn_tree
   
 !-------------------------------------------------------------------------------------------------!
@@ -158,9 +162,10 @@ module m_grid
     implicit none
     class(t_Grid), intent(inout) :: this
   
-    if (allocated(this%coords))   deallocate(this%coords)
-    if (allocated(this%true_idx)) deallocate(this%true_idx)
-    if (associated(this%tree))    deallocate(this%tree)
+    if (allocated(this%coords))        deallocate(this%coords)
+    if (allocated(this%masked_coords)) deallocate(this%masked_coords)
+    if (allocated(this%true_idx))      deallocate(this%true_idx)
+    if (associated(this%tree))         deallocate(this%tree)
   
     ! Include any other cleanup tasks here
   end subroutine finalize

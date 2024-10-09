@@ -203,7 +203,33 @@ function tridet(x1, y1, x2, y2, x3, y3) result(det)
 
   det = (x1-x3)*(y2-y3)-(x2-x3)*(y1-y3)
 
+  return
   end function tridet
+  
+!-----------------------------------------------------------------------------!
+  
+function indices_from_mask(mask) result(idx_array)
+    implicit none
+    ! Returns array of length mask==.true. with the indices of true values from
+    ! 1:length(mask) - can be used to subset an array with only the true values
+    logical, intent(in)     :: mask(:)
+    integer, allocatable    :: idx_array(:)
+    integer                 :: count_true, i, idx_counter
+
+    allocate(idx_array(count(mask)))
+
+    ! Fill the result array with indices where mask is true
+    idx_counter = 0
+    do i = 1, size(mask)
+      if (mask(i)) then
+        idx_counter = idx_counter + 1
+        idx_array(idx_counter) = i
+      end if
+    end do
+    
+    return
+end function indices_from_mask
+
 !-----------------------------------------------------------------------------!
   
 end module tools 
