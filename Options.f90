@@ -178,7 +178,7 @@ subroutine read_options(this, reader)
         call error_handler(1,reader%file,"Unknown Option Name: " // trim(id))
     end select
   end do
-  !call random_seed_initialize(this%SEED)
+  call random_seed_initialize(this%SEED)
   ! Handle EOF
     
 end subroutine read_options
