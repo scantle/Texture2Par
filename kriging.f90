@@ -1,5 +1,5 @@
 module m_kriging
-  
+
   use m_interpolator, only: t_interpolator
   use m_weights, only: t_weights
   use m_grid, only: t_grid, create_grid_object
@@ -274,7 +274,7 @@ end subroutine doolittle
     implicit none
     class(t_simpkrige),intent(inout)  :: this
     integer,intent(in)                :: idx, cat
-    real    ,intent(in)               :: p(2)
+    real    ,intent(in)               :: p(:)
     class(t_dataset)                  :: obs_data(:)
     real                              :: weights(:)
     integer, optional                 :: widx(:)              ! idx associated with weights
@@ -342,7 +342,7 @@ end subroutine doolittle
     implicit none
     class(t_ordkrige),intent(inout)  :: this
     integer,intent(in)               :: idx, cat
-    real    ,intent(in)              :: p(2)
+    real    ,intent(in)              :: p(:)
     class(t_dataset)                 :: obs_data(:)
     real                             :: weights(:)
     integer, optional                :: widx(:)              ! idx associated with weights
@@ -420,16 +420,41 @@ end subroutine doolittle
     end if
 
     ! TEMP
-    !open(100, file='WEIGHT_DEBUG.txt', action='WRITE', STATUS='REPLACE')
-    !write(100, *) p
-    !do j=1, this%nsets
-    !  write(100, *) obs_data(j)%grid%coords(1:2,inear(1:usenear(j),j))
-    !end do
-    !!write(100, *) dist
-    !write(100, *) this%w
-    !close(100)
+    !call write_matrix()
+  contains
+    subroutine write_matrix()
+      character(len=20) :: sig
+      character(len=6 ) :: cname(3)=['x', 'y', 'z']
+      integer           :: ifile, k, n
+      write(sig, "(I0)") idx
+      open(newunit=ifile, file='matA_'//trim(sig)//'.dat', status='replace')
+      k = 1
+      do i =1, matsize
+        write(ifile, "(*(ES15.7))") this%matA(k:k+matsize-i)
+        k = k + matsize-i
+      end do
+      close(ifile)
+      open(newunit=ifile, file='rhsB_'//trim(sig)//'.dat', status='replace')
+      do i =1, matsize
+        write(ifile, "(*(ES15.7))") this%rhsB(i)
+      end do
+      close(ifile)
+
+      open(newunit=ifile, file='data_'//trim(sig)//'.csv', status='replace')
+      n = 0
+      write(ifile, '(99(A,:,","))') 'dataset','index', cname(1:this%ndim), 'cov', 'weight'
+      do j=1, this%nsets
+        do k = 1,loc_usenear(j)
+          n = n + 1
+          write(ifile, "(I0,'_',I0,',',I0,*(:,',',ES15.8))") &
+            j,k,inear(k,j),obs_data(j)%grid%coords(:,inear(k,j)),this%rhsB(n),this%w(n)
+        end do
+      end do
+      stop
+    end subroutine write_matrix
 
   end subroutine predict_point_ok
+
 
 !-------------------------------------------------------------------------------------------------!
 

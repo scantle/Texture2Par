@@ -12,6 +12,7 @@ module m_T2P
   use m_sgsim, only: t_sgsim
   use m_categories, only: t_category
   use m_vario, only: t_vgm
+  use m_grid, only: t_grid, create_grid_object
 !-------------------------------------------------------------------------------------------------!
   type t_T2P
     type(t_options)                  :: opt  ! avoid conflict with Fortran intrinsic 'options'
@@ -24,7 +25,7 @@ module m_T2P
     !type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)  ! Moved to interpolator
     type(t_pilotpoints),pointer      :: pilot_points
     type(t_pilotpoints),pointer      :: pilot_points_aquitard
-    
+
     ! Counters
     integer                          :: npar        ! Kh, Kv, Ss, Sy
     integer                          :: nclasses    ! Number of data classes
@@ -36,7 +37,7 @@ module m_T2P
     integer                          :: ndatafiles  ! Number of data files to read in
     integer                          :: nhsus       ! Number of Hydrostratigraphic Units (HSUs)
                                                     ! (Formerly "geologic zones")
-    
+
     ! Trackers
     type(t_vstringlist),pointer      :: class_names           ! Data class names
     type(t_vstringlist)              :: parnames              ! Names of output parameters calculated
@@ -47,7 +48,7 @@ module m_T2P
     type(t_vstringlist)              :: dataset_trans         ! dataset transformations (same order as filenames)
     type(t_vstringlist)              :: dataset_trans_params  ! dataset transformation parameters (same order as filenames) (unimplemented)
     type(t_category),pointer         :: dataset_ppzones       ! Pilot point zone dataset grid arrays & tracking (when INTERP_ORDER=AFTER)
-    
+
     ! Read trackers - used to check if a block has been read (and make sure it exists)
     logical                          :: has_opt
     logical                          :: has_classes
@@ -59,11 +60,11 @@ module m_T2P
     logical                          :: has_pplocs_aquitards
     logical                          :: has_pp
     logical                          :: has_datafiles
-    
+
     ! Groups (HSUs, PP Zones)
     logical                          :: has_hsus
     logical                          :: has_ppzones
-  
+
   contains
     ! Setup procedures
     procedure,public   :: initialize
@@ -78,13 +79,14 @@ module m_T2P
     !procedure,private  :: check_pp_zone_layertype_assignments
     procedure,private  :: nvario_estimator
     procedure,private  :: no_covariates
-    
+
     ! Main Procedures
     procedure,public   :: predict
     procedure,private  :: interpolate_pp
     procedure,private  :: interpolate_model
+    procedure,private  :: interpolate_prepare
     procedure,private  :: calc_block_parameters
-    
+
     ! I/O Procedures
     procedure,public   :: write_output
     procedure,public   :: write_dataset_files
@@ -92,7 +94,7 @@ module m_T2P
     procedure,public   :: write_dataset_file_aqtard
     procedure,public,nopass   :: write_status
     procedure,public,nopass   :: write_minor_status
-    
+
     ! Access procedures
     procedure, public  :: get_class_id
     !procedure, public  :: get_covariate_id
@@ -102,21 +104,21 @@ module m_T2P
     procedure, public  :: get_connection_list
     procedure, public  :: get_dataset_idx_list
     procedure, public  :: get_dataval_idx_list
-  
+
   end type t_T2P
 !-------------------------------------------------------------------------------------------------!
-  
+
   contains
 
 !-------------------------------------------------------------------------------------------------!
 ! SETUP PROCEDURES
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine initialize(this)
     use m_vstringlist, only: vstrlist_new, vstrlist_length
     implicit none
     class(t_T2P), intent(inout)      :: this
-    
+
     ! Initialize Read Trackers
     this%has_opt          = .false.
     this%has_classes      = .false.
@@ -131,12 +133,12 @@ module m_T2P
     ! And group trackers...
     this%has_hsus         = .false.
     this%has_ppzones      = .false.
-    
+
     ! Initialize Elements
     call this%opt%initialize()
     call vstrlist_new (this%dataset_files)
     call vstrlist_new (this%dataset_trans)
-    
+
     ! Initialize Aquifer Parameter list - MUST BE IN CAPS
     call vstrlist_new(this%parnames)
     call vstrlist_append (this%parnames, "KH" )
@@ -144,30 +146,30 @@ module m_T2P
     call vstrlist_append (this%parnames, "SS" )
     call vstrlist_append (this%parnames, "SY" )
     this%npar = vstrlist_length(this%parnames)
-    
+
     ! Intialize counters (useful to determine when a block is missing or has not been read yet)
     this%nclasses = 0
     this%nvario   = 0
     this%nsecondary = 0
-    
+
     ! Set class defaults
     this%nhsus    = 1
-    
+
     ! Setup warnings
     call vstrlist_new (warnings)  ! belongs to m_error_handler
-    
+
     ! Open the overwrite unit
     open(6, carriagecontrol='fortran')
-    
+
   end subroutine initialize
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine process_options(this)
     ! Hook for after options are read
     implicit none
     class(t_T2P), intent(inout)   :: this
-    
+
     ! Handle Interpolation Method
     select case (this%opt%INTERP_METHOD)
       case("OK")
@@ -189,67 +191,67 @@ module m_T2P
     end select
     call this%interp_data%initialize()  ! Todo - custom parameters?
     call this%interp_pp%initialize()    ! Todo - custom parameters?
-    
+
     ! Enforce if ONLY_TEXTURE
     if (this%opt%ONLY_TEXTURE) then
       this%opt%WRITE_NODE_FILES = .true.
       this%opt%WRITE_NONE = .true.
     end if
-    
+
     ! Invalid combinations...
     if (this%opt%INTERP_ORDER=="AFTER") then
       if (this%opt%ONLY_TEXTURE) call error_handler(1,opt_msg='ONLY_TEXTURE option is only valid for INTERP_ORDER=="BEFORE"')
       if (this%opt%INFER_LAST_CLASS) call error_handler(1,opt_msg='Cannot use INFER_LAST_CLASS with INTERP_ORDER=="AFTER"')
     end if
-  
+
   end subroutine process_options
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine setup_flow_model(this)
     implicit none
     class(t_T2P), intent(inout)   :: this
-    
+
     if (len_trim(this%fmodel%sim_file)>0.or.len_trim(this%fmodel%grd_file)>0) then
       this%has_fmodel = .true.
     end if
     if (len_trim(this%fmodel%hsu_file)>0   )  this%has_hsus = .true.
     if (len_trim(this%fmodel%ppzone_file)>0)  this%has_ppzones = .true.
-    
+
   end subroutine setup_flow_model
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine setup_data_classes(this, nclasses, class_names)
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer,intent(in)            :: nclasses
-    type(t_vstringlist),pointer   :: class_names   
+    type(t_vstringlist),pointer   :: class_names
     integer                       :: i,n
-    
+
     this%nclasses = nclasses
     this%ntexclasses = nclasses
     this%class_names => class_names
     this%ndatasets = 1
-    
+
     ! Allocate
     allocate(this%nsecondary_by_id(nclasses))
     this%nsecondary_by_id(1:) = 0
-    
+
     call this%nvario_estimator()
-    
+
     this%has_classes = .true.
   end subroutine setup_data_classes
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine setup_covariates(this, nsecondary, connections)
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer,intent(in)            :: nsecondary
     type(t_vstringlist),pointer   :: covnames
     integer,pointer               :: connections(:,:)
-    
+
     this%nsecondary   =  nsecondary
     this%nclasses     = this%nclasses + nsecondary
     this%ndatasets    = 1 + this%nsecondary
@@ -258,25 +260,25 @@ module m_T2P
     ! Now we can setup the dataset-class connection
     allocate(this%class_dataset(this%nclasses))
     this%class_dataset(1:) = 0
-    
+
     call this%nvario_estimator()
-    
+
     if (maxval(this%nsecondary_by_id) > 0) then
       this%has_covar = .true.
     end if
   end subroutine setup_covariates
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine setup_dataset_ppzones(this)
     ! Some copying b/c we need PPZONE data at dataset points when opt%INTERP_ORDER=="AFTER"
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer :: nlayers, nnodes, i, j, idx
-    
+
     ! Initialize...
     call this%dataset_ppzones%initialize(this%fmodel%ppzones%narr, this%fmodel%nlayers, this%fmodel%nnodes(1), 0)
-    
+
     ! Copy over all categories
     this%dataset_ppzones%lay2arr = this%fmodel%ppzones%lay2arr
     this%dataset_ppzones%from_file = this%fmodel%ppzones%from_file
@@ -286,11 +288,11 @@ module m_T2P
         call this%dataset_ppzones%add_category_int(this%fmodel%ppzones%catlist(j, i), i, idx)
       end do
     end do
-  
+
   end subroutine setup_dataset_ppzones
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine nvario_estimator(this)
     ! Need x(x-1)/2 variograms per class where x is classes involved (prime + secondary)
     ! Called during setup_data_classes AND setup_covariates as more info comes in
@@ -298,20 +300,20 @@ module m_T2P
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer                       :: n, m, i, j, x, vidx
-    
+
     ! Get problem size
     if (this%opt%INTERP_ORDER=="BEFORE") then
       n = this%ntexclasses
-      m = this%nclasses 
+      m = this%nclasses
     else ! this%opt%INTERP_ORDER=="AFTER")
       n = this%npar
       m = this%npar + this%nsecondary
     end if
-    
+
     ! Defaults
     this%nprimary = n
     this%nvario = m
-    
+
     ! Allocate variogram matrix for data
     ! TODO move to kriging class, call directly using p%
     ! (Requires lots of revising, t2p is setup to manage all of the connections/nvario stuff and only later pass it)
@@ -320,11 +322,11 @@ module m_T2P
         if (allocated(p%global_vario_idx)) deallocate(p%global_vario_idx)
         allocate(p%global_vario_idx(m,m))
         p%global_vario_idx = 0
-    
+
         do i=1, this%nvario
           p%global_vario_idx(i,i) = i
         end do
-    
+
         ! Subtract one if INFER because we don't krige - last class is the remainder of the other class(es)
         if (this%opt%INFER_LAST_CLASS.and.this%opt%INTERP_ORDER=="BEFORE") then
           p%global_vario_idx(n,n) = 0
@@ -332,7 +334,7 @@ module m_T2P
           this%nprimary = this%nprimary - 1
           this%nvario = this%nvario - 1
         end if
-      
+
         if (ASSOCIATED(this%connections)) then
           vidx = this%nvario
           ! Loop over connections
@@ -341,7 +343,7 @@ module m_T2P
             do j=1, this%nsecondary_by_id(i)
               vidx = vidx + 1
               p%global_vario_idx(i,this%connections(j+1,i)) = vidx
-              p%global_vario_idx(this%connections(j+1,i),i) = vidx ! symmetry          
+              p%global_vario_idx(this%connections(j+1,i),i) = vidx ! symmetry
             end do
           end do
           this%nvario = vidx
@@ -349,11 +351,11 @@ module m_T2P
       class default
         if (m /= n) call error_handler(4,opt_msg="Covariates are not supported for non-kriging options.")
     end select
-    
+
     ! Add Pilot Point variogram
     if (.not. this%opt%ONLY_TEXTURE) then
-      this%nvario = this%nvario + 1  
-    
+      this%nvario = this%nvario + 1
+
       ! Allocate variogram matrix for pp
       select type(p => this%interp_pp)
         class is(t_krige)
@@ -361,19 +363,19 @@ module m_T2P
           p%global_vario_idx(1,1) = 1  ! Is passed only this variogram
       end select
     end if
-  
+
   end subroutine nvario_estimator
-  
+
 !-------------------------------------------------------------------------------------------------!
   subroutine no_covariates(this)
   ! Run during check_major_inputs (currently before datasets are read)
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer                       :: i
-    
+
     allocate(this%connections(1,this%nprimary))
     this%nsecondary_by_id(:) = 0
-    
+
     ! Setup matrix, values indicate variogram ID. Can start off assuming each class has a variogram (fill diagonal)
     this%connections = 0
     do i = 1, this%nprimary
@@ -383,12 +385,12 @@ module m_T2P
     ! Now we can setup the dataset-class connection
     allocate(this%class_dataset(this%nclasses))
     this%class_dataset(1:) = 0
-    
+
     !call this%nvario_estimator()
-    
+
   end subroutine no_covariates
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine setup_variograms(this, variograms, nnear, nstruct)
     implicit none
     class(t_T2P), intent(inout)   :: this
@@ -396,9 +398,9 @@ module m_T2P
     type(t_vgm),pointer           :: variograms(:,:)
     class(*),pointer              :: p
     integer                       :: nsets
-    
+
     nsets = this%nprimary+this%nsecondary
-    
+
     ! Place directly in the kriging interpolator objects
     select type(p => this%interp_data)
       class is(t_krige)
@@ -419,13 +421,13 @@ module m_T2P
           p%nnear      => nnear(this%nvario:this%nvario)
       end select
     end if
-    
+
     this%has_interp = .true.
     this%has_vario  = .true.
   end subroutine setup_variograms
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine setup_pplocs(this, pp_id, nzones, zone_tracker, p)
     implicit none
     class(t_T2P), intent(inout)   :: this
@@ -433,37 +435,37 @@ module m_T2P
     integer, intent(in)           :: nzones, zone_tracker(:)
     integer                       :: i
     type(t_pilotpoints),pointer   :: p
-    
+
     ! Called for both aquifer & aquitard pilot points
     ! p is a pointer to either the aquifer or aquitard pilot point t2p objects
-    
+
     p%pp_id => pp_id
     allocate(p%zonelist(nzones))
-    
+
     p%nppzones = nzones
     do i=1, nzones
       p%zonelist(i) = zone_tracker(i)
     end do
-    
+
     ! But at some point we have to know which it is!
     if (associated(p, this%pilot_points)) then
       this%has_pplocs = .true.
     else if (associated(p, this%pilot_points_aquitard)) then
       this%has_pplocs_aquitards = .true.
     end if
-  
+
   end subroutine setup_pplocs
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine check_major_inputs(this)
     ! Run in main Texture2Par file, currently before datasets are read but after fmodel/categories
     implicit none
     class(t_T2P), intent(inout)   :: this
-    
+
     ! A real simple one - you can't just have one texture class (what about ONLY_TEXTURE?)
     if (this%ntexclasses < 2) call error_handler(1,opt_msg="Must have at least 2 texture classes")
-    
+
     ! Do we have everything we need to run the model?
     if(.not. this%has_opt      ) call error_handler(1,opt_msg="Missing Required OPTIONS Block")
     if(.not. this%has_classes  ) call error_handler(1,opt_msg="Missing Required CLASSES Block")
@@ -477,7 +479,7 @@ module m_T2P
         call error_handler(1,opt_msg="Missing Required Interpolation Method Parameters")
       end if
     end if
-    
+
     if (.not. this%opt%ONLY_TEXTURE) then  ! Pilot point info
       if(.not. this%has_pplocs) call error_handler(1,opt_msg="Missing Required PP_LOCS Block")
       if(.not. this%has_pp    ) call error_handler(1,opt_msg="Missing Required PP_PARAMETERS Block")
@@ -486,22 +488,22 @@ module m_T2P
       if (this%pilot_points%nppzones /= this%fmodel%get_active_ppzones()) then
         call error_handler(1,opt_msg="Mismatch between Pilot Point Zones assigned to Pilot Points vs Model Grid")
       end if
-    
+
       ! Make sure pilot points and flow model agree on existance of aquitards
       ! TODO - more robust? Nothing checks to ensure values at this points
       if (this%has_pplocs_aquitards .neqv. this%fmodel%has_aquitards) then
         call error_handler(1,opt_msg="Mismatch in aquitard existance between Pilot Points and Model")
       end if
     end if
-    
+
   end subroutine check_major_inputs
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! MAIN PROCEDURES
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine predict(this)
     use m_grid, only: t_grid
     implicit none
@@ -510,10 +512,10 @@ module m_T2P
     type(t_category),pointer      :: cat_to                                     ! Categories the pilot points are interpolated using
     type(t_pilotpoints)           :: pp_intermediate(this%fmodel%ppzones%narr)  ! The pilot point data interpolated to pp_to (by ppzone array)
     integer                       :: i,j
-    
+
     ! Allocate the final parameter objects
     allocate(this%par(this%fmodel%nlayers))
-    
+
     if (this%opt%ONLY_TEXTURE) then
       ! If just texture, our jobs is very easy
       allocate(this%dset_intermediate(1,this%fmodel%nlayers))
@@ -521,7 +523,7 @@ module m_T2P
       call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
       RETURN
     end if
-    
+
     ! Assign PPTO_grid (data or fmodel)
     if (this%opt%INTERP_ORDER=="BEFORE") then
       call this%write_status("Interpolating Pilot Point Parameters to "//trim(this%fmodel%name)//" Grid")
@@ -539,19 +541,19 @@ module m_T2P
       pp_to => this%datasets(1,1)%grid
       cat_to => this%dataset_ppzones
     end if
-  
+
     ! Interpolate PP to PPTO_grid
     call this%interpolate_pp(pp_to, cat_to, pp_intermediate)
-  
+
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! Krige textures to fmodel grid
       call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid")
       call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
-      ! Write weights 
+      ! Write weights
       ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
       call this%write_status("Calculating Hydraulic Parameters")
       call this%calc_block_parameters(pp_intermediate, this%dset_intermediate(1,1:), this%par)
-      
+
     else if (this%opt%INTERP_ORDER=="AFTER") then
       ! Calc parameters at data locations
     call this%write_status("Calculating Hydraulic Parameters")
@@ -562,10 +564,10 @@ module m_T2P
       ! Write weights
     end if
     call this%write_status("Calculations finished!")
-    
+
   end subroutine predict
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine interpolate_pp(this, to_grid, to_categories, results)
     use m_grid, only: t_grid
     use m_weights, only: t_weights
@@ -580,26 +582,26 @@ module m_T2P
     integer                         :: i,j,k
     integer                         :: class_idx(1)
     type(t_pilotpoints)             :: obs_data(1)  ! a little trick to appease calc_weights
-    
+
     class_idx(1) = 1
-    
+
     ! Go by pilot point zone arrays (up to nlayers)
     do k=1, this%fmodel%ppzones%narr
       call this%write_minor_status('- Array:',k)
-      
+
       ! Aquifer or Aquitard array?
       if (.not. this%fmodel%pparr_aqtard(k)) then
         obs_data(1) = this%pilot_points
       else
         obs_data(1) = this%pilot_points_aquitard
       end if
-    
+
       ! Initialize weights & results for this array
       call weights%initialize(obs_data(1)%grid%n, to_grid%n)  !input_n, output_n
       call results(k)%initialize(to_grid%n, to_grid) ! Copies grid over
       allocate(results(k)%values(to_grid%n, size(obs_data(1)%values,2), this%ntexclasses))
       results(k)%values = NODATA
-    
+
       ! Check if we have precalculated weights for the pilot point interpolation
       if (this%opt%READ_PP_WEIGHTS) then
         ! TODO READ
@@ -612,12 +614,12 @@ module m_T2P
                                          to_categories%array(:,k),&
                                          this%opt)
       end if
-    
+
       ! Write PP weights
       if (this%opt%WRITE_PP_WEIGHTS) then
         ! TODO WRITE
       end if
-    
+
       ! Apply weights and create results
       if (.not. this%fmodel%pparr_aqtard(k)) then
         do i=1, this%ntexclasses
@@ -635,28 +637,29 @@ module m_T2P
       ! reset weights
       weights%values = 0.0
     end do
-    
+
   end subroutine interpolate_pp
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine interpolate_model(this, obs, dout)
     use m_grid, only: t_grid
     use m_weights, only: t_weights
-    
+
     implicit none
     class(t_T2P), intent(inout)   :: this
     class(t_layerdata)            :: obs(:,:)  ! (nprimary, nlayers)
     type(t_layerdata)             :: dout(this%fmodel%nlayers)
-    integer                       :: k, i, j, x, k_active
+    integer                       :: k, i, j, x, k_active, obslayer
     integer                       :: wstart, wend
     integer,allocatable           :: class_idx(:), dataset_idx(:), dataval_idx(:)
     real                          :: v_adjust
+    type(t_grid),pointer          :: modelgrid
     !type(t_weights)               :: weights
-    
+
     ! Loop over model layers
     do k=1, this%fmodel%nlayers
-          
+
       ! Initialize results
       if (this%opt%INFER_LAST_CLASS) then
         call dout(k)%initialize(this%fmodel%grid(1)%n, this%nprimary+1, default_value=NODATA)
@@ -664,14 +667,15 @@ module m_T2P
         call dout(k)%initialize(this%fmodel%grid(1)%n, this%nprimary, default_value=NODATA)
       end if
       !dout(k)%values = 0.0
-      
+
       ! Check if layer is active (generally IWFM: means it has thickness)
       if (.not. this%fmodel%is_active_layer(k)) cycle
+      call this%interpolate_prepare(k, obslayer, modelgrid)
       call this%write_minor_status('- Layer:',this%fmodel%get_layer_id(k))
-    
+
       ! Loop over primary classes
       do i=1, this%nprimary
-    
+
         ! Check if we have precalculated weights for the model grid interpolation
         if (this%opt%READ_GRID_WEIGHTS) then
           ! TODO READ
@@ -680,18 +684,18 @@ module m_T2P
           class_idx   = this%get_connection_list(i)           ! Classes involved
           dataset_idx = this%get_dataset_idx_list(class_idx)  ! What datasets those classes are in
           dataval_idx = this%get_dataval_idx_list(class_idx)  ! What index are associated with those values
-          
+
           x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
-          call this%interp_data%calc(obs(dataset_idx,k), &
+          call this%interp_data%calc(obs(dataset_idx,obslayer), &
                                              class_idx,  &
                                              dataval_idx,&
-                                             this%fmodel%grid(1),  &
+                                             modelgrid,  &
                                              dout(k)%values(i,1:), &
                                              this%fmodel%hsus%catlist(1:this%fmodel%hsus%arrncat(x),x), &
                                              this%fmodel%hsus%array(1:,x),&
                                              this%opt)
         end if
-    
+
         ! Write weights
         if (this%opt%WRITE_GRID_WEIGHTS) then
           ! TODO WRITE
@@ -704,11 +708,30 @@ module m_T2P
       ! If we need to, infer the last class
       if (this%opt%INFER_LAST_CLASS) dout(k)%values(this%nprimary+1,1:) = 1.0 - sum(dout(k)%values(1:this%nprimary,1:), dim=1)
     end do
-    
+
   end subroutine interpolate_model
-  
+
+  subroutine interpolate_prepare(this, k, obslayer, modelgrid)
+    ! MOU: prepare data for interpolation for layer `k`
+    class(t_T2P), intent(inout)   :: this
+    integer, intent(in )          :: k
+    integer, intent(out)          :: obslayer
+    type(t_grid),pointer          :: modelgrid
+
+    if (this%opt%INTERP_DIM==3) then
+      obslayer = 1
+      if (k==1) then
+        modelgrid => create_grid_object(3, this%fmodel%grid(1)%n)
+        modelgrid%coords(1:2,:) = this%fmodel%grid(1)%coords(1:2,:)
+      end if
+      modelgrid%coords(3,:) = (this%fmodel%elev(:, k-1) + this%fmodel%elev(:, k)) * 0.5 ! set the Z coordintes at node center
+    else
+      obslayer = k
+      if (k==1) modelgrid => this%fmodel%grid(1)
+    end if
+  end subroutine
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine calc_block_parameters(this, pp_obj, tex_obs, par_out)
     implicit none
     class(t_T2P), intent(inout)    :: this
@@ -717,28 +740,28 @@ module m_T2P
     type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !values([Kh, Kv, Ss, Sy], npoints)
     integer                        :: i, k, r
     real    ,allocatable           :: depths(:),KhD(:,:),KvD(:,:)
-    
+
     ! Loop over layers
     do k=1, this%fmodel%nlayers
-    
+
       ! Initialize Par
       call par_out(k)%initialize(this%fmodel%nnodes(k), this%npar, default_value=NODATA)
-      
+
       ! Check if layer is active (generally IWFM: means it has thickness)
       if (this%fmodel%is_active_layer(k)==.false.) cycle
       par_out(k)%grid => this%fmodel%grid(this%fmodel%lay2grid(k))
       call this%write_minor_status('- Layer:',this%fmodel%get_layer_id(k))
-      
+
       ! Allocate arrays
       allocate(KhD(this%fmodel%nnodes(k), this%ntexclasses))
       allocate(KvD(this%fmodel%nnodes(k), this%ntexclasses))
-    
+
       ! Get node midpoint depths
       depths = this%fmodel%get_midpoint_depths(k)
-      
+
       ! Get pilot point array  (point, parameter, class_id)
       r = this%fmodel%ppzones%lay2arr(k)
-      
+
       do i=1, this%fmodel%nnodes(k)
         ! Skip if any texture class value is missing/invalid
         if (any(tex_obs(k)%values(:,i) < 0.0)) cycle
@@ -757,29 +780,29 @@ module m_T2P
         ! Sy
         par_out(k)%values(4,i) = DOT_PRODUCT(pp_obj(r)%values(i,4,:)**pp_obj(r)%values(i, 9, :), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, 9, 1))
       end do
-      
+
       deallocate(KhD, KvD)
-      
+
       ! To match T2P 1 (move somewhere else? Do for all layers?)
       if (this%fmodel%lay_aqtard(k)) then
         where ((this%fmodel%elev(:,k-1) - this%fmodel%elev(:,k)) < 1e-6)
           par_out(k)%values(2,:) = 0.0
         end where
       end if
-    
+
     end do
-  
+
   end subroutine calc_block_parameters
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_output(this)
     implicit none
     class(t_T2P), intent(inout)   :: this
     type(t_layerdata),pointer     :: p(:)
-    
+
     call this%write_status("Writing output files")
-    
+
     ! Write parameters by node/cell, and if texture was kriged, textures by node/cell
     if (.not. (this%opt%WRITE_NODE_FILES.and.this%opt%ONLY_TEXTURE)) then
       call this%write_minor_status('Writing Parameter Node Files')
@@ -790,24 +813,24 @@ module m_T2P
       p=>this%dset_intermediate(1,:)
       call this%fmodel%write_node_files(p, vstrlist_range(this%class_names, 1, this%ntexclasses))
     end if
-    
+
     ! Write the observed datasets that were averaged by layer
     if (this%opt%WRITE_DATASET_FILES) then
       call this%write_minor_status('Writing Layer-Averaged Dataset File(s)')
       call this%write_dataset_files()
     end if
-    
+
     if (.not. this%opt%WRITE_NONE) then
       ! Write out flow model input files
       call this%write_minor_status("Writing "//trim(this%fmodel%name)//" Input Files")
       call this%fmodel%write_fmodel_input(this%par)
     end if
-    
+
     call this%write_minor_status('Done Writing.')
   end subroutine write_output
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_dataset_files(this)
     use m_file_io, only: item2char
     implicit none
@@ -815,7 +838,7 @@ module m_T2P
     integer                       :: i
     character(100)                :: fname, temp
     type(t_layerdata),pointer     :: p(:)
-    
+
     do i=1, this%get_active_texture_classes()
       p=>this%datasets(1,:)
       call item2char(this%class_names, i, temp)
@@ -826,18 +849,18 @@ module m_T2P
         call this%write_dataset_file_aqtard(fname, p, i)
       end if
     end do
-    
+
     do i=1, this%nsecondary
       call item2char(this%class_names, this%ntexclasses + i, temp)
       write(fname,'(3a)') 't2p_', trim(temp), '_layavg.out'
       p=>this%datasets(i,:)
       call this%write_dataset_file(fname, p,1)
     end do
-  
+
   end subroutine write_dataset_files
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_dataset_file(this, fname, dataset, idx)
     use m_flow_model, only: t_flow_model,t_modflow_model, t_iwfm_model
     use m_file_io, only: t_file_writer, open_file_writer
@@ -851,7 +874,7 @@ module m_T2P
     integer                       :: rowcol(2,this%fmodel%nnodes(1))
     character(60)                 :: fmt(2)
     type(t_file_writer),pointer   :: fwrite
-    
+
     dim     = 1   ! Number of indices needed to express location, e.g. node # vs row col
     kstart  = 1   ! Start layer
     kintrvl = 1   ! Interval of layers
@@ -865,13 +888,13 @@ module m_T2P
         kstart  = 2  ! Ignore aquitards
         kintrvl = 2
     end select
-    
+
     write(fmt(1),'("(1a10,",i1,"a8,",i5,"i14)")') dim, this%fmodel%nlayers/kintrvl
     write(fmt(2),'("(1i10,",i1,"i8,",i5,"es14.5)")') dim, this%fmodel%nlayers/kintrvl
-    
+
     fwrite => open_file_writer(fname)
     unit = fwrite%unit
-    
+
     ! Header
     if (dim==1) then
       ! Header
@@ -890,11 +913,11 @@ module m_T2P
     end if
 
     call fwrite%close_file()
-  
+
   end subroutine write_dataset_file
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_dataset_file_aqtard(this, fname, dataset, idx)
     use m_flow_model, only: t_flow_model,t_modflow_model, t_iwfm_model
     use m_file_io, only: t_file_writer, open_file_writer
@@ -910,7 +933,7 @@ module m_T2P
     integer                       :: rowcol(2,this%fmodel%nnodes(1))
     character(60)                 :: fmt(2)
     type(t_file_writer),pointer   :: fwrite
-    
+
     dim     = 1   ! Number of indices needed to express location, e.g. node # vs row col
     kstart  = 1   ! Start layer
     kintrvl = 1   ! Interval of layers
@@ -924,13 +947,13 @@ module m_T2P
         kstart  = 1  ! Only aquitards
         kintrvl = 2
     end select
-    
+
     write(fmt(1),'("(1a10,",i1,"a8,",i5,"i14)")') dim, this%fmodel%nlayers/kintrvl
     write(fmt(2),'("(1i10,",i1,"i8,",i5,"es14.5)")') dim, this%fmodel%nlayers/kintrvl
-    
+
     fwrite => open_file_writer(fname)
     unit = fwrite%unit
-    
+
     ! Header
     if (dim==1) then
       ! Header
@@ -949,40 +972,40 @@ module m_T2P
     end if
 
     call fwrite%close_file()
-  
+
   end subroutine write_dataset_file_aqtard
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_status(line, blank_start, blank_end)
     use m_global, only: log
     implicit none
     character(len=*)                 :: line
     integer,intent(inout),optional   :: blank_start, blank_end
     integer                          :: i
-    
+
     ! To log
     call log%write_line(line, blank_start, blank_end)
-    
+
     ! To screen
     if (present(blank_start)) then
       do i=1, blank_start
         write(*,*)
       end do
     end if
-    
+
     write(*,'(2x,a)') line
-    
+
     if (present(blank_end)) then
       do i=1, blank_end
         write(*,*)
       end do
     end if
-    
+
   end subroutine write_status
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_minor_status(line, value)
       use m_global, only: log
     implicit none
@@ -995,21 +1018,21 @@ module m_T2P
     else
       temp = ''
     end if
-    
+
     write(line_out,'(2x,a98)') line//' '//temp
-    
+
     ! To log
     call log%write_line(line_out)
-    
+
     ! To Screen (with overwrite)
     write(6,'("+",2x,a100)') line_out
-  
+
   end subroutine write_minor_status
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! ACCESS PROCEDURES
 !-------------------------------------------------------------------------------------------------!
-  
+
   function get_class_id(this, string, adjust_for_infer) result (id)
     ! Returns zero if not found
     implicit none
@@ -1026,7 +1049,7 @@ module m_T2P
   end function get_class_id
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   function get_parameter_id(this, string) result (id)
     ! Returns zero if not found
     implicit none
@@ -1038,44 +1061,44 @@ module m_T2P
   end function get_parameter_id
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   function get_primary_id(this, string) result(prime_id)
     ! Returns zero if not found
     implicit none
     class(t_T2P), intent(inout)   :: this
     type(t_vstring),intent(in)    :: string
     integer                       :: prime_id
-    
+
     if (this%opt%INTERP_ORDER=="BEFORE") then
       prime_id = this%get_class_id(string, adjust_for_infer=.true.)
     else ! this%opt%INTERP_ORDER=="AFTER")
       prime_id = this%get_parameter_id(string)
     end if
-  
+
   end function get_primary_id
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function get_connection_list(this,prime) result(connlist)
     implicit none
     class(t_T2P)            :: this
     integer,intent(in)      :: prime
     integer,allocatable     :: connlist(:)
-    
+
     if (allocated(connlist)) deallocate(connlist)
     allocate(connlist(this%nsecondary_by_id(prime)))
-    connlist = this%connections(1:1+this%nsecondary_by_id(prime),prime) 
+    connlist = this%connections(1:1+this%nsecondary_by_id(prime),prime)
     return
   end function
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   function get_dataset_idx_list(this,class_ids) result(dataset_idx)
     implicit none
     class(t_T2P)            :: this
     integer,intent(in)      :: class_ids(:)
     integer,allocatable     :: dataset_idx(:)
-    
+
     if (allocated(dataset_idx)) deallocate(dataset_idx)
     allocate(dataset_idx(size(class_ids)))
     dataset_idx(:) = this%class_dataset(class_ids)
@@ -1083,23 +1106,23 @@ module m_T2P
   end function
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   function get_dataval_idx_list(this, class_ids) result (dataval_idx)
     implicit none
     class(t_T2P)            :: this
     integer,intent(in)      :: class_ids(:)
     integer,allocatable     :: dataval_idx(:)
     integer                 :: nactive
-    
+
     if (allocated(dataval_idx)) deallocate(dataval_idx)
     nactive = this%get_active_texture_classes()
     dataval_idx = class_ids
     where (dataval_idx>nactive) dataval_idx = 1  ! All covariates use idx=1 for values
-    
+
   end function get_dataval_idx_list
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function get_active_texture_classes(this) result(n)
     implicit none
     class(t_T2P)            :: this
@@ -1110,10 +1133,10 @@ module m_T2P
   end function get_active_texture_classes
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine finalize(this)
     implicit none
-    class(t_T2P)            :: this  
+    class(t_T2P)            :: this
     ! Main data storage
     if(associated(this%fmodel               )) deallocate(this%fmodel               )
     if(associated(this%interp_data          )) deallocate(this%interp_data          )
@@ -1123,17 +1146,17 @@ module m_T2P
     if(associated(this%par                  )) deallocate(this%par                  )
     if(associated(this%pilot_points         )) deallocate(this%pilot_points         )
     if(associated(this%pilot_points_aquitard)) deallocate(this%pilot_points_aquitard)
-  
+
     ! Trackers
     if(allocated(this%class_dataset    )) deallocate(this%class_dataset   )
     if(associated(this%class_names     )) deallocate(this%class_names     )
     if(associated(this%nsecondary_by_id)) deallocate(this%nsecondary_by_id)
     if(associated(this%connections     )) deallocate(this%connections     )
     if(associated(this%dataset_ppzones )) deallocate(this%dataset_ppzones )
-  
+
     ! close overwrite unit
     close(6)
-  
+
   end subroutine finalize
 !-------------------------------------------------------------------------------------------------!
 end module m_T2P

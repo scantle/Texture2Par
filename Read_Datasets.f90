@@ -11,7 +11,7 @@ module m_read_datasets
   implicit none
 
   type(t_file_reader), pointer :: reader
-  
+
   contains
 
 !-------------------------------------------------------------------------------------------------!
@@ -26,13 +26,13 @@ module m_read_datasets
     integer,allocatable           :: cids(:), all_count(:)
     real                          :: x, y, z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
     real    ,allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:)
-    real    ,allocatable          :: all_sum(:)
+    real    ,allocatable          :: all_sum(:), all_depth(:)
     type(t_grid),pointer          :: grid
     type(t_data_transformer)      :: data_transformer
-    
+
     ! Allocate datasets (is this the right place for this to happen?)
     allocate(t2p%datasets(t2p%ndatasets, t2p%fmodel%nlayers))
-    
+
     ! Setup for HSUs - if a HSU file was given/read, then they are expected in the dataset files
     ! Should we skip if ncat is 1???
     if (t2p%fmodel%hsus%from_file) then
@@ -40,62 +40,85 @@ module m_read_datasets
     else
       ncats = 0
     end if
-    
+
     ! Loop over files
     do i=1, t2p%ndatafiles
       call item2char(t2p%dataset_files, i, file)
       reader => open_file_reader(file)
-      
+
       ! Setup data transformer based on information passed to main input file
       ! TODO implement additional parameter(s)
       call data_transformer%set_transform(vstrlist_index(t2p%dataset_trans,i))
-      
+
       ! Read in header
       call reader%next_item(eof, strings)
       call process_header(t2p, file, strings, nsets, didx, cids)
-      
+
       ! Allocate for reading
-      allocate(wvalues      (nsets), &
-               all_count    (nsets), &
-               all_sum      (nsets), &
-              total_thick   (nsets,t2p%fmodel%nlayers), &
-              wv_accumulator(nsets,t2p%fmodel%nlayers), &
-              hsus(ncats))
+      allocate(wvalues      (nsets))
+      allocate(all_count    (nsets))
+      allocate(all_sum      (nsets))
+      allocate(all_depth    (nsets))
+      allocate(total_thick   (nsets,t2p%fmodel%nlayers))
+      allocate(wv_accumulator(nsets,t2p%fmodel%nlayers))
+      allocate(hsus(ncats))
       if (allocated(local_elevs)==.false.) allocate(local_elevs(0:t2p%fmodel%nlayers))
       all_count = 0
       all_sum = 0
-      
+      all_depth = 0
+
       ! Get data length (not file length, since we've gone past the header)
       nlines = reader%get_data_len(rewind_to_last_line=.true.)
       ! Get npoints
       !backspace(reader%unit)  ! EOF
       !backspace(reader%unit)  ! Last line of data
       call reader%next_item(eof, strings)
-      npoints = item2int(strings,2)  ! Reasonable assumption? 
-      ! Allocate shared grid
-      grid => create_grid_object(2, npoints)
-      ! Allocate dataset(s) for all layers, set default value
-      do k=1, t2p%fmodel%nlayers
-        call t2p%datasets(didx,k)%initialize(npoints, nsets)
-        t2p%datasets(didx,k)%values = NODATA
-        t2p%datasets(didx,k)%grid => grid
-        t2p%datasets(didx,k)%id = didx
-      end do
-      
+      npoints = item2int(strings,2)  ! Reasonable assumption?
+      if (t2p%opt%INTERP_DIM==2) then
+        ! Allocate shared grid
+        grid => create_grid_object(2, npoints)
+        ! Allocate dataset(s) for all layers, set default value
+        do k=1, t2p%fmodel%nlayers
+          call t2p%datasets(didx,k)%initialize(npoints, nsets)
+          t2p%datasets(didx,k)%values = NODATA
+          t2p%datasets(didx,k)%grid => grid
+          t2p%datasets(didx,k)%id = didx
+        end do
+      else
+        ! MOU: save as 3D dataset
+        grid => create_grid_object(3, nlines)
+        call t2p%datasets(didx,1)%initialize(nlines, nsets)
+        t2p%datasets(didx,1)%values = NODATA
+        t2p%datasets(didx,1)%grid => grid
+        t2p%datasets(didx,1)%id = didx
+      end if
+
+
       ! For texture classes, if opt%INTERP_ORDER=AFTER we need to store ppzones for these points, too!
       if (didx==1.and.t2p%opt%INTERP_ORDER=="AFTER") then
         call t2p%setup_dataset_ppzones()
       end if
-      
+
       ! Rewind
       rewind(reader%unit)
       ! Skip header this time...
       call reader%skip(1, eof)
-      
+
       ! The real work begins
       do j=1, nlines
         read(reader%unit, *) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
-        
+        all_depth = all_depth + depth
+        if (t2p%opt%INTERP_DIM==3) then
+          ! MOU: read 3d data
+          grid%coords(1, j) = x
+          grid%coords(2, j) = y
+          grid%coords(3, j) = z-depth
+          t2p%datasets(didx,1)%values(:, j) = wvalues(1:nsets)
+          all_sum = all_sum + wvalues(1:nsets) * depth
+          if (depth>0) all_count = all_count + 1
+          cycle
+        end if
+
         if (iint==1) then
           ! Store previous log values...
           if (j>1) then
@@ -117,7 +140,7 @@ module m_read_datasets
           grid%coords(1,idx) = x
           grid%coords(2,idx) = y
           ! Get location in model, get elevation at model layers in model
-          fmodel_loc = t2p%fmodel%find_in_grid(grid%coords(:,idx))
+          fmodel_loc = t2p%fmodel%find_in_grid([x,y])
           if (fmodel_loc==0) call error_handler(1,file,"Well not found in model domain: "//name)
           ! Store location
           do k=1, t2p%fmodel%nlayers
@@ -144,7 +167,7 @@ module m_read_datasets
           thick = depth - prev_depth
           intv_top = z - prev_depth
         end if  ! End of new log handling
-        
+
         ! Start of accumulator
         ! Transform values
         if (minval(wvalues)>=0) call data_transformer%apply(wvalues)
@@ -164,29 +187,45 @@ module m_read_datasets
         end do
         prev_depth = depth
       end do
-      
-      ! Store final log values
-      do k=1, t2p%fmodel%nlayers
-        do l=1, nsets
-          if (total_thick(l,k)>0.0) then
-            t2p%datasets(didx,k)%values(cids(l),prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
-            all_sum(l) = all_sum(l) + wv_accumulator(l,k) / total_thick(l,k)
-            all_count(l) = all_count(l) + 1
-          end if
+
+      if (t2p%opt%INTERP_DIM==2) then
+        ! Store final log values
+        do k=1, t2p%fmodel%nlayers
+          do l=1, nsets
+            if (total_thick(l,k)>0.0) then
+              t2p%datasets(didx,k)%values(cids(l),prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
+              all_sum(l) = all_sum(l) + wv_accumulator(l,k) / total_thick(l,k)
+              all_count(l) = all_count(l) + 1
+            end if
+          end do
         end do
-      end do
-      
+      end if
+
       ! Store means
-      do k=1, t2p%fmodel%nlayers
-        do l=1, nsets
-          t2p%datasets(didx,k)%mean(l) = (all_sum(l) / all_count(l))
-        end do
+      do l=1, nsets
+        if (t2p%opt%INTERP_DIM==2) then
+          do k=1, t2p%fmodel%nlayers
+            t2p%datasets(didx,k)%mean(l) = (all_sum(l) / all_count(l))
+          end do
+        else
+          if (all_count(l)==nlines) then
+            ! all depth > 0
+            do k=1, t2p%fmodel%nlayers
+              t2p%datasets(didx,k)%mean(l) = (all_sum(l) / all_depth(l))
+            end do
+          else
+            all_sum(l) = sum(t2p%datasets(didx,k)%values(l, :)) / nlines
+            do k=1, t2p%fmodel%nlayers
+              t2p%datasets(didx,k)%mean(l) = all_sum(l)
+            end do
+          end if
+        end if
       end do
-      
+
       ! Cleanup loop variables
-      deallocate(wvalues, all_count, all_sum, total_thick, wv_accumulator, hsus)
+      deallocate(wvalues, all_count, all_sum, all_depth, total_thick, wv_accumulator, hsus)
     end do
-  
+
   end subroutine read_datasets
 !-------------------------------------------------------------------------------------------------!
 
@@ -201,7 +240,7 @@ module m_read_datasets
     integer                            :: i, count
     character(30)                      :: badclass
     character(5)                       :: cint
-    
+
     ! Columns of header should be Location ID n X Y Zland Depth follwed by class data, then layer groups
     !                             1        2  3 4 5 6     7
     nsets = vstrlist_length(header) - 7
@@ -209,10 +248,10 @@ module m_read_datasets
     if (nsets < 1) then
        call error_handler(1,file,"Invalid number of entries in dataset header")
     end if
-    
+
     allocate(temp(nsets))
     count = 0
-    
+
     do i=1, nsets
       temp(i) = t2p%get_class_id(vstrlist_index(header,7+i))
       if (temp(i)==0) then
@@ -227,13 +266,13 @@ module m_read_datasets
       end if
       count = count + 1
     end do
-    
+
     ! Move to output variables
     nsets = count
     allocate(class_ids(nsets))
     class_ids(:) = temp(1:nsets)
     deallocate(temp)
-    
+
     ! Validate datasets either (1) are all the primary datasets or (2) are a secondary dataset
     ! Return index of t2p dataset object to store them in
     if (maxval(class_ids) <= t2p%get_active_texture_classes()) then
@@ -256,7 +295,7 @@ module m_read_datasets
       end if
     end if
   end subroutine process_header
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
 end module m_read_datasets

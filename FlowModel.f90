@@ -17,13 +17,13 @@ module m_flow_model
   type(t_file_reader), pointer :: reader          ! For reading input files
   integer,parameter            :: max_node_elem_members = 30
 !-------------------------------------------------------------------------------------------------!
-  
+
   type :: t_flow_model  ! Abstract Base Class
   ! Base class contains some derived type variables (e.g., the IWFM preproc file) since otherwise
   ! the compiler gets upset when you try to set them on the polymorphic t2p%fmodel type
   ! The alternative was to write a lot of get/set-type methods that would have to be overwritten
   ! by each derived class.
-    
+
     integer                       :: model_type      ! 1 - grid, 2 - IWFM, 3 - MODFLOW 2000
     real                          :: xoff,yoff,rot   ! Conversion from/to global coordinates
     integer                       :: nlayers         ! Number of model layers
@@ -46,7 +46,7 @@ module m_flow_model
     logical                       :: has_aquitards   ! For now, only in IWFM - but helps T2P w/ aquitard pilot points
     logical,allocatable           :: lay_aqtard(:)   ! Tracks whether layer is an aquitard
     logical,allocatable           :: pparr_aqtard(:) ! Tracks if a *pilot_point* array is an aquitard
-  
+
     contains
       procedure,public            :: initialize
       procedure,public            :: read_model
@@ -66,7 +66,7 @@ module m_flow_model
       procedure,public            :: write_node_file_aqtard
       procedure,private           :: alloc_layers
       procedure,private           :: alloc_nodes
-  
+
   end type t_flow_model
 !-------------------------------------------------------------------------------------------------!
   type,extends(t_flow_model) :: t_flow_fdmodel    ! Finite Difference Model
@@ -80,20 +80,20 @@ module m_flow_model
     integer,allocatable       :: nodenvert(:)   ! Number of verticies attached to each node (vert)
     integer,allocatable       :: node2vert(:,:) ! ID of verticies attached to each node (vert, node)
     type(t_grid),pointer      :: vertgrid       ! xyz grid for vertices
-    
+
     contains
       procedure,private       :: read_gsf
       !procedure,private       :: add_node2vert2node
   end type t_flow_fdmodel
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_flow_fdmodel) :: t_mgrid  ! GSF - rename?
-  
+
   contains
     procedure,public          :: initialize => init_mgrid
     procedure,public          :: read_model => read_mgrid
     procedure,public          :: find_in_grid => find_in_grid_gsf
-  
-  end type 
+
+  end type
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_flow_model) :: t_simpgrid  ! X Y LayerElevations - "Finite Element" style
   contains
@@ -104,7 +104,7 @@ module m_flow_model
   end type t_simpgrid
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_flow_model) :: t_iwfm_model   ! I DO realize the "m" in IWFM is for model
-  
+
     character(100)            :: elem_file
     character(100)            :: node_file
     character(100)            :: strt_file
@@ -117,7 +117,7 @@ module m_flow_model
     integer,allocatable       :: nodenelem(:)   ! Number of elements that include each node
     integer,allocatable       :: node2elem(:,:) ! Elements that include each node (elemid,nodes)
     logical,allocatable       :: lay_exist(:)   ! Tracks whether layer has thickness > 0.00
-  
+
   contains
     procedure,public          :: initialize => init_iwfm
     procedure,public          :: read_model => read_iwfm
@@ -138,15 +138,15 @@ module m_flow_model
     procedure,private         :: init_nodebyid
     procedure,private         :: process_iwfm_layers
     procedure,private         :: add_elem2nodeelem
-  
-  end type 
+
+  end type
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_flow_fdmodel) :: t_modflow_model
-  
+
   type(t_grid),pointer        :: loc_grid(:)   ! LOCAL xy grids for layers (not global coords)
   integer                     :: layfile       ! LPF/UPW IUNIT number
   character(3)                :: gwftyp        ! LPF or UPW, for printing
-  
+
   contains
     procedure,public          :: initialize => init_modflow2000
     procedure,private         :: alloc_layers => alloc_layers_mf
@@ -158,22 +158,22 @@ module m_flow_model
     procedure,public          :: cell2rowcol
     procedure,private         :: get_cell_local
     procedure,private         :: calc_mfcell_centers
-      
-  end type 
-!-------------------------------------------------------------------------------------------------!  
-  
+
+  end type
+!-------------------------------------------------------------------------------------------------!
+
   contains
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! MODULE PROCEDURES
 !-------------------------------------------------------------------------------------------------!
-  
+
   function create_flow_model_object(model_type_char) result(object)
     implicit none
-    
+
     character(*),intent(in)        :: model_type_char
     class(t_flow_model),pointer    :: object
-    
+
     select case(model_type_char)
       case ("IWFM")
         allocate(t_iwfm_model::object)
@@ -186,14 +186,14 @@ module m_flow_model
       case DEFAULT
         call error_handler(1,opt_msg="Unknown Flow Model Type Name: " // trim(model_type_char))
     end select
-    
+
     ! Initialize new object
     call object%initialize()
-  
+
   end function create_flow_model_object
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine check_id_validity(id, fmodel, valid_type)
     implicit none
     ! Checks (A) if flow model type has been set and (B) optionally if it is the correct type of
@@ -202,7 +202,7 @@ module m_flow_model
     class(t_flow_model),pointer  :: fmodel
     character(30)                :: id
     integer,optional             :: valid_type
-    
+
     ! Is type set?
     if (.not. ASSOCIATED(fmodel)) then
       call error_handler(2,opt_msg="Must specify flow model type before other settings")
@@ -212,19 +212,19 @@ module m_flow_model
         call error_handler(2,opt_msg="Wrong flow model type for option: " // id)
       end if
     end if
-    
+
   end subroutine check_id_validity
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! BASE CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine initialize(this)
     implicit none
     class(t_flow_model)       :: this
-    
+
     this%model_type    = 0
     this%nlayers       = 0
     this%preproc_file  = ''
@@ -235,21 +235,21 @@ module m_flow_model
     this%output_file   = ''
     this%grd_file      = ''
     this%has_aquitards = .false.
-    
+
   end subroutine initialize
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine read_model(this)
     ! Base class method for reading in [nonexistant] model input file(s)
     ! Should not be run
     implicit none
     class(t_flow_model)       :: this
-    
+
   end subroutine read_model
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine alloc_layers(this, lay2grid)
     implicit none
     class(t_flow_model)       :: this
@@ -258,40 +258,40 @@ module m_flow_model
 
     ! Allocate grid based on unique grids
     this%ngrids   = maxval(lay2grid)
-    
+
     allocate(this%nnodes  (0:this%nlayers), &
-             this%lay2grid(  this%nlayers), &  
+             this%lay2grid(  this%nlayers), &
              this%grid    (  this%ngrids ), &
              this%lay_aqtard(this%nlayers)  )
-             
+
     this%lay2grid = lay2grid
     this%lay_aqtard = .false.
-    
+
   end subroutine alloc_layers
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine alloc_nodes(this)
     implicit none
     class(t_flow_model)       :: this
     integer                   :: i
-    
+
     allocate(this%elev(maxval(this%nnodes(:)), 0:this%nlayers))
-    
+
     ! Loop over layers creating grid object
     do i=1, this%ngrids
       this%grid(i) = create_grid_object(2, this%nnodes(this%lay2grid(i)))
     end do
-    
+
   end subroutine alloc_nodes
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_input_summary(this)
     use m_global, only: log
     implicit none
     class(t_flow_model)     :: this
-    
+
     select type (this)
       class is (t_iwfm_model)
         call log%write_valueline('Number of Model Nodes',    this%nnodes(1))
@@ -302,24 +302,24 @@ module m_flow_model
         call log%write_valueline('Number of Model Cells (All Layers)', sum(this%nnodes))
         call log%write_valueline('Number of Model Layers',      this%nlayers)
     end select
-  
+
   end subroutine write_input_summary
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function find_in_grid(this, coords) result(res)
     ! Base class method, should not be run
     implicit none
     class(t_flow_model)     :: this
     real                    :: coords(:)
     integer                 :: res
-    
+
     res = 0
-    
+
   end function find_in_grid
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine get_elev_at_point(this, coords, point_elevs, locid)
     ! Returns elevations for each layer given coordinates.
     implicit none
@@ -328,32 +328,32 @@ module m_flow_model
     real    , intent(out)   :: point_elevs(0:this%nlayers)
     integer, optional       :: locid      ! Containing cell id if known
     integer                 :: id
-    
+
     if (present(locid)) then
       id = locid
     else
       id = this%find_in_grid(coords)
     end if
-    
+
     point_elevs = this%elev(id,:)
-  
+
   end subroutine get_elev_at_point
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   function get_midpoint_depths(this, k) result(depths)
     ! To be overloaded where necessary (should be the same for all models...
     implicit none
     class(t_flow_model)                :: this
     integer,intent(in)                 :: k
     real                               :: depths(this%nnodes(k))
-    
+
     depths = this%elev(:,0) - ((this%elev(:,k-1) + this%elev(:,k)) / 2.0)
-    
+
   end function get_midpoint_depths
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function get_active_ppzones(this) result(nactive)
     ! To be overloaded where necessary
     implicit none
@@ -364,7 +364,7 @@ module m_flow_model
   end function get_active_ppzones
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   function get_layer_id(this, k) result (id)
     ! To be overloaded where necessary
     implicit none
@@ -386,7 +386,7 @@ module m_flow_model
     no = k
     return
   end function get_layer_no
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine read_category_files(this)
@@ -396,54 +396,54 @@ module m_flow_model
     implicit none
     class(t_flow_model)     :: this
     logical,allocatable     :: not_used(:)
-    
+
     ! Read ppzones file
     call this%ppzones%read_file(this%ppzone_file, this%nlayers, this%nnodes(1), 0, this%lay_aqtard, this%pparr_aqtard)
-    
+
     ! Read hsus file
     call this%hsus%read_file(this%hsu_file, this%nlayers, this%nnodes(1), 1, this%lay_aqtard, not_used)
-    
+
   end subroutine read_category_files
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function is_active_layer(this, k)
     ! To be overloaded where necessary (IWFM has zero-thickness layers, typically aquitards)
     implicit none
     class(t_flow_model)     :: this
     integer,intent(in)      :: k
     logical                 :: is_active_layer
-    
+
     is_active_layer = .true.
-    
+
   end function is_active_layer
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   function is_aquitard_layer(this, k)
     ! To be overloaded where necessary (IWFM has aquitards)
     implicit none
     class(t_flow_model)     :: this
     integer,intent(in)      :: k
     logical                 :: is_aquitard_layer
-    
+
     is_aquitard_layer = .false.
-    
+
   end function is_aquitard_layer
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_fmodel_input(this, par)
     ! Base class method, should not be run
     use m_datasets, only: t_layerdata
     implicit none
     class(t_flow_model)        :: this
     type(t_layerdata),pointer  :: par(:)
-  
+
   end subroutine write_fmodel_input
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_node_files(this, datasets, dat_names)
     use m_vstringlist, only: t_vstringlist, vstrlist_length
     ! Calls methods overloaded by subclasses
@@ -454,23 +454,23 @@ module m_flow_model
     type(t_vstringlist)        :: dat_names
     character(100)             :: fname, temp
     integer                    :: i
-    
+
     do i=1, vstrlist_length(dat_names)  ! ndat, hopefully
       call item2char(dat_names, i, temp)
       write(fname,'(3a)') 't2p_', trim(temp), '.out'
       call this%write_node_file(fname, datasets, i)
     end do
-    
+
     if (this%has_aquitards) then
       call item2char(dat_names, 2, temp)
       write(fname,'(3a)') 't2p_', trim(temp), '_aqtard.out'
       call this%write_node_file_aqtard(fname, datasets, 2)  ! Only implemented for IWFM
     end if
-  
+
   end subroutine write_node_files
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_node_file(this, fname, par, par_id)
     ! Base class method, should not be run
     use m_datasets, only: t_layerdata
@@ -479,11 +479,11 @@ module m_flow_model
     character(*)               :: fname
     type(t_layerdata),pointer  :: par(:)
     integer,intent(in)         :: par_id
-  
+
   end subroutine write_node_file
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_node_file_aqtard(this, fname, par, par_id)
     ! Base class method, should not be run
     use m_datasets, only: t_layerdata
@@ -492,18 +492,18 @@ module m_flow_model
     character(*)               :: fname
     type(t_layerdata),pointer  :: par(:)
     integer,intent(in)         :: par_id
-  
+
   end subroutine write_node_file_aqtard
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   !subroutine add_node2vert2node(this, node, nvert)
   !  ! Not currently used
   !  implicit none
   !  class(t_flow_fdmodel)     :: this
   !  integer                   :: i, j, k
   !  integer, intent(in)       :: node, nvert
-  !  
+  !
   !  do j=1, nvert
   !    ! Increment node-element membership array
   !    this%vertnnode(this%node2vert(j)) = this%vertnnode(this%node2vert(j)) + 1
@@ -518,9 +518,9 @@ module m_flow_model
   !  end do
   !
   !end subroutine add_node2vert2node
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine read_gsf(this)
     implicit none
     class(t_flow_fdmodel)     :: this
@@ -531,13 +531,13 @@ module m_flow_model
     real                      :: rtemp(3)
     character(200)            :: ctemp
     logical                   :: found
-    
+
     ! Standard file reader variables
     integer                    :: eof
     type(t_vstringlist)        :: strings
-  
+
     reader => open_file_reader(this%grd_file)
-    
+
     call reader%next_item(eof, strings) ! Line 1 structured or unstructured (unused)
     ! Next couple lines are read if t_mgrid, but not if MODFLOW
     ! Additionally, arrays SHOULD already be allocated for MODFLOW
@@ -577,25 +577,25 @@ module m_flow_model
       type is (t_modflow_model)
         call reader%skip(2, eof)
     end select  ! Back to the easy stuff
-    
+
     ! Allocate layers, nodes
     this%ngrids  = ngrids
     call this%alloc_layers(lay2grid)
     this%nnodes = nnodes
     call this%alloc_nodes()
-    
+
     ! Line 4 Number of vertices
     read(reader%unit, *) nvert
     this%nvert = nvert
     allocate(this%vertgrid)
     this%vertgrid = create_grid_object(3, this%nvert)
     write(*,*) this%nnodes
-        
+
     ! Read vertices
     do i=1, nvert
       read(reader%unit, *) this%vertgrid%coords(1:3,i)  ! xyz
     end do
-    
+
     ! Read to get number of verticies associated with each node
     allocate(this%nodenvert(total_nodes))
     this%nodenvert = 0
@@ -605,7 +605,7 @@ module m_flow_model
       read(reader%unit, *) node, rtemp(1:3), lay, nodevert
       this%nodenvert(i) = nodevert
     end do
-    
+
     ! Allocate vertex lists...
     !allocate(this%vertnnode(nvert), &
     !         this%vert2node(max_node_elem_members,nvert), &
@@ -615,7 +615,7 @@ module m_flow_model
     allocate(temp_node_vert(maxval(this%nodenvert(:))), &
              this%node2vert(maxval(this%nodenvert(:)), total_nodes))
     this%node2vert = 0
-    
+
     ! Now we backup... and read for vert2node, node x, y, [and a calculated z if grid, not MF-USG]
     call reader%back(total_nodes)
     grid = 1
@@ -649,13 +649,13 @@ module m_flow_model
       write(*,*) 'GRID FOUND LAYER', lay, grid
       end if
     end do
-    
+
     call reader%close_file()
-    
+
   end subroutine
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! GSF GRID CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -663,19 +663,19 @@ module m_flow_model
   subroutine init_mgrid(this)
     implicit none
     class(t_mgrid)       :: this
-    
+
     call initialize(this)
     this%model_type  = 1
     this%name = "GSF"
-    
-  end subroutine init_mgrid  
-  
+
+  end subroutine init_mgrid
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine read_mgrid(this)
     implicit none
     class(t_mgrid)       :: this
-    
+
     ! Potentially multiple types of grid files (although unimplemented so far)
     select case (this%grd_file_type)
       case('gsf')
@@ -683,11 +683,11 @@ module m_flow_model
       case DEFAULT
         call error_handler(2,opt_msg='Unknown Grid Type for file: ' // this%grd_file)
     end select
-  
+
   end subroutine read_mgrid
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function find_in_grid_gsf(this, coords) result(node)
     use tools, only: pinpol
     ! Assumes coords is in GLOBAL coordinates
@@ -702,10 +702,10 @@ module m_flow_model
     integer                 :: nodeids(5)
     real                    :: in_node
     real                    :: nodedist(5), elemx(max_node_elem_members), elemy(max_node_elem_members)
-    
+
     node = 0
     call this%grid(this%lay2grid(1))%get_nnear(coords, 5, nodeids, nodedist)
-    
+
     ! Loop over elements of closest node
     do i=1, 5
       do j=1, this%nodenvert(nodeids(i))/2  ! Only the top vertices
@@ -719,9 +719,9 @@ module m_flow_model
         exit
       end if
     end do
-    
+
   end function find_in_grid_gsf
-  
+
 !-------------------------------------------------------------------------------------------------!
 
 !-------------------------------------------------------------------------------------------------!
@@ -731,27 +731,27 @@ module m_flow_model
   subroutine init_simpgrid(this)
     implicit none
     class(t_simpgrid)       :: this
-    
+
     call initialize(this)
     this%model_type  = 1
     this%name = "SIMPLE"
-    
-  end subroutine init_simpgrid  
-  
+
+  end subroutine init_simpgrid
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine read_simpgrid(this)
     implicit none
     class(t_simpgrid)       :: this
     integer                 :: i, id, grid_nodes
     integer,allocatable     :: lay2grid(:)
-    
+
     ! Standard file reader variables
     integer                    :: eof
     type(t_vstringlist)        :: strings
-    
+
     reader => open_file_reader(this%sim_file)
-    
+
     ! Read in discretization line: nnodes, nlayers
     call reader%next_item(eof, strings)
     grid_nodes = item2int(strings, 1)
@@ -763,19 +763,19 @@ module m_flow_model
     call this%alloc_layers(lay2grid)
     this%nnodes(:) = grid_nodes
     call this%alloc_nodes()
-    
+
     ! One node per line
     call reader%read_to_next_line(eof)
     do i=1,this%nnodes(1)
       read(reader%unit,*) id, this%grid(1)%coords(1,i), this%grid(1)%coords(2,i), this%elev(i, :)
     end do
-    
+
     call reader%close_file()
-  
+
   end subroutine read_simpgrid
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function find_in_grid_simpgrid(this, coords) result(node)
     ! Assumes coords is in GLOBAL coordinates
     ! Assumes uniform xy layers
@@ -787,13 +787,13 @@ module m_flow_model
     integer             :: nodeids(5)
     real                :: in_node
     real                :: nodedist(5), elemx(max_node_elem_members), elemy(max_node_elem_members)
-    
+
     node = 0
     call this%grid(this%lay2grid(1))%get_nnear(coords, 1, nodeids, nodedist)
   end function find_in_grid_simpgrid
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_node_file_simpgrid(this, fname, par, par_id)
     use m_datasets, only: t_layerdata
     implicit none
@@ -812,7 +812,7 @@ module m_flow_model
 
     fwrite => open_file_writer(fname)
     unit = fwrite%unit
-    
+
     ! Header
     write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, this%nlayers)
     ! Values
@@ -821,11 +821,11 @@ module m_flow_model
     end do
 
     call fwrite%close_file()
-  
+
   end subroutine write_node_file_simpgrid
 
 !-------------------------------------------------------------------------------------------------!
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! IWFM CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -833,53 +833,53 @@ module m_flow_model
   subroutine init_iwfm(this)
     implicit none
     class(t_iwfm_model)       :: this
-    
+
     call initialize(this)
     this%model_type  = 2
     this%name = "IWFM"
-    
-  end subroutine init_iwfm  
+
+  end subroutine init_iwfm
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine alloc_layers_iwfm(this, lay2grid)
     implicit none
     class(t_iwfm_model)       :: this
     integer                   :: i, lay2grid(this%nlayers)
-    
+
     allocate(this%lay_exist (this%nlayers))
     this%lay_exist = .true.
-    
+
     ! Call super
     call alloc_layers(this, lay2grid)
-    
+
     ! Set lay_aqtard to true for every odd layer
     this%lay_aqtard = mod((/(i, i=1, this%nlayers)/), 2) == 1
-    
+
   end subroutine alloc_layers_iwfm
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine alloc_nodes_iwfm(this)
     ! Additional arrays required for IWFM due to Finite-element
     implicit none
     class(t_iwfm_model)       :: this
-  
+
     allocate(this%node2elem(max_node_elem_members,this%nnodes(1)), &
              this%nodenelem(this%nnodes(1)),&
              this%nodeid   (this%nnodes(1)) )
-    
+
     ! Call super
     call alloc_nodes(this)
-    
+
     ! Initialize
     this%node2elem = 0
     this%nodenelem = 0
-    
+
   end subroutine alloc_nodes_iwfm
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function find_in_grid_elem(this, coords) result(element)
     use tools, only: pinpol
     ! Assumes uniform xy layers
@@ -893,10 +893,10 @@ module m_flow_model
     integer                 :: nodeids(5)
     real                    :: nodedist(5), elemx(4), elemy(4), inelem
     integer                 :: inode, i, j, count, elem
-    
+
     element = 0
     call this%grid(this%lay2grid(1))%get_nnear(coords, 5, nodeids, nodedist)
-    
+
     ! Loop over elements of closest node
     outerloop:  do inode=1, 5
       do i=1, this%nodenelem(nodeids(inode))
@@ -918,11 +918,11 @@ module m_flow_model
         end if
       end do
     end do outerloop
-    
+
   end function find_in_grid_elem
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine get_elev_at_point_elem(this, coords, point_elevs, locid)
     ! Returns elevations for each layer given coordinates.
     implicit none
@@ -931,7 +931,7 @@ module m_flow_model
     real    , intent(out)   :: point_elevs(0:this%nlayers)
     integer, optional       :: locid      ! Containing cell id if known
     integer                 :: elemid
-    
+
     if (present(locid)) then
       elemid = locid
     else
@@ -939,32 +939,32 @@ module m_flow_model
     end if
 
     call this%iwfm_elem_elev_idw(coords,elemid,point_elevs)
-    
+
   end subroutine get_elev_at_point_elem
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine alloc_elems(this)
     implicit none
     class(t_iwfm_model)       :: this
     integer                   :: i
-    
-    allocate(this%elements(4,this%nelements), & 
+
+    allocate(this%elements(4,this%nelements), &
              this%elemnnodes(this%nelements), &
              this%elemid    (this%nelements)  )
 
     this%elements(4,this%nelements) = -1  ! initialize to obvious non-node value
-  
+
   end subroutine alloc_elems
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine init_nodebyid(this, maxnodeid)
     implicit none
     class(t_iwfm_model)       :: this
     integer,intent(in)        :: maxnodeid
     integer                   :: i
-    
+
     allocate(this%nodebyid(maxnodeid))
 
     ! Initialize all values to a negative number so we can easily check whether
@@ -975,56 +975,56 @@ module m_flow_model
     do i=1, this%nnodes(i)
       this%nodebyid(this%nodeid(i)) = i
     end do
-  
+
   end subroutine init_nodebyid
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine process_iwfm_layers(this)
     implicit none
     class(t_iwfm_model)       :: this
     integer :: i
-    
+
     ! Calculate maximum thickness (differences) between consecutive layers
     ! Determine if layer exists based on max thickness > 0.0
     this%lay_exist = maxval(abs(this%elev(:, 1:this%nlayers) - this%elev(:, 0:this%nlayers-1)), dim=1) > 0.0
-    
+
     ! See if any of these are aquitard layers and exist
     this%has_aquitards = any(this%lay_aqtard .and. this%lay_exist)
 
     ! Correct lay_aqtard flags if layers do not exist (screws up ppzone array reading)
     this%lay_aqtard = this%lay_aqtard .and. this%lay_exist
-    
+
   end subroutine process_iwfm_layers
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function is_active_layer_iwfm(this, k)
     ! To be overloaded where necessary (IWFM has zero-thickness layers, typically aquitards)
     implicit none
     class(t_iwfm_model)     :: this
     integer,intent(in)      :: k
     logical                 :: is_active_layer_iwfm
-    
+
     is_active_layer_iwfm = this%lay_exist(k)
-    
+
   end function is_active_layer_iwfm
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   function is_aquitard_layer_iwfm(this, k)
     ! To be overloaded where necessary (IWFM has aquitards)
     implicit none
     class(t_iwfm_model)     :: this
     integer,intent(in)      :: k
     logical                 :: is_aquitard_layer_iwfm
-    
+
     is_aquitard_layer_iwfm = this%lay_aqtard(k)
-    
+
   end function is_aquitard_layer_iwfm
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine add_elem2nodeelem(this, ielem)
     implicit none
     class(t_iwfm_model)       :: this
@@ -1050,7 +1050,7 @@ module m_flow_model
   end subroutine add_elem2nodeelem
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine read_iwfm(this)
     use fpath
     use m_vstringlist, only: t_vstringlist
@@ -1062,15 +1062,15 @@ module m_flow_model
     real    ,allocatable         :: rarray(:)
     integer                      :: i, j, itemp, inode, maxnodeid
     integer, allocatable         :: lay2grid(:)
-    
+
     ! Standard file reader variables
     integer                    :: status, length, eof
     character(200)             :: value
     type(t_vstringlist)        :: strings
-    
+
     ! Get relative path to later be used
     call fpath_strip(this%preproc_file, path, value)
-    
+
     ! Preprocessor file
     reader => open_file_reader(this%preproc_file)
     call reader%read_to_next_iwfm_line(eof)
@@ -1087,18 +1087,18 @@ module m_flow_model
     call item2char(strings, 1, value)
     call fpath_join(path, value, this%strt_file)
     call reader%close_file()
-    
+
     ! Stratigraphy file (only to nlayers)
     reader2 => open_file_reader(this%strt_file)
     call reader%read_to_next_iwfm_line(eof)
     call reader%next_item(eof, strings)       ! nlayers
     this%nlayers = item2int(strings, 1) * 2   ! Each layer has overlying aquitard (to be treated as layer)
-    
+
     ! Allocate layers
     allocate(lay2grid(this%nlayers))
     lay2grid(:) = 1                           ! all layers use the same xy grid in IWFM
     call this%alloc_layers(lay2grid)
-    
+
     ! Node file
     reader => open_file_reader(this%node_file)
     call reader%read_to_next_iwfm_line(eof)
@@ -1106,10 +1106,10 @@ module m_flow_model
     this%nnodes(:) = item2int(strings, 1)     ! Node count does not vary by layer in IWFM
     call reader%next_item(eof, strings)       ! xy mult factor
     factor = item2dp(strings, 1)
-    
+
     ! Allocate nodes
     call this%alloc_nodes()
-    
+
     ! Continue Node file read
     call reader%read_to_next_iwfm_line(eof)
     maxnodeid = 0
@@ -1120,8 +1120,8 @@ module m_flow_model
       this%grid(1)%coords(2,i) = rtemp2 * factor
     end do
     call this%init_nodebyid(maxval(this%nodeid)) ! Setup mapping from nodeid->array index
-    call reader%close_file()                     ! Close Node file 
-    
+    call reader%close_file()                     ! Close Node file
+
     ! Continue stratigraphy file read
     call reader2%next_item(eof, strings)         ! elev, thickness mult factor
     factor = item2dp(strings, 1)
@@ -1137,7 +1137,7 @@ module m_flow_model
     end do
     call reader2%close_file()                   ! Close Stratigraphy file
     call this%process_iwfm_layers()             ! Find layers of zero thickness
-    
+
     ! Elements file
     reader => open_file_reader(this%elem_file)
     call reader%read_to_next_iwfm_line(eof)
@@ -1148,16 +1148,16 @@ module m_flow_model
     itemp = item2int(strings, 1)
     call reader%read_to_next_iwfm_line(eof)
     call reader%skip(itemp, eof)               ! Skip region descriptions
-    
+
     ! Allocate element arrays
     call this%alloc_elems()
-    
+
     ! Read elements
     call reader%read_to_next_iwfm_line(eof)
     do i=1, this%nelements
       read(reader2%unit,*) this%elemid(i), this%elements(1:4,i)
       this%elemnnodes(i) = count(this%elements(1:4,i) > 0)
-  
+
       ! Translate/Validate nodeid to node index for each connection
       do j=1,4
         if (this%elements(j,i) > 0) then
@@ -1171,11 +1171,11 @@ module m_flow_model
       call this%add_elem2nodeelem(i)
     end do
     call reader%close_file()                   ! Close Element file
-    
+
     ! Simulation file
     reader => open_file_reader(this%sim_file)
     call fpath_strip(this%sim_file, path, value)
-    
+
     call reader%read_to_next_iwfm_line(eof)
     call reader%skip(3, eof)                   ! Title
     call reader%read_to_next_iwfm_line(eof)
@@ -1184,13 +1184,13 @@ module m_flow_model
     call item2char(strings, 1, value)
     call fpath_join(path, value, this%output_file)
     call reader%close_file()                   ! Close Simulation file
-    
+
   end subroutine read_iwfm
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine iwfm_elem_elev_idw(this,coords,ObsElem,InterpValues)
-    use m_interpolator, only: dist_2D
+    use m_interpolator, only: dist
   ! Author: Marinko Karanovic, SSP&A
   ! Reworked for T2P v2 by Leland Scantlebury
   ! p hardcoded to 1, hardcoded to layer elevations
@@ -1198,7 +1198,6 @@ module m_flow_model
     class(t_iwfm_model)   :: this
     integer               :: j,k,nodeID
     integer               :: ObsElem
-    real                  :: dist
     real                  :: coords(2),InterpValues(:)
     real                  :: wgt_tmp,wgt
     InterpValues=0
@@ -1207,8 +1206,7 @@ module m_flow_model
       if (ObsElem.gt.0) then
         nodeID = this%elements(j,ObsElem)
         if (nodeID.gt.0) then
-          dist = dist_2D(coords, this%grid(1)%coords(:,nodeID)) ! Assumes all layers share xy
-          wgt_tmp = 1.0 / dist
+          wgt_tmp = 1.0 / dist(coords, this%grid(1)%coords(:2,nodeID)) ! Assumes all layers share xy
 	        wgt = wgt + wgt_tmp
           InterpValues(:) =InterpValues(:) + wgt_tmp * this%elev(nodeID,:)
         end if
@@ -1216,9 +1214,9 @@ module m_flow_model
     end do
     InterpValues(:) =InterpValues(:) / wgt
   end subroutine iwfm_elem_elev_idw
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function get_layer_id_iwfm(this, k) result (id)
     implicit none
     class(t_iwfm_model)     :: this
@@ -1238,7 +1236,7 @@ module m_flow_model
     no = k*2
     return
   end function get_layer_no_iwfm
-    
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine write_fmodel_input_iwfm(this, par)
@@ -1247,14 +1245,14 @@ module m_flow_model
     implicit none
     class(t_iwfm_model)        :: this
     type(t_layerdata),pointer  :: par(:)
-    
+
     ! External for now
     call writeIWFMgwfile(this%template_file, this%output_file, par, this%nlayers, this%nnodes(1), this%nodeid, this%lay_aqtard, this%lay_exist)
-  
+
   end subroutine write_fmodel_input_iwfm
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_node_file_iwfm(this, fname, par, par_id)
     use m_datasets, only: t_layerdata
     implicit none
@@ -1274,7 +1272,7 @@ module m_flow_model
     !open(20, file=trim(filename), status='replace', action='write', buffered='YES')
     fwrite => open_file_writer(fname)
     unit = fwrite%unit
-    
+
     ! Header
     write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, (this%nlayers/2))
     ! Values
@@ -1283,11 +1281,11 @@ module m_flow_model
     end do
 
     call fwrite%close_file()
-  
+
   end subroutine write_node_file_iwfm
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_node_file_aqtard_iwfm(this, fname, par, par_id)
     use m_datasets, only: t_layerdata
     implicit none
@@ -1307,7 +1305,7 @@ module m_flow_model
     !open(20, file=trim(filename), status='replace', action='write', buffered='YES')
     fwrite => open_file_writer(fname)
     unit = fwrite%unit
-    
+
     ! Header
     write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, (this%nlayers/2))
     ! Values
@@ -1316,72 +1314,72 @@ module m_flow_model
     end do
 
     call fwrite%close_file()
-  
+
   end subroutine write_node_file_aqtard_iwfm
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! FINITE-DIFFERENCE CLASS TYPE-BOUND PROCEDURES (MODFLOW, GSF)
 !-------------------------------------------------------------------------------------------------!
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! MODFLOW 2000 CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine init_modflow2000(this)
     implicit none
     class(t_modflow_model)       :: this
-    
+
     call initialize(this)
     this%model_type  = 3
     this%structured  = .true.
     this%name = "MODFLOW"
-    
+
   end subroutine init_modflow2000
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine alloc_layers_mf(this, lay2grid)
     implicit none
     class(t_modflow_model)       :: this
     integer                      :: lay2grid(this%nlayers)
-    
+
     ! Call super
     call alloc_layers(this, lay2grid)
-    
+
     allocate(this%loc_grid(1))  ! Would be this%ngrids if layers did not have same xy grid
-    
+
   end subroutine alloc_layers_mf
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine alloc_nodes_mf(this)
     ! Additional arrays required for IWFM due to Finite-element
     implicit none
     class(t_modflow_model)       :: this
-    
+
     ! Create local grid object (see above layer caveat in alloc_layers_mf)
     this%loc_grid(1) = create_grid_object(2, this%nnodes(1))
-    
+
     ! Call super
     call alloc_nodes(this)
-    
+
   end subroutine alloc_nodes_mf
-  
+
 !-------------------------------------------------------------------------------------------------!
   subroutine calc_mfcell_centers(this)
     ! Both local and global (formerly was just global, causing some issues in get_cell_local!)
     use tools, only: loc2glo
     use GLOBAL, ONLY : NROW, NCOL, DELR, DELC
     implicit none
-    ! Calculates cell centers in global coordinates  
+    ! Calculates cell centers in global coordinates
     class(t_modflow_model)       :: this
     integer                :: i, j, n
     real                   :: xbase, ybase
-  
+
     ybase = sum(delc)
     do i=1, nrow
       xbase = 0.0
@@ -1395,10 +1393,10 @@ module m_flow_model
       end do
       ybase = ybase - delc(i)
     end do
-  
+
   end subroutine calc_mfcell_centers
 !-------------------------------------------------------------------------------------------------!
-  
+
   function find_in_grid_cell(this, coords) result(cell)
     use tools, only: glo2loc
     ! Assumes coords is in GLOBAL coordinates
@@ -1412,10 +1410,10 @@ module m_flow_model
     integer                 :: cellids(4)
     real                    :: celldist(4), xmin,xmax,ymin,ymax,xl,yl
     integer                 :: cell, i
-    
+
     cell = 0
     call this%grid(this%lay2grid(1))%get_nnear(coords, 4, cellids, celldist)  ! do we need more than 4 for USG?
-    
+
     if (this%structured) then
       ! Check each cell center to see if well belongs
       do i=1, 4
@@ -1427,11 +1425,11 @@ module m_flow_model
         end if
       end do
     else  ! USG
-      !cell = find_in_grid_gsf(coord) 
+      !cell = find_in_grid_gsf(coord)
     end if
-    
+
   end function find_in_grid_cell
-  
+
   !-------------------------------------------------------------------------------------------------!
 
   subroutine cell2rowcol(this, cell, row, col)
@@ -1445,9 +1443,9 @@ module m_flow_model
     col = cell - (row-1) * NCOL
 
   end subroutine cell2rowcol
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine get_cell_local(this, cell, xmin, xmax, ymin, ymax)
     ! Assumes uniform xy layers
     use GLOBAL, ONLY : DELR, DELC
@@ -1456,7 +1454,7 @@ module m_flow_model
     integer,intent(in)     :: cell
     real    ,intent(out)       :: xmin,xmax,ymin,ymax
     integer                :: row, col
-    
+
     if (this%structured) then
       call this%cell2rowcol(cell, row, col)
       xmin = this%loc_grid(this%lay2grid(1))%coords(1,cell) - 0.5 * delr(col)
@@ -1465,12 +1463,12 @@ module m_flow_model
       ymax = this%loc_grid(this%lay2grid(1))%coords(2,cell) + 0.5 * delc(row)
     else
       ! TODO
-    end if      
+    end if
 
   end subroutine get_cell_local
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine read_modflow2000(this)
     use m_file_io, only: log_unit
     ! MODFLOW globals to import
@@ -1483,10 +1481,10 @@ module m_flow_model
     integer,allocatable          :: grid_count(:), lay2grid(:)
     character(256)               :: iomsg
     logical                      :: found
-    
+
     ! MODFLOW-USG does the heavy lifting
     call init_modflow_usg(this%sim_file,ierr,iomsg,mfmaxunit)
-    
+
     ! Error handling for external reader...
     if (ierr /= 0) then
       ! Todo replace with actual log writing function
@@ -1494,7 +1492,7 @@ module m_flow_model
       write(log_unit,'(3a)') 'IO Error - ', trim(iomsg)
       error stop
     end if
-    
+
     ! Handle MODFLOW settings
     ! UPW or LPF (or none)
     this%layfile = 0
@@ -1507,10 +1505,10 @@ module m_flow_model
       this%gwftyp = 'UPW'
     end if
     if (this%layfile==0) call error_handler(2,'MODFLOW NAM file must have LPF or UPW package present',this%sim_file)
-    
+
     allocate(lay2grid(nlay))
     lay2grid = 1
-    
+
     ! Check out if/how unstructured the model is
     ngrids = 1
     if (IUNSTR/=0) then
@@ -1535,36 +1533,36 @@ module m_flow_model
         end if
       end do
     end if
-    
+
     ! Set Layers
     this%nlayers = nlay
     this%ngrids  = ngrids
     call this%alloc_layers(lay2grid)
-    
+
     ! Count nodes
     this%nnodes = (/ (nodlay(i) - nodlay(i-1), i=1, nlay) /)
     call this%alloc_nodes()
-    
+
     ! Move elevation arrays
     this%elev(:,0) = top(1:this%nnodes(1))
     do k=1, nlay
       this%elev(1:this%nnodes(k),k) = bot(nodlay(k-1)+1: nodlay(k))
     end do
-    
+
     ! Get cell/node centers
     if (IUNSTR/=0) then
       ! TODO
     else
       call this%calc_mfcell_centers()
     end if
-    
+
     ! Clean up
     if (allocated(grid_count)) deallocate(grid_count)
-    
+
   end subroutine read_modflow2000
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_node_file_mf(this, fname, par, par_id)
     ! Base class method, should not be run
     use m_datasets, only: t_layerdata
@@ -1603,7 +1601,7 @@ module m_flow_model
     end do
 
     call fwrite%close_file()
-  
+
   end subroutine write_node_file_mf
 !-------------------------------------------------------------------------------------------------!
   subroutine write_fmodel_input_mf(this, par)
@@ -1635,11 +1633,11 @@ module m_flow_model
 
     ! Re-open actual LPF file and OVERWRITE
     fwrite => open_file_writer(fname)
-    
+
     call writeGWFP(fwrite%unit, par, this%gwftyp)
     call fwrite%close_file()
-    
-  end subroutine write_fmodel_input_mf  
+
+  end subroutine write_fmodel_input_mf
 !-------------------------------------------------------------------------------------------------!
-  
+
 end module m_flow_model
