@@ -356,10 +356,10 @@ end subroutine doolittle
     ! Get nearest for each obs dataset
     loc_usenear = this%usenear  ! LOCAL VERSION
     do i=1, this%nsets
-      vidx = this%vario_idx(i,i)              ! Should always equal i, but to be safe
+      vidx = this%vario_idx(i,i)
       call obs_data(i)%grid%get_nnear(p, loc_usenear(i), inear(:,i), dist(:,i))
       ! Filter out points beyond max_sdist for covariate datasets
-      if (i > 1) call this%filter_near_points(loc_usenear(i), inear(:,i), dist(:,vidx), vidx)
+      if (i > 1) call this%filter_near_points(loc_usenear(i), inear(:,i), dist(:,i), vidx)
     end do
 
     if (present(ppd)) ppd = loc_usenear

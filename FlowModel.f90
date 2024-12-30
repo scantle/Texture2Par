@@ -56,8 +56,8 @@ module m_flow_model
       procedure,public            :: get_elev_at_point
       procedure,public            :: get_midpoint_depths
       procedure,public            :: get_active_ppzones
-      procedure,public            :: get_layer_id
-      procedure,public            :: get_layer_no   ! For when layer =/ layer_id (e.g., IWFM aquitards)
+      procedure,public            :: get_layer_id   ! For when layer =/ layer_id (e.g., IWFM aquitards): id = aquifer id... iwfm == k/2
+      procedure,public            :: get_layer_no   ! Other direction k*2. TODO come up with a clearer name
       procedure,public            :: is_active_layer
       procedure,public            :: is_aquitard_layer
       procedure,public            :: write_fmodel_input

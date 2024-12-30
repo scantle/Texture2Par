@@ -226,16 +226,10 @@ module m_read_main_input
     ! Pre-read for number of classes
     call reader%get_block_dim(nlines, nitems)  ! returns nlines, total items
     
-    ! Allocate based on interpolation order
-    !if (t2p%opt%INTERP_ORDER=="BEFORE") then
-    !  n = t2p%nclasses
-    !else ! t2p%opt%INTERP_ORDER=="AFTER")
-    !  n = t2p%npar
-    !end if
     allocate(connections(nitems,t2p%nprimary))
     t2p%nsecondary_by_id(:) = 0
     
-    ! Setup matrix, values indicate variogram ID. Can start off assuming each class has a variogram (fill diagonal)
+    ! Setup matrix, values indicate variogram ID. Can start off assuming each class has a variogram
     connections = 0
     do i = 1, t2p%nprimary
       connections(1, i) = i
@@ -246,6 +240,9 @@ module m_read_main_input
       ! Instead, early return
       return
     end if
+    
+    ! Ensure covariates are being used with a valid intepolation option
+    if (t2p%opt%INTERP_SECOND_OK==.false.) call error_handler(4,opt_msg="Covariates are not supported for non-kriging options.")
     
     ! Loop over data class lines
     do i=1, nlines

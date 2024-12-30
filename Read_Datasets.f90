@@ -1,5 +1,5 @@
 module m_read_datasets
-  use m_global ,only: NODATA
+  use m_global ,only: NODATA, log
 !  use m_datasets
   use m_T2P, only: t_t2p
   use m_vstring, only: t_vstring, vstring_is
@@ -21,6 +21,7 @@ module m_read_datasets
     type(t_vstringlist)           :: strings
     character(200)                :: file, name
     character(30),allocatable     :: hsus(:)
+    character(256)                :: iomsg
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
     integer                       :: prev_idx, idx, iint, fmodel_loc, didx
     integer,allocatable           :: cids(:), all_count(:)
@@ -285,9 +286,11 @@ module m_read_datasets
       end if
     else
       ! Secondary: we adjust all indexes relative to the secondary datasets
+      ! secondary_dataset_idx = class_id - n_active_primary_ids + 1
+      ! (i.e., the secondary_class_id + 1 for all the primary data being stored in one dataset)
       ! (Each in their own dataset)
       if (nsets==1) then
-        dataset_idx = class_ids(1) - t2p%get_active_texture_classes()
+        dataset_idx = class_ids(1) - t2p%ntexclasses + 1
         t2p%class_dataset(class_ids(1)) = dataset_idx
         class_ids(:) = 1
       else

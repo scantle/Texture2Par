@@ -179,9 +179,11 @@ module m_T2P
           allocate(t_sgsim::this%interp_data)
         end if
         allocate(t_ordkrige::this%interp_pp)
+        this%opt%INTERP_SECOND_OK = .true.
       case("SK")
         allocate(t_simpkrige::this%interp_data)
         allocate(t_simpkrige::this%interp_pp)
+        this%opt%INTERP_SECOND_OK = .true.
       case("IDW")
         allocate(t_idw::this%interp_data)
         allocate(t_idw::this%interp_pp)
@@ -299,70 +301,96 @@ module m_T2P
     ! LATER nvario is passed to the interpolator (if kriging)
     implicit none
     class(t_T2P), intent(inout)   :: this
-    integer                       :: n, m, i, j, x, vidx
-
-    ! Get problem size
-    if (this%opt%INTERP_ORDER=="BEFORE") then
-      n = this%ntexclasses
-      m = this%nclasses
-    else ! this%opt%INTERP_ORDER=="AFTER")
-      n = this%npar
-      m = this%npar + this%nsecondary
+    integer, allocatable          :: vario_map(:,:)  ! Keeps track of assigned variogram indices
+    integer                       :: i, j, k, x, vidx, nconnected, nprimaries
+    
+    ! Determine number of primaries based on INTERP_ORDER
+    if (this%opt%INTERP_ORDER == "BEFORE") then
+      nprimaries = this%ntexclasses
+      if (this%opt%INFER_LAST_CLASS) nprimaries = nprimaries - 1  ! Exclude inferred class
+      allocate(vario_map(this%nclasses, this%nclasses))
+    else !if (this%opt%INTERP_ORDER == "AFTER") then
+      nprimaries = this%npar  ! Hydraulic properties
+      allocate(vario_map(this%npar + this%nsecondary, this%npar + this%nsecondary))
     end if
+    this%nprimary = nprimaries
+    
+    ! No need to setup if we're not kriging
+    if (.not. (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK")) return
+    
+    ! Initialize
+    vidx = 0  ! Start variogram index counter
+    vario_map = 0  ! Initialize to zero (unassigned)
+    
+    ! Loop over each primary dataset
+    do i = 1, this%nprimary
+      ! Variogram for the primary dataset itself
+      vidx = vidx + 1
+      vario_map(i, i) = vidx  ! Assign variogram index
 
-    ! Defaults
-    this%nprimary = n
-    this%nvario = m
+      if (associated(this%connections)) then  ! has covariates
+        ! Loop over datasets connected to this primary
+        do j = 1, this%nsecondary_by_id(i)+1
+          k = this%connections(j, i)  ! Connected dataset ID
+          if (this%opt%ASYMMETRIC_COV) then
+            ! Assign asymmetric variograms for i -> k
+            if (vario_map(i, k) == 0) then
+              vidx = vidx + 1
+              vario_map(i, k) = vidx
+            end if
+          else
+            ! Assign symmetric variograms for i <-> k
+            if (vario_map(i, k) == 0) then
+              vidx = vidx + 1
+              vario_map(i, k) = vidx
+              vario_map(k, i) = vidx  ! Enforce symmetry
+            end if
+          end if
+        end do
+      end if
+    end do
+    
+    ! Loop over secondary-secondary pairs (assumed always symmetric)
+    do i = 1, this%nsecondary
+      k = this%ntexclasses + i  ! Secondary datasets start after primaries
+      vidx = vidx + 1
+      vario_map(k, k) = vidx  ! Self-variogram for secondary
 
-    ! Allocate variogram matrix for data
-    ! TODO move to kriging class, call directly using p%
-    ! (Requires lots of revising, t2p is setup to manage all of the connections/nvario stuff and only later pass it)
+      do j = i + 1, this%nsecondary  ! Only consider i < j to avoid duplicates
+        k = this%ntexclasses + j
+        if (vario_map(i, k) == 0) then
+          vidx = vidx + 1
+          vario_map(i, k) = vidx
+          vario_map(k, i) = vidx  ! Enforce symmetry
+        end if
+      end do
+    end do
+    
+    ! Add Pilot Point Variogram (if used/kriging)
+    if (.not. this%opt%ONLY_TEXTURE) then
+      vidx = vidx + 1
+      select type(p => this%interp_pp)
+        class is(t_krige)
+          if (.not. allocated(p%global_vario_idx)) allocate(p%global_vario_idx(1, 1))
+          p%global_vario_idx(1, 1) = 1  ! Assign to pilot point interpolator
+      end select
+    end if
+    
+    ! Update the total number of variograms
+    this%nvario = vidx
+
+    ! Pass variogram indices to the kriging object
     select type(p => this%interp_data)
       class is(t_krige)
         if (allocated(p%global_vario_idx)) deallocate(p%global_vario_idx)
-        allocate(p%global_vario_idx(m,m))
-        p%global_vario_idx = 0
-
-        do i=1, this%nvario
-          p%global_vario_idx(i,i) = i
-        end do
-
-        ! Subtract one if INFER because we don't krige - last class is the remainder of the other class(es)
-        if (this%opt%INFER_LAST_CLASS.and.this%opt%INTERP_ORDER=="BEFORE") then
-          p%global_vario_idx(n,n) = 0
-          p%global_vario_idx(n+1:m,n+1:m) = p%global_vario_idx(n+1:m,n+1:m) - 1
-          this%nprimary = this%nprimary - 1
-          this%nvario = this%nvario - 1
-        end if
-
-        if (ASSOCIATED(this%connections)) then
-          vidx = this%nvario
-          ! Loop over connections
-          do i=1, this%nprimary
-            ! Fill matrix
-            do j=1, this%nsecondary_by_id(i)
-              vidx = vidx + 1
-              p%global_vario_idx(i,this%connections(j+1,i)) = vidx
-              p%global_vario_idx(this%connections(j+1,i),i) = vidx ! symmetry
-            end do
-          end do
-          this%nvario = vidx
-        end if
+        allocate(p%global_vario_idx(size(vario_map, 1), size(vario_map, 2)))
+        p%global_vario_idx = vario_map
       class default
-        if (m /= n) call error_handler(4,opt_msg="Covariates are not supported for non-kriging options.")
+        call error_handler(4, opt_msg="Unexpected non-kriging interpolator detected.")
     end select
 
-    ! Add Pilot Point variogram
-    if (.not. this%opt%ONLY_TEXTURE) then
-      this%nvario = this%nvario + 1
-
-      ! Allocate variogram matrix for pp
-      select type(p => this%interp_pp)
-        class is(t_krige)
-          if (.not. allocated(p%global_vario_idx)) allocate(p%global_vario_idx(1,1))
-          p%global_vario_idx(1,1) = 1  ! Is passed only this variogram
-      end select
-    end if
+    ! Deallocate the tracking matrix
+    if (allocated(vario_map)) deallocate(vario_map)
 
   end subroutine nvario_estimator
 
@@ -683,7 +711,7 @@ module m_T2P
           ! Interpolate
           class_idx   = this%get_connection_list(i)           ! Classes involved
           dataset_idx = this%get_dataset_idx_list(class_idx)  ! What datasets those classes are in
-          dataval_idx = this%get_dataval_idx_list(class_idx)  ! What index are associated with those values
+          dataval_idx = this%get_dataval_idx_list(class_idx)  ! What index is associated with those values
 
           x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
           call this%interp_data%calc(obs(dataset_idx,obslayer), &
@@ -711,6 +739,8 @@ module m_T2P
 
   end subroutine interpolate_model
 
+!-------------------------------------------------------------------------------------------------!
+  
   subroutine interpolate_prepare(this, k, obslayer, modelgrid)
     ! MOU: prepare data for interpolation for layer `k`
     class(t_T2P), intent(inout)   :: this
@@ -720,14 +750,14 @@ module m_T2P
 
     if (this%opt%INTERP_DIM==3) then
       obslayer = 1
-      if (k==1) then
+      if (this%fmodel%get_layer_id(k)==1) then
         modelgrid => create_grid_object(3, this%fmodel%grid(1)%n)
         modelgrid%coords(1:2,:) = this%fmodel%grid(1)%coords(1:2,:)
       end if
       modelgrid%coords(3,:) = (this%fmodel%elev(:, k-1) + this%fmodel%elev(:, k)) * 0.5 ! set the Z coordintes at node center
     else
       obslayer = k
-      if (k==1) modelgrid => this%fmodel%grid(1)
+      if (this%fmodel%get_layer_id(k)==1) modelgrid => this%fmodel%grid(1)
     end if
   end subroutine
 !-------------------------------------------------------------------------------------------------!

@@ -20,7 +20,7 @@ module m_options
     integer                  :: INTERP_DIM            ! 2D, 3D, stored as integer, read as string
     integer                  :: NSIM                  ! number of sequential gaussian simulation; default is zero which is Kriging
     integer                  :: SEED                  ! seed number for generating random path and samples for SGSIM
-    character(10)            :: INTERP_METHOD         ! KRIGING, IDW
+    character(10)            :: INTERP_METHOD         ! OK, IDW
     character(10)            :: INTERP_ORDER          ! Interpolate to grid: [BEFORE, AFTER] upscaling/aggegating?
     character(60)            :: MAIN_OUTPUT           ! 
     !character(100)           :: OUTPUT_DIR            ! Directory where output gets written
@@ -41,6 +41,10 @@ module m_options
     logical                  :: LOG_KRIGE_K           !
     logical                  :: INFER_LAST_CLASS      ! For classic T2P, where the data is only percent coarse
     logical                  :: CORRECT_WEIGHTS       ! Zero negative (kriging) weights and rebalance if true, see Deutsch (1996) (only for OK, COK)
+    
+    ! Internal Options (to be set by t2p%process_options)
+    logical                  :: INTERP_SECOND_OK      ! Can the interpolator handle covariates?
+    logical                  :: ASYMMETRIC_COV        ! Whether relationships between covariates can be asymmetric
     
     contains
       procedure, public :: initialize
@@ -88,6 +92,8 @@ module m_options
     this%LOG_KRIGE_K          = .false.
     this%INFER_LAST_CLASS     = .false.
     this%CORRECT_WEIGHTS      = .false.
+    this%INTERP_SECOND_OK     = .false.
+    this%ASYMMETRIC_COV       = .false.
   end subroutine initialize
 
 !-------------------------------------------------------------------------------------------------!

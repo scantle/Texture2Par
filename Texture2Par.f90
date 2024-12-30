@@ -15,12 +15,12 @@ program Texture2Par
 !
 ! Converts well percent course with depth data to aquifer parameters
 ! at specified nodes. Intended to work with input/output files of the
-! Integrated Water Flow Model (IWFM) with added support for MODFLOW 2000/2005.
-! Written by Leland Scantlebury and Marinko Karanovic of S.S. Papadopulos &
-! Associates, based on original method and VBA program created by Timothy J.
-! Durbin.
+! Integrated Water Flow Model (IWFM) and MODFLOW 2000/2005/NWT/USG.
+! Written by Leland Scantlebury, Michael Ou, and Marinko Karanovic of S.S. 
+! Papadopulos & Associates, based on original method and VBA program created 
+! by Timothy J. Durbin.
 !
-! Requires Input File: Texture2Par.in
+! Requires Input File: Texture2Par.in or alternate named passed as an argument
 !
 ! Copyright 2024 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
