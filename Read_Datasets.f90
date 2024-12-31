@@ -22,8 +22,9 @@ module m_read_datasets
     character(200)                :: file, name
     character(30),allocatable     :: hsus(:)
     character(256)                :: iomsg
+    character(10)                 :: tmp
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
-    integer                       :: prev_idx, idx, iint, fmodel_loc, didx
+    integer                       :: idx, iint, prev_idx, prev_iint, fmodel_loc, didx
     integer,allocatable           :: cids(:), all_count(:)
     real                          :: x, y, z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
     real    ,allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:)
@@ -67,6 +68,9 @@ module m_read_datasets
       all_count = 0
       all_sum = 0
       all_depth = 0
+      prev_idx = 0
+      prev_iint = 0
+      prev_depth = 0.0
 
       ! Get data length (not file length, since we've gone past the header)
       nlines = reader%get_data_len(rewind_to_last_line=.true.)
@@ -107,7 +111,9 @@ module m_read_datasets
 
       ! The real work begins
       do j=1, nlines
-        read(reader%unit, *) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
+        write(tmp,'(i10)') j+1   ! line of file
+        read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
+	      call reader%iomsg_handler(iomsg)
         all_depth = all_depth + depth
         if (t2p%opt%INTERP_DIM==3) then
           ! MOU: read 3d data
@@ -121,6 +127,7 @@ module m_read_datasets
         end if
 
         if (iint==1) then
+          if (idx <= prev_idx) call error_handler(1,file,"Well IDs must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
           ! Store previous log values...
           if (j>1) then
             do k=1, t2p%fmodel%nlayers
@@ -140,6 +147,9 @@ module m_read_datasets
           thick = depth
           grid%coords(1,idx) = x
           grid%coords(2,idx) = y
+          prev_idx = 0
+          prev_iint = 0
+          prev_depth = 0.0
           ! Get location in model, get elevation at model layers in model
           fmodel_loc = t2p%fmodel%find_in_grid([x,y])
           if (fmodel_loc==0) call error_handler(1,file,"Well not found in model domain: "//name)
@@ -167,6 +177,9 @@ module m_read_datasets
         else
           thick = depth - prev_depth
           intv_top = z - prev_depth
+          ! Some data checking
+          if (iint <= prev_iint) call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
+          if (prev_depth > depth) call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp)))
         end if  ! End of new log handling
 
         ! Start of accumulator
@@ -187,6 +200,7 @@ module m_read_datasets
           end if
         end do
         prev_depth = depth
+        prev_iint = iint
       end do
 
       if (t2p%opt%INTERP_DIM==2) then

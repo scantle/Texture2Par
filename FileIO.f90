@@ -13,7 +13,7 @@ module m_file_io
     integer                  :: ioerr
     
     contains
-      procedure,private      :: iomsg_handler
+      procedure,public       :: iomsg_handler
       procedure,public       :: close_file
     
   end type t_file_handler
