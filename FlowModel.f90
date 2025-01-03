@@ -307,11 +307,12 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  function find_in_grid(this, coords) result(res)
+  function find_in_grid(this, coords, max_outside_dist) result(res)
     ! Base class method, should not be run
     implicit none
     class(t_flow_model)     :: this
     real                    :: coords(:)
+    real, intent(in)        :: max_outside_dist
     integer                 :: res
 
     res = 0
@@ -332,7 +333,7 @@ module m_flow_model
     if (present(locid)) then
       id = locid
     else
-      id = this%find_in_grid(coords)
+      id = this%find_in_grid(coords, max_outside_dist=0.0)
     end if
 
     point_elevs = this%elev(id,:)
@@ -688,7 +689,7 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  function find_in_grid_gsf(this, coords) result(node)
+  function find_in_grid_gsf(this, coords, max_outside_dist) result(node)
     use tools, only: pinpol
     ! Assumes coords is in GLOBAL coordinates
     ! Assumes uniform xy layers
@@ -698,6 +699,7 @@ module m_flow_model
     implicit none
     class(t_mgrid)   :: this
     real                    :: coords(:)
+    real, intent(in)        :: max_outside_dist
     integer                 :: i,j,node
     integer                 :: nodeids(5)
     real                    :: in_node
@@ -714,7 +716,7 @@ module m_flow_model
       end do
       ! Check if the point is in this polygon
       in_node = pinpol(coords(1), coords(2), elemx, elemy, this%nodenvert(nodeids(i))/2)
-      if (in_node >= 0.0d0) then             ! Greedy, treats on line as in elem
+      if (in_node >= 0.0d0 .or. abs(in_node) <= max_outside_dist**2) then  ! Greedy, treats on line as in
         node = nodeids(i)
         exit
       end if
@@ -776,13 +778,14 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  function find_in_grid_simpgrid(this, coords) result(node)
+  function find_in_grid_simpgrid(this, coords, max_outside_dist) result(node)
     ! Assumes coords is in GLOBAL coordinates
     ! Assumes uniform xy layers
     ! Returns 0 if not found
     implicit none
     class(t_simpgrid)   :: this
     real                :: coords(:)
+    real, intent(in)    :: max_outside_dist
     integer             :: i,j,node
     integer             :: nodeids(5)
     real                :: in_node
@@ -790,6 +793,9 @@ module m_flow_model
 
     node = 0
     call this%grid(this%lay2grid(1))%get_nnear(coords, 1, nodeids, nodedist)
+    if (nodedist(1) <= max_outside_dist**2) then
+      node = nodeids(1)
+    end if
   end function find_in_grid_simpgrid
 
 !-------------------------------------------------------------------------------------------------!
@@ -880,7 +886,7 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  function find_in_grid_elem(this, coords) result(element)
+  function find_in_grid_elem(this, coords, max_outside_dist) result(element)
     use tools, only: pinpol
     ! Assumes uniform xy layers
     ! Returns 0 if not found
@@ -889,6 +895,7 @@ module m_flow_model
     implicit none
     class(t_iwfm_model)     :: this
     real                    :: coords(:)
+    real, intent(in)        :: max_outside_dist
     integer                 :: element
     integer                 :: nodeids(5)
     real                    :: nodedist(5), elemx(4), elemy(4), inelem
@@ -912,7 +919,7 @@ module m_flow_model
         end do
         ! Check if the point is in this polygon
         inelem = pinpol(coords(1), coords(2), elemx, elemy, count)
-        if (inelem >= 0.0d0) then             ! Greedy, treats on line as in elem
+        if (inelem >= 0.0d0 .or. abs(inelem) <= max_outside_dist**2) then  ! Greedy, treats on line as in elem
           element = elem
           exit outerloop
         end if
@@ -935,7 +942,7 @@ module m_flow_model
     if (present(locid)) then
       elemid = locid
     else
-      elemid = this%find_in_grid(coords)
+      elemid = this%find_in_grid(coords, 0.0)
     end if
 
     call this%iwfm_elem_elev_idw(coords,elemid,point_elevs)
@@ -1397,7 +1404,7 @@ module m_flow_model
   end subroutine calc_mfcell_centers
 !-------------------------------------------------------------------------------------------------!
 
-  function find_in_grid_cell(this, coords) result(cell)
+  function find_in_grid_cell(this, coords, max_outside_dist) result(cell)
     use tools, only: glo2loc
     ! Assumes coords is in GLOBAL coordinates
     ! Assumes uniform xy layers
@@ -1407,8 +1414,9 @@ module m_flow_model
     implicit none
     class(t_modflow_model)  :: this
     real                    :: coords(:)
+    real, intent(in)        :: max_outside_dist
     integer                 :: cellids(4)
-    real                    :: celldist(4), xmin,xmax,ymin,ymax,xl,yl
+    real                    :: celldist(4),xmin,xmax,ymin,ymax,xl,yl,min_dist,dx,dy,dist
     integer                 :: cell, i
 
     cell = 0
@@ -1421,12 +1429,25 @@ module m_flow_model
         call glo2loc(coords(1), coords(2), this%xoff, this%yoff, this%rot, xl, yl)
         if ((xl >= xmin).and.(xl < xmax).and.(yl >= ymin).and.(yl < ymax)) then
           cell = cellids(i)
-          exit
+          return       ! Early Return !
         end if
       end do
     else  ! USG
-      !cell = find_in_grid_gsf(coord)
+      !cell = find_in_grid_gsf(coord, max_outside_dist)
     end if
+    
+    ! If we didn't find it in a cell, was it at least within max_outside_dist of a cell edge?
+    min_dist = HUGE(1.0)
+    do i=1, 4
+      call this%get_cell_local(cellids(i), xmin, xmax, ymin, ymax)
+      dx = max(0.0, max(xmin - xl, xl - xmax))  ! Distance to x edges
+      dy = max(0.0, max(ymin - yl, yl - ymax))  ! Distance to y edges
+      dist = sqrt(dx**2 + dy**2)
+      if (dist < max_outside_dist .and. dist < min_dist) then
+        min_dist = dist
+        cell = cellids(i)
+      end if
+    end do
 
   end function find_in_grid_cell
 

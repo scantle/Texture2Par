@@ -88,17 +88,20 @@ function pinpol(px, py, polyx, polyy, npoly) result(inpoly)
   !   -- Function tridet to calculate triangle determinant
   !
   ! Returns:
-  !   -- A real value indicating the point's position relative to the polygon:
-  !      - Exact Zero (0.0): The point lies exactly on the boundary of the polygon.
-  !      - Positive Value: The point is outside the polygon.
-  !      - Negative Value: The point is inside the polygon.
+  !   -- `inpoly` is the square distance from the point to the nearest point 
+  !      on the polygon. The sign of `inpoly` indicates the point's position 
+  !      relative to the polygon:
+  !      - Exact Zero (0.0): The point lies exactly on the boundary of the 
+  !        polygon.
+  !      - Positive Value: The point is inside the polygon.
+  !      - Negative Value: The point is outside the polygon.
   !
   ! Adapted from Sloan, S. W., 1985 A point-in-polygon program, Adv. Eng.
   !                  Software, Vol 7., No. 1
   !
   !               Implemented in f90 by Leland Scantlebury
   !
-  ! Copyright 2018-2024 Leland Scantlebury
+  ! Copyright 2018-2025 Leland Scantlebury
   !---------------------------------------------------------------------------!
 
   integer, intent(in)      :: npoly
@@ -166,8 +169,9 @@ function pinpol(px, py, polyx, polyy, npoly) result(inpoly)
       continue
     end if
     if (snear) then
-      ! Point is closer to side, check if right or left of polygon
-      ! (using determinant) if left, point is in polygon
+      ! Point is closer to side. Use determinant to determine if the triangle
+      ! formed by the vertices and point is positive or negative. Positive indicates
+      ! the point is inside (form a counter-clockwise triangle)
       area = tridet(polyx(j),polyy(j),polyx(next),polyy(next),px,py)
       inpoly = sign(inpoly, area)
     else
@@ -180,7 +184,6 @@ function pinpol(px, py, polyx, polyy, npoly) result(inpoly)
   end if
 
   return
-
   end function pinpol
 
 !-----------------------------------------------------------------------------!

@@ -151,7 +151,7 @@ module m_read_datasets
           prev_iint = 0
           prev_depth = 0.0
           ! Get location in model, get elevation at model layers in model
-          fmodel_loc = t2p%fmodel%find_in_grid([x,y])
+          fmodel_loc = t2p%fmodel%find_in_grid([x,y], t2p%opt%MAX_OUTSIDE_DIST)
           if (fmodel_loc==0) call error_handler(1,file,"Well not found in model domain: "//name)
           ! Store location
           do k=1, t2p%fmodel%nlayers
