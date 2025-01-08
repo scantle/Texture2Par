@@ -1,4 +1,5 @@
 module m_datasets
+  use m_global, only: NODATA
   use m_grid, only: t_grid, create_grid_object
   implicit none
 !-------------------------------------------------------------------------------------------------!
@@ -13,6 +14,7 @@ module m_datasets
       procedure,nopass             :: initialize_abc
       generic,public               :: initialize => initialize_abc
       procedure,public             :: build_tree_by_category
+      procedure,public             :: get_data_by_category
       procedure,public             :: finalize
   end type t_dataset
 !-------------------------------------------------------------------------------------------------!
@@ -94,12 +96,40 @@ module m_datasets
     ! For dataset, ignore all NA values
     select type(this)
       class is (t_layerdata)
-        na_mask = (this%values(class_idx,1:this%grid%n) > -999.0)
+        na_mask = (this%values(class_idx,1:this%grid%n) > NODATA)
     end select
     call this%grid%build_tree(catmask.and.na_mask, rotmat=rotmat)
     deallocate(catmask, na_mask)
   
   end subroutine build_tree_by_category
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine get_data_by_category(this, cat, class_idx, cat_idx, nidx, maxsize)
+    ! To get (1) how many items are in that category (nidx) and (2) what their indices are (cat_idx)
+    implicit none
+    class(t_dataset),intent(inout)  :: this
+    integer, intent(in)             :: cat, class_idx, maxsize
+    integer, intent(inout)          :: nidx
+    integer, intent(inout)          :: cat_idx(maxsize)
+    integer                         :: i
+    
+    ! For dataset, ignore all NA values
+    cat_idx = 0
+    nidx = 1
+    select type(this)
+      class is (t_layerdata)
+        do i=1, this%grid%n
+          if ((this%values(class_idx,i) > NODATA).and.(this%category(i)==cat)) then
+            cat_idx(nidx) = i
+            nidx = nidx + 1
+          end if
+        end do
+    end select
+    ! Adjust for starting count at 1
+    nidx = nidx - 1
+  
+  end subroutine get_data_by_category
   
 !-------------------------------------------------------------------------------------------------!
   

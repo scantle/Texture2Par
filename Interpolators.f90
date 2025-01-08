@@ -195,10 +195,18 @@ module m_interpolator
           woffset = 0
           do k=1, size(obs_data)
             v_adjust = 0.0
-            if (k>1) v_adjust = obs_data(1)%mean(val_idx(k)) - obs_data(k)%mean(1)
+            if ((opt%INTERP_METHOD=="SK").and.(k==1)) then
+              v_adjust = -1 * obs_data(k)%mean(val_idx(1))                              ! Subtract out primary mean
+            else if ((opt%INTERP_METHOD=="SK").and.(k>1)) then
+              v_adjust = -1 * obs_data(k)%mean(1)                                       ! Subtract out secondary mean
+            else if (k>1) then
+              v_adjust = obs_data(1)%mean(val_idx(1)) - obs_data(k)%mean(1)             ! Primary - Secondary Means
+            end if
             results(j) = results(j) + dot_product(weights%values(woffset+1:woffset+ppd(k)), obs_data(k)%values(val_idx(k), weights%idx(woffset+1:woffset+ppd(k)))+v_adjust)
             woffset = woffset + ppd(k)
           end do
+          ! For SK, add back in mean
+          if (opt%INTERP_METHOD == "SK") results(j) = results(j) + obs_data(1)%mean(val_idx(1))     ! Add back in primary mean
         end if
       end do
     end do

@@ -21,7 +21,7 @@ module m_options
     integer                  :: INTERP_DIM            ! 2D, 3D, stored as integer, read as string
     integer                  :: NSIM                  ! number of sequential gaussian simulation; default is zero which is Kriging
     integer                  :: SEED                  ! seed number for generating random path and samples for SGSIM
-    character(10)            :: INTERP_METHOD         ! OK, IDW
+    character(10)            :: INTERP_METHOD         ! OK, SK, IDW
     character(10)            :: INTERP_ORDER          ! Interpolate to grid: [BEFORE, AFTER] upscaling/aggegating?
     character(60)            :: MAIN_OUTPUT           ! 
     !character(100)           :: OUTPUT_DIR            ! Directory where output gets written
@@ -29,7 +29,7 @@ module m_options
     logical                  :: SILENT_MODE           !
     logical                  :: DEBUG_MODE            !
     logical                  :: ONLY_TEXTURE          ! Stops after calculating texture
-    logical                  :: WRITE_MATRIX          !
+    logical                  :: WRITE_MATRIX          ! Writes kriging matrices to log
     logical                  :: WRITE_PP_WEIGHTS      !
     logical                  :: WRITE_GRID_WEIGHTS    !
     logical                  :: READ_PP_WEIGHTS       !
@@ -68,7 +68,7 @@ module m_options
     !this%DATA_CLASSES         = -1
     this%NO_DATA_VALUE        = -999.0
     this%IDW_POWER            = 2.0
-    this%MAX_SECONDARY_DIST   = 0.0
+    this%MAX_SECONDARY_DIST   = 0.0                   ! Default is overwritten in filter_near_points
     this%MAX_OUTSIDE_DIST     = 0.0
     this%INTERP_DIM           = 2
     this%NSIM                 = 0

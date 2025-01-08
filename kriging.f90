@@ -1,5 +1,5 @@
 module m_kriging
-
+  use m_global, only: log
   use m_interpolator, only: t_interpolator
   use m_weights, only: t_weights
   use m_grid, only: t_grid, create_grid_object
@@ -15,14 +15,15 @@ module m_kriging
     integer                   :: nvario                ! Number of variograms stored for interpolator
     integer                   :: maxnear               ! Maximum number of nearest points used for interpolation for all classes
     integer                   :: nsets                 ! Number of datasets involved
-    integer                   :: ndim                  ! Number of dimensions being kriged (code may be hardcoded to 2 in places)
+    integer                   :: ndim                  ! Number of dimensions being kriged
     integer                   :: unbias                ! Unbias term (0 - SK, 1 - OK)
     integer                   :: ndrift                ! Number of drift terms (unimplemented)
     integer                   :: nsim                  ! Number of simulations (unimplemented)
     real                      :: max_sdist             ! Maximum inclusion distance for secondary data
-    integer,pointer           :: nnear(:)              ! Number of nearest points used for interpolation, for each dataset/class (nvario) (0 for cross)
-    integer,allocatable       :: usenear(:)            ! NNear but local to problem (nsets) and limited by tree size
+    real   ,allocatable       :: matA(:)               ! LHS obs-obs covariance matrix (lower triangle, stored as an array)
+    real   ,allocatable       :: rhsB(:)               ! RHS grid-obs covariance array
     integer,pointer           :: nstruct(:)            ! Number of structures for each variogram
+    integer,pointer           :: nnear(:)              ! Number of nearest points used for interpolation, for each dataset/class (nvario) (0 for cross)
     integer,pointer           :: obs_idx(:)            ! Indices of datasets
     type(t_vgm),pointer       :: variograms(:,:)       ! (stuctures, variogram)
     integer,allocatable       :: global_vario_idx(:,:) ! Variogram index given (class_id, class_id) for ALL classes
@@ -31,29 +32,34 @@ module m_kriging
     integer,allocatable       :: pset_id(:)            ! ID vector used for kriging matrix
     ! Some kriging-specific settings
     logical                   :: no_negative_weights   ! Flag to zero negative weights and rebalance (True = zero, rebalance)
+    logical                   :: write_matrix          ! Flag to write AMAT and RHS to log file
     ! Attributes for KD-tree and search parameters could be added here
   contains
     procedure               :: intialize => initialize_kriging
     procedure               :: setup => setup_krige
+    procedure               :: pset_cok
     procedure               :: filter_near_points
+    procedure               :: write_amat, write_rhs_array
     procedure               :: finalize => finalize_krige
   end type t_krige
 !-------------------------------------------------------------------------------------------------!
 
   type, extends(t_krige) :: t_simpkrige
+    integer,allocatable       :: npoints(:)            ! Number of points (in category) to be used for simple kriging
+    integer,allocatable       :: useidx(:,:)           ! Indices of points to use for simple kriging, within category, by (npoints, nset)
   contains
     procedure               :: setup => setup_sk
     procedure               :: predict_point => predict_point_sk
+    procedure               :: pset_csk
   end type t_simpkrige
 !-------------------------------------------------------------------------------------------------!
 
   type, extends(t_krige) :: t_ordkrige
-    real    ,allocatable    :: matA(:), rhsB(:)
+    integer,allocatable       :: usenear(:)            ! NNear but local to problem (nsets) and limited by tree size
   contains
     procedure               :: setup => setup_ok
     procedure               :: predict_point => predict_point_ok
     procedure               :: wsize_estimate => wsize_estimate_ok
-    procedure               :: pset_cok
     procedure               :: finalize => finalize_ok
   end type t_ordkrige
 !-------------------------------------------------------------------------------------------------!
@@ -170,8 +176,10 @@ end subroutine doolittle
     this%unbias = 0
     this%nsets  = size(obs_data)
     this%no_negative_weights = .false.
+    this%write_matrix = .false.
 
     if (opt%CORRECT_WEIGHTS) this%no_negative_weights = .true.
+    if (opt%WRITE_MATRIX) this%write_matrix = .true.
 
     ! If MAX_SECONDARY_DIST is zero, will use 3x the largest structure range
     this%max_sdist = opt%MAX_SECONDARY_DIST
@@ -196,7 +204,7 @@ end subroutine doolittle
     integer :: count, j
 
     max_sdist = this%max_sdist
-    if (this%max_sdist < 0.1) max_sdist = maxval(this%variograms(:,vidx)%a_hmax)
+    if (this%max_sdist < 0.1) max_sdist = maxval(this%variograms(:,vidx)%a_hmax) * 3.0
 
     count = 0
     do j = 1, usenear
@@ -215,12 +223,55 @@ end subroutine doolittle
   end subroutine filter_near_points
 
 !-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_amat(this, log_unit)
+    implicit none
+    class(t_krige), intent(inout) :: this
+    integer, intent(in)           :: log_unit
+    integer                       :: i, j, d, matsize
+
+    matsize = size(this%rhsB, 1)
+    call log%write_line("* COVARIANCE A MATRIX:")
+
+    do i = 1, matsize
+      d = i
+      do j = 1, i
+        if (j == 1) then
+          write(log_unit, "(/,1ES16.8)", advance = 'no') this%matA(d)
+        else
+          write(log_unit, "(1ES16.8)", advance = 'no') this%matA(d + matsize - (j - 1))
+          d = d + matsize - (j - 1)
+        end if
+      end do
+    end do
+    write(log_unit,*)
+  end subroutine write_amat
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_rhs_array(this, log_unit)
+    implicit none
+    class(t_krige),intent(inout)  :: this
+    integer,intent(in)            :: log_unit
+    integer                       :: i,matsize
+    matsize = size(this%rhsB,1)
+
+    call log%write_line("* RHS ARRAY:")
+    do i =1, matsize
+      write(log_unit, "(*(ES15.7))") this%rhsB(i)
+    end do
+
+  end subroutine write_rhs_array
+
+!-------------------------------------------------------------------------------------------------!
 
   subroutine finalize_krige(this)
     implicit none
     class(t_krige),intent(inout)  :: this
 
     if (associated(this%nnear)) deallocate(this%nnear)
+    if (allocated(this%matA))    deallocate(this%matA)
+    if (allocated(this%rhsB))    deallocate(this%rhsB)
     if (associated(this%nstruct)) deallocate(this%nstruct)
     if (associated(this%obs_idx)) deallocate(this%obs_idx)
     if (associated(this%variograms)) deallocate(this%variograms)
@@ -237,7 +288,7 @@ end subroutine doolittle
 
   subroutine setup_sk(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
     implicit none
-    class(t_simpkrige),intent(inout)   :: this
+    class(t_simpkrige),intent(inout)      :: this
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
     type(t_grid),intent(in)               :: to_grid
@@ -245,26 +296,52 @@ end subroutine doolittle
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
     type(t_options),intent(in)            :: opt
+    !integer,pointer           :: npoints(i)            ! Number of points (in category) to be used for simple kriging
+    !integer,allocatable       :: useidx(:,:)           ! Indices of points to use for simple kriging, within category, by (npoints, nset)
     ! Local
-    integer                     :: i,matsize
+    integer                               :: i,ier,class_id,matsize,mat_tot
 
     ! Call super setup
     call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
-
-    matsize = 0
+    
+    ! TODO: Could these instead be local?
+    if (allocated(this%npoints)) deallocate(this%npoints)
+    if (allocated(this%useidx)) deallocate(this%useidx)
+    allocate(this%npoints(this%nsets))
     do i=1, this%nsets
-      matsize = obs_data(i)%grid%n
+      this%npoints = obs_data(i)%grid%n
+    end do
+    allocate(this%useidx(maxval(this%npoints),this%nsets))
+    
+    ! Build search trees in observed grid objects
+    ! Also, figure out number of datasets in each category
+    do i=1, this%nsets
+      class_id = obs_idx(i)
+      if (i>1) class_id = 1
+      !call obs_data(i)%build_tree_by_category(cat,class_id) !this%variograms(1,i)%rotmat(1:this%ndim,1:this%ndim))
+      call obs_data(i)%get_data_by_category(cat, class_id, this%useidx(:,i), this%npoints(i), obs_data(i)%grid%n)
     end do
 
-    matsize = to_grid%n+matsize+this%unbias+this%ndrift
-    allocate(this%w(matsize))
-    !allocate(this%matA(matsize, matsize), this%rhsB(matsize))
+    ! Get problem dimensions
+    matsize = sum(this%npoints) + this%unbias + this%ndrift
+    mat_tot = matsize * (matsize + 1) / 2
 
-    !this%matA = 0.0
-    !this%rhsB = 0.0
+    if (allocated(this%matA)) deallocate(this%matA)
+    if (allocated(this%rhsB)) deallocate(this%rhsB)
+    if (allocated(this%pset_id)) deallocate(this%pset_id)
+    if (allocated(this%w)) deallocate(this%w)
+    allocate(this%matA(mat_tot), this%rhsB(matsize), this%pset_id(matsize), this%w(matsize))
 
-    !pre-calculate distances
-    !call setdist()
+    this%matA = 0.0
+    this%w = 0.0
+    
+    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, this%useidx, this%npoints, this%ndim)
+    if (this%write_matrix) then
+      write(log%unit, '(/,A)') 'DEBUG - STARTING SIMPLE (CO)KRIGING'
+      call this%write_amat(log%unit)
+    end if
+    call decomp(this%matA, this%pset_id, matsize, ier)
+    if (ier == 1) call error_handler(4,opt_msg="Kriging Matrix Decomposition Failure. This is often caused by co-located wells")
 
   end subroutine setup_sk
 
@@ -279,9 +356,128 @@ end subroutine doolittle
     real                              :: weights(:)
     integer, optional                 :: widx(:)              ! idx associated with weights
     integer, optional                 :: ppd(size(obs_data))  ! points per dataset
+    ! Local
+    integer                           :: i, j, d, rcount, start_idx, end_idx
+    real                              :: value
+    character(20)                     :: cidx
+    
+    this%rhsB = 0.0
+    weights = 0.0
+    if (this%unbias==1) this%rhsB(size(this%rhsB)) = 1.0d0
+
+    rcount = 1
+    do d = 1, this%nsets
+      do i = 1, this%npoints(d)
+        do j = 1, this%nstruct(this%vario_idx(1, d))
+          value = this%variograms(j, this%vario_idx(1, d))%cov(p, obs_data(d)%grid%coords(:, this%useidx(i,d)))
+          this%rhsB(rcount) = this%rhsB(rcount) + value
+        end do
+        rcount = rcount + 1
+      end do
+    end do
+    
+    ! Solve weights using the precomputed A matrix
+    call doolittle(this%rhsB, this%matA, this%pset_id, weights, size(this%rhsB))
+    
+    ! If CORRECT_WEIGHTS, zero negative weights and rebalance
+    if (this%no_negative_weights .and. minval(weights) < 0.0) then
+      where (weights < 0.0) weights = 0.0
+      weights = weights / sum(weights)
+    end if
+    
+    ! Optional: Return observation indices
+    if (present(widx)) then
+        rcount = 1
+        do d = 1, this%nsets
+            do i = 1, this%npoints(d)
+                widx(rcount) = this%useidx(i, d)
+                rcount = rcount + 1
+            end do
+        end do
+    end if
+    
+    if (present(ppd)) then
+      ppd(1:) = this%npoints(1:)
+    end if
+    
+    if (this%write_matrix) then
+      write(log%unit, '(/,A,i0)') 'DEBUG - POINT:',idx
+      call this%write_rhs_array(log%unit)
+    end if
 
   end subroutine predict_point_sk
 
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine pset_csk(this, obs_data, ntot, p, id, maxpt, dim)
+    ! Rewrite of PSET routine for simple cokriging
+
+    ! Inputs
+    class(t_simpkrige),intent(inout) :: this
+    type(t_dataset)        :: obs_data(:)
+    integer,intent(in)     :: ntot, maxpt, dim
+    !integer,intent(in)     :: inear(this%maxnear,this%nsets), nnear(this%nsets)
+    integer,intent(inout)  :: id(ntot)
+    real    ,intent(inout) :: p(maxpt)
+
+    ! Subroutine variables
+    integer             :: i,ii,j,jj,n,ind,JS, rowcount, nobs
+    integer,allocatable :: colcount(:)
+    real                :: coordi(dim),coordj(dim),value,value_sum
+
+    nobs = this%nsets
+    allocate(colcount(nobs))
+
+    colcount = 0
+    do i=1, (nobs-1)
+      colcount(i+1) = colcount(i) + obs_data(i)%grid%n
+    end do
+
+!***  ZERO OUT ELEMENTS OF P-MATRIX NEEDED FOR KRIGING
+    P=0.0
+!***  CALCULATE THE POINTERS FOR ID
+    ID(1)=1
+    DO I=2,NTOT
+      ID(I)=ID(I-1)+NTOT+2-I
+    END DO
+    ! Outer Loop over datasets (columns)
+    do j=1, nobs
+      ! Inner loop over datasets (rows)
+      rowcount = 0
+      do i=j, nobs
+        ! Variogram index for section
+        ind = this%vario_idx(j,i)
+        ! Outer loop over column points
+        do jj=1, obs_data(j)%grid%n
+          JS=ID(colcount(j)+jj)-(colcount(j)+jj)
+          coordj=obs_data(j)%grid%coords(1:,jj)
+          ! Inner loop over row points
+          ii = jj
+          if (i/=j) ii=1
+          do while (ii <= obs_data(i)%grid%n)
+            coordi=obs_data(i)%grid%coords(1:,ii)
+            value_sum=0.0d0
+            do n=1, this%nstruct(ind)
+              value = this%variograms(n,ind)%cov(coordi,coordj)
+              value_sum = value_sum + value
+            end do
+            P(JS+rowcount+colcount(j)+ii)=value_sum
+            ii = ii + 1
+          end do
+        end do
+        rowcount = rowcount + (ii-1)
+      end do
+    end do
+    ! Fill last row with unbias
+    !if (this%unbias > 0) then
+    !  DO I=1,ntot-1
+    !    P(ID(I)+ntot-I)=1
+    !  END DO
+    !end if
+
+    deallocate(colcount)
+  end subroutine pset_csk
+  
 !-------------------------------------------------------------------------------------------------!
 
 !-------------------------------------------------------------------------------------------------!
@@ -370,6 +566,10 @@ end subroutine doolittle
 
     ! Create obs-obs matrix
     call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, inear, loc_usenear, this%ndim)
+    if (this%write_matrix) then
+      write(log%unit, '(/,A,i0)') 'DEBUG - POINT:',idx
+      call this%write_amat(log%unit)
+    end if
     call decomp(this%matA, this%pset_id, matsize, ier)
 
     if (ier == 1) call error_handler(4,opt_msg="Kriging Matrix Decomposition Failure. This is often caused by co-located wells")
@@ -418,40 +618,10 @@ end subroutine doolittle
         woffset = woffset + obs_data(i)%grid%n
       end do
     end if
-
-    ! TEMP
-    !call write_matrix()
-  contains
-    subroutine write_matrix()
-      character(len=20) :: sig
-      character(len=6 ) :: cname(3)=['x', 'y', 'z']
-      integer           :: ifile, k, n
-      write(sig, "(I0)") idx
-      open(newunit=ifile, file='matA_'//trim(sig)//'.dat', status='replace')
-      k = 1
-      do i =1, matsize
-        write(ifile, "(*(ES15.7))") this%matA(k:k+matsize-i)
-        k = k + matsize-i
-      end do
-      close(ifile)
-      open(newunit=ifile, file='rhsB_'//trim(sig)//'.dat', status='replace')
-      do i =1, matsize
-        write(ifile, "(*(ES15.7))") this%rhsB(i)
-      end do
-      close(ifile)
-
-      open(newunit=ifile, file='data_'//trim(sig)//'.csv', status='replace')
-      n = 0
-      write(ifile, '(99(A,:,","))') 'dataset','index', cname(1:this%ndim), 'cov', 'weight'
-      do j=1, this%nsets
-        do k = 1,loc_usenear(j)
-          n = n + 1
-          write(ifile, "(I0,'_',I0,',',I0,*(:,',',ES15.8))") &
-            j,k,inear(k,j),obs_data(j)%grid%coords(:,inear(k,j)),this%rhsB(n),this%w(n)
-        end do
-      end do
-      stop
-    end subroutine write_matrix
+    
+    if (this%write_matrix) then
+      call this%write_rhs_array(log%unit)
+    end if
 
   end subroutine predict_point_ok
 
@@ -466,7 +636,7 @@ end subroutine doolittle
     ! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 
     ! Inputs
-    class(t_ordkrige),intent(inout) :: this
+    class(t_krige),intent(inout) :: this
     type(t_dataset)        :: obs_data(:)
     integer,intent(in)     :: maxpt, ntot, dim
     integer,intent(in)     :: inear(this%maxnear,this%nsets), nnear(this%nsets)
@@ -551,8 +721,6 @@ end subroutine doolittle
     implicit none
     class(t_ordkrige),intent(inout)  :: this
 
-    if (allocated(this%matA))    deallocate(this%matA)
-    if (allocated(this%rhsB))    deallocate(this%rhsB)
     if (allocated(this%usenear)) deallocate(this%usenear)
 
     ! call super
