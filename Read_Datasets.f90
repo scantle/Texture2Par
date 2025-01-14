@@ -114,6 +114,7 @@ module m_read_datasets
         write(tmp,'(i10)') j+1   ! line of file
         read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
 	      call reader%iomsg_handler(iomsg)
+        if (didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
         all_depth = all_depth + depth
         if (t2p%opt%INTERP_DIM==3) then
           ! MOU: read 3d data
