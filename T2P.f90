@@ -8,7 +8,7 @@ module m_T2P
   use m_flow_model, only: t_flow_model, t_iwfm_model
   use m_pilotpoints, only: t_pilotpoints
   use m_interpolator, only: t_interpolator, t_idw
-  use m_kriging, only: t_krige, t_simpkrige, t_ordkrige
+  use m_kriging, only: t_krige, t_globkrige, t_treekrige
   use m_sgsim, only: t_sgsim
   use m_categories, only: t_category
   use m_vario, only: t_vgm
@@ -174,15 +174,15 @@ module m_T2P
     select case (this%opt%INTERP_METHOD)
       case("OK")
         if (this%opt%NSIM == 0) then
-        allocate(t_ordkrige::this%interp_data)
+        allocate(t_treekrige::this%interp_data)
         else
           allocate(t_sgsim::this%interp_data)
         end if
-        allocate(t_ordkrige::this%interp_pp)
+        allocate(t_treekrige::this%interp_pp)
         this%opt%INTERP_SECOND_OK = .true.
       case("SK")
-        allocate(t_simpkrige::this%interp_data)
-        allocate(t_simpkrige::this%interp_pp)
+        allocate(t_globkrige::this%interp_data)
+        allocate(t_globkrige::this%interp_pp)
         this%opt%INTERP_SECOND_OK = .true.
       case("IDW")
         allocate(t_idw::this%interp_data)
@@ -883,7 +883,7 @@ module m_T2P
     do i=1, this%nsecondary
       call item2char(this%class_names, this%ntexclasses + i, temp)
       write(fname,'(3a)') 't2p_', trim(temp), '_layavg.out'
-      p=>this%datasets(i,:)
+      p=>this%datasets(1+i,:)
       call this%write_dataset_file(fname, p,1)
     end do
 
@@ -919,7 +919,7 @@ module m_T2P
         kintrvl = 2
     end select
 
-    write(fmt(1),'("(1a10,",i1,"a8,",i5,"i14)")') dim, this%fmodel%nlayers/kintrvl
+    write(fmt(1),'("(1a10,",i1,"a10,",i5,"i14)")') dim, this%fmodel%nlayers/kintrvl
     write(fmt(2),'("(1i10,",i1,"i8,",i5,"es14.5)")') dim, this%fmodel%nlayers/kintrvl
 
     fwrite => open_file_writer(fname)

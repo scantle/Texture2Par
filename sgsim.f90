@@ -7,7 +7,7 @@ module m_sgsim
   use m_error_handler, only: error_handler
   use m_options, only: t_options
   use m_sparse_symmetric, only: t_sparse_sym
-  use m_kriging, only: t_ordkrige, decomp, doolittle, setup_krige
+  use m_kriging, only: t_treekrige, decomp, doolittle, setup_krige
   use kdtree2_module, only               : kdtree2_create, kdtree2, kdtree2_result, kdtree2_n_nearest
   implicit none
 !-------------------------------------------------------------------------------------------------!
@@ -21,7 +21,7 @@ module m_sgsim
     procedure                  :: finalize => finalize_randgrid
   end type
 
-  type, extends(t_ordkrige) :: t_sgsim
+  type, extends(t_treekrige) :: t_sgsim
     ! Attributes for KD-tree and search parameters could be added here
   contains
     procedure               :: setup_sgsim

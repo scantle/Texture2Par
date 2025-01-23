@@ -28,7 +28,7 @@ module m_kriging
     type(t_vgm),pointer       :: variograms(:,:)       ! (stuctures, variogram)
     integer,allocatable       :: global_vario_idx(:,:) ! Variogram index given (class_id, class_id) for ALL classes
     integer,allocatable       :: vario_idx(:,:)        ! Variogram index given (class_id, class_id) for local classes passed to setup/point
-    real    ,allocatable      :: w(:)                  ! Internally calculated weights
+    real   ,allocatable       :: w(:)                  ! Internally calculated weights
     integer,allocatable       :: pset_id(:)            ! ID vector used for kriging matrix
     ! Some kriging-specific settings
     logical                   :: no_negative_weights   ! Flag to zero negative weights and rebalance (True = zero, rebalance)
@@ -44,24 +44,23 @@ module m_kriging
   end type t_krige
 !-------------------------------------------------------------------------------------------------!
 
-  type, extends(t_krige) :: t_simpkrige
+  type, extends(t_krige) :: t_globkrige
     integer,allocatable       :: npoints(:)            ! Number of points (in category) to be used for simple kriging
     integer,allocatable       :: useidx(:,:)           ! Indices of points to use for simple kriging, within category, by (npoints, nset)
   contains
     procedure               :: setup => setup_sk
     procedure               :: predict_point => predict_point_sk
-    procedure               :: pset_csk
-  end type t_simpkrige
+  end type t_globkrige
 !-------------------------------------------------------------------------------------------------!
 
-  type, extends(t_krige) :: t_ordkrige
+  type, extends(t_krige) :: t_treekrige
     integer,allocatable       :: usenear(:)            ! NNear but local to problem (nsets) and limited by tree size
   contains
     procedure               :: setup => setup_ok
     procedure               :: predict_point => predict_point_ok
     procedure               :: wsize_estimate => wsize_estimate_ok
     procedure               :: finalize => finalize_ok
-  end type t_ordkrige
+  end type t_treekrige
 !-------------------------------------------------------------------------------------------------!
 
   contains
@@ -283,12 +282,12 @@ end subroutine doolittle
   end subroutine finalize_krige
 
 !-------------------------------------------------------------------------------------------------!
-! SIMPLE KRIGING CLASS TYPE-BOUND PROCEDURES
+! GLOBAL KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
   subroutine setup_sk(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
     implicit none
-    class(t_simpkrige),intent(inout)      :: this
+    class(t_globkrige),intent(inout)      :: this
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
     type(t_grid),intent(in)               :: to_grid
@@ -349,7 +348,7 @@ end subroutine doolittle
 
   subroutine predict_point_sk(this, idx, p, obs_data, cat, weights, widx, ppd)
     implicit none
-    class(t_simpkrige),intent(inout)  :: this
+    class(t_globkrige),intent(inout)  :: this
     integer,intent(in)                :: idx, cat
     real    ,intent(in)               :: p(:)
     class(t_dataset)                  :: obs_data(:)
@@ -408,85 +407,14 @@ end subroutine doolittle
   end subroutine predict_point_sk
 
 !-------------------------------------------------------------------------------------------------!
-  
-  subroutine pset_csk(this, obs_data, ntot, p, id, maxpt, dim)
-    ! Rewrite of PSET routine for simple cokriging
-
-    ! Inputs
-    class(t_simpkrige),intent(inout) :: this
-    type(t_dataset)        :: obs_data(:)
-    integer,intent(in)     :: ntot, maxpt, dim
-    !integer,intent(in)     :: inear(this%maxnear,this%nsets), nnear(this%nsets)
-    integer,intent(inout)  :: id(ntot)
-    real    ,intent(inout) :: p(maxpt)
-
-    ! Subroutine variables
-    integer             :: i,ii,j,jj,n,ind,JS, rowcount, nobs
-    integer,allocatable :: colcount(:)
-    real                :: coordi(dim),coordj(dim),value,value_sum
-
-    nobs = this%nsets
-    allocate(colcount(nobs))
-
-    colcount = 0
-    do i=1, (nobs-1)
-      colcount(i+1) = colcount(i) + obs_data(i)%grid%n
-    end do
-
-!***  ZERO OUT ELEMENTS OF P-MATRIX NEEDED FOR KRIGING
-    P=0.0
-!***  CALCULATE THE POINTERS FOR ID
-    ID(1)=1
-    DO I=2,NTOT
-      ID(I)=ID(I-1)+NTOT+2-I
-    END DO
-    ! Outer Loop over datasets (columns)
-    do j=1, nobs
-      ! Inner loop over datasets (rows)
-      rowcount = 0
-      do i=j, nobs
-        ! Variogram index for section
-        ind = this%vario_idx(j,i)
-        ! Outer loop over column points
-        do jj=1, obs_data(j)%grid%n
-          JS=ID(colcount(j)+jj)-(colcount(j)+jj)
-          coordj=obs_data(j)%grid%coords(1:,jj)
-          ! Inner loop over row points
-          ii = jj
-          if (i/=j) ii=1
-          do while (ii <= obs_data(i)%grid%n)
-            coordi=obs_data(i)%grid%coords(1:,ii)
-            value_sum=0.0d0
-            do n=1, this%nstruct(ind)
-              value = this%variograms(n,ind)%cov(coordi,coordj)
-              value_sum = value_sum + value
-            end do
-            P(JS+rowcount+colcount(j)+ii)=value_sum
-            ii = ii + 1
-          end do
-        end do
-        rowcount = rowcount + (ii-1)
-      end do
-    end do
-    ! Fill last row with unbias
-    !if (this%unbias > 0) then
-    !  DO I=1,ntot-1
-    !    P(ID(I)+ntot-I)=1
-    !  END DO
-    !end if
-
-    deallocate(colcount)
-  end subroutine pset_csk
-  
-!-------------------------------------------------------------------------------------------------!
 
 !-------------------------------------------------------------------------------------------------!
-! ORDINARY KRIGING CLASS TYPE-BOUND PROCEDURES
+! TREE-BASED KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
   subroutine setup_ok(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
     implicit none
-    class(t_ordkrige),intent(inout)       :: this
+    class(t_treekrige),intent(inout)       :: this
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
     type(t_grid),intent(in)               :: to_grid
@@ -536,7 +464,7 @@ end subroutine doolittle
 
   subroutine predict_point_ok(this, idx, p, obs_data, cat, weights, widx, ppd)
     implicit none
-    class(t_ordkrige),intent(inout)  :: this
+    class(t_treekrige),intent(inout)  :: this
     integer,intent(in)               :: idx, cat
     real    ,intent(in)              :: p(:)
     class(t_dataset)                 :: obs_data(:)
@@ -705,11 +633,12 @@ end subroutine doolittle
 
 !-------------------------------------------------------------------------------------------------!
 
-  function wsize_estimate_ok(this, obs_data, obs_idx)
+  function wsize_estimate_ok(this, obs_data, obs_idx, opt)
     implicit none
-    class(t_ordkrige),intent(inout)  :: this
+    class(t_treekrige),intent(inout)  :: this
     class(t_layerdata)                   :: obs_data(:)
     integer, intent(in)                  :: obs_idx(:)
+    type(t_options),intent(in)           :: opt
     integer                              :: wsize_estimate_ok
     wsize_estimate_ok = sum(this%nnear(obs_idx))
     return
@@ -719,7 +648,7 @@ end subroutine doolittle
 
   subroutine finalize_ok(this)
     implicit none
-    class(t_ordkrige),intent(inout)  :: this
+    class(t_treekrige),intent(inout)  :: this
 
     if (allocated(this%usenear)) deallocate(this%usenear)
 

@@ -543,13 +543,15 @@ end subroutine read_pploc_block
 !-------------------------------------------------------------------------------------------------!
   
 subroutine read_ppparm_block(t2p, reader)
+  use m_global, only: NODATA
+  use m_pilotpoints, only: global_props, nglobal_props
   implicit none
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
   integer                         :: class_id
   
   ! Standard file reader variables
-  integer                    :: status, length
+  integer                    :: status, length, i
   character(30)              :: id, value
   type(t_vstringlist)        :: strings
   
@@ -593,6 +595,19 @@ subroutine read_ppparm_block(t2p, reader)
     end select
   end do
   
+  ! Did we get all the pp data we needed?
+  ! Todo: where should we check for aquitard pp values? Should this all be checked later?
+  if (any(t2p%pilot_points%values(:,global_props(1):global_props(nglobal_props),:)<=NODATA)) then
+    call error_handler(2,reader%file,"Missing global parameters for pilot point(s)")
+  else 
+    do i=1, t2p%ntexclasses
+      if (any(t2p%pilot_points%values(:,1:global_props(1)-1,i)<0.0)) then
+        call item2char(t2p%class_names, i, value)
+        call error_handler(2,reader%file,"Missing parameters for pilot point(s) for texture: "//trim(value))
+      end if
+    end do
+  end if
+    
   ! May need to be replaced with setup hook
   t2p%has_pp = .true.
   

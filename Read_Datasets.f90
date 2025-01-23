@@ -24,7 +24,7 @@ module m_read_datasets
     character(256)                :: iomsg
     character(10)                 :: tmp
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
-    integer                       :: idx, iint, prev_idx, prev_iint, fmodel_loc, didx
+    integer                       :: idx, idx_offset, iint, prev_idx, prev_iint, fmodel_loc, didx
     integer,allocatable           :: cids(:), all_count(:)
     real                          :: x, y, z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
     real    ,allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:)
@@ -73,12 +73,14 @@ module m_read_datasets
       prev_depth = 0.0
 
       ! Get data length (not file length, since we've gone past the header)
-      nlines = reader%get_data_len(rewind_to_last_line=.true.)
+      call reader%next_item(eof, strings)
+      idx_offset = item2int(strings,2) - 1          ! First well id, must be sequential after
+      nlines = reader%get_data_len(rewind_to_last_line=.true.) + 1
       ! Get npoints
       !backspace(reader%unit)  ! EOF
       !backspace(reader%unit)  ! Last line of data
       call reader%next_item(eof, strings)
-      npoints = item2int(strings,2)  ! Reasonable assumption?
+      npoints = item2int(strings,2) - idx_offset    ! Last - (First - 1) = npoints
       if (t2p%opt%INTERP_DIM==2) then
         ! Allocate shared grid
         grid => create_grid_object(2, npoints)
@@ -97,7 +99,6 @@ module m_read_datasets
         t2p%datasets(didx,1)%grid => grid
         t2p%datasets(didx,1)%id = didx
       end if
-
 
       ! For texture classes, if opt%INTERP_ORDER=AFTER we need to store ppzones for these points, too!
       if (didx==1.and.t2p%opt%INTERP_ORDER=="AFTER") then
@@ -128,6 +129,7 @@ module m_read_datasets
         end if
 
         if (iint==1) then
+          idx = idx - idx_offset
           if (idx <= prev_idx) call error_handler(1,file,"Well IDs must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
           ! Store previous log values...
           if (j>1) then
@@ -185,7 +187,7 @@ module m_read_datasets
 
         ! Start of accumulator
         ! Transform values
-        if (minval(wvalues)>=0) call data_transformer%apply(wvalues)
+        if (minval(wvalues)>=0) call data_transformer%apply(wvalues)  !TODO Should this be > -999/NODATA?
         intv_bot = z - depth
         ! Accumulate wvalues * interval values for averaging... by layer. It's fun.
         do k=1, t2p%fmodel%nlayers

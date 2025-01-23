@@ -180,7 +180,7 @@ module m_interpolator
     integer                               :: ppd(size(obs_data))
 
     results = 0.0  ! necessary?
-    call weights%initialize(this%wsize_estimate(obs_data, obs_idx))
+    call weights%initialize(this%wsize_estimate(obs_data, obs_idx, opt))
 
     do i=1, size(catlist)
       ! Setup for each category
@@ -195,10 +195,8 @@ module m_interpolator
           woffset = 0
           do k=1, size(obs_data)
             v_adjust = 0.0
-            if ((opt%INTERP_METHOD=="SK").and.(k==1)) then
-              v_adjust = -1 * obs_data(k)%mean(val_idx(1))                              ! Subtract out primary mean
-            else if ((opt%INTERP_METHOD=="SK").and.(k>1)) then
-              v_adjust = -1 * obs_data(k)%mean(1)                                       ! Subtract out secondary mean
+            if (opt%INTERP_METHOD=="SK") then
+              v_adjust = -1 * obs_data(k)%mean(val_idx(k))                              ! Subtract out mean
             else if (k>1) then
               v_adjust = obs_data(1)%mean(val_idx(1)) - obs_data(k)%mean(1)             ! Primary - Secondary Means
             end if
@@ -298,12 +296,13 @@ end subroutine single_point_full_weight
 !! @param obs_data Observed data used for interpolation.
 !! @param obs_idx Indices of the observed data points.
 !! @return Maximum size of the weight array.
-  function wsize_estimate(this, obs_data, obs_idx)
+  function wsize_estimate(this, obs_data, obs_idx, opt)
     ! To be overwritten where necessary
     implicit none
     class(t_interpolator),intent(inout)  :: this
     class(t_layerdata)                   :: obs_data(:)
     integer,intent(in)                   :: obs_idx(:)
+    type(t_options),intent(in)           :: opt
     integer                              :: i,wsize_estimate
     wsize_estimate = 0
     do i=1, size(obs_data)
