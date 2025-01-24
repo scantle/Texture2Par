@@ -182,7 +182,7 @@ module m_T2P
         this%opt%INTERP_SECOND_OK = .true.
       case("SK")
         allocate(t_globkrige::this%interp_data)
-        allocate(t_globkrige::this%interp_pp)
+        allocate(t_treekrige::this%interp_pp)  ! Still should use OK - mean addition/subtraction not implemented!
         this%opt%INTERP_SECOND_OK = .true.
       case("IDW")
         allocate(t_idw::this%interp_data)
