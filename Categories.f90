@@ -163,7 +163,7 @@ module m_categories
     !type(t_vstring)                  :: temp
     integer                          :: lay2arr(nlayers)
     integer                          :: eof, narr, cidx, i, j, inode, itemp
-    character(30)                    :: chartemp(nnodes)
+    character(30),allocatable        :: chartemp(:)
     logical                          :: has_aquitard
     
     lay2arr = 0
@@ -204,6 +204,7 @@ module m_categories
     
     ! Initialize arr_aquitard_flag
     allocate(arr_aquitard_flag(narr))
+    allocate(chartemp(nnodes))
     arr_aquitard_flag = .false.  ! Default to aquifer
     
     ! Check for re-use of arrays between aquifers and aquitards
@@ -250,6 +251,7 @@ module m_categories
         end if
       end if
     end do
+    deallocate(chartemp)
     
   end subroutine read_file
   
