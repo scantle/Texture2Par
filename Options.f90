@@ -42,6 +42,7 @@ module m_options
     logical                  :: LOG_KRIGE_K           !
     logical                  :: INFER_LAST_CLASS      ! For classic T2P, where the data is only percent coarse
     logical                  :: CORRECT_WEIGHTS       ! Zero negative (kriging) weights and rebalance if true, see Deutsch (1996) (only for OK, COK)
+    logical                  :: USE_MODEL_GSE         ! Use model cell ground surface elevation (GSE) rather than dataset GSEs for depth->elevation calcs
     
     ! Internal Options (to be set by t2p%process_options)
     logical                  :: INTERP_SECOND_OK      ! Can the interpolator handle covariates?
@@ -94,6 +95,7 @@ module m_options
     this%LOG_KRIGE_K          = .false.
     this%INFER_LAST_CLASS     = .false.
     this%CORRECT_WEIGHTS      = .false.
+    this%USE_MODEL_GSE        = .false.
     this%INTERP_SECOND_OK     = .false.
     this%ASYMMETRIC_COV       = .false.
   end subroutine initialize
@@ -184,6 +186,8 @@ subroutine read_options(this, reader)
         this%INFER_LAST_CLASS     = .true.
       case("CORRECT_WEIGHTS")
         this%CORRECT_WEIGHTS      = .true.
+      case("USE_MODEL_GSE")
+        this%USE_MODEL_GSE        = .true.
       case DEFAULT
         call error_handler(1,reader%file,"Unknown Option Name: " // trim(id))
     end select
@@ -247,6 +251,7 @@ subroutine write_input_summary(this)
     if (this%LOG_KRIGE_K        ) logic_true = trim(logic_true) // "LOG_KRIGE_K"         // ","
     if (this%INFER_LAST_CLASS   ) logic_true = trim(logic_true) // "INFER_LAST_CLASS"    // ","
     if (this%CORRECT_WEIGHTS    ) logic_true = trim(logic_true) // "CORRECT_WEIGHTS"     // ","
+    if (this%USE_MODEL_GSE      ) logic_true = trim(logic_true) // "USE_MODEL_GSE"       // ","
     
     if (len(trim(logic_true)) > no_true_len) then
       !call log%write_line(logic_true)

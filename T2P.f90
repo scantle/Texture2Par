@@ -920,7 +920,7 @@ module m_T2P
     end select
 
     write(fmt(1),'("(1a10,",i1,"a10,",i5,"i14)")') dim, this%fmodel%nlayers/kintrvl
-    write(fmt(2),'("(1i10,",i1,"i8,",i5,"es14.5)")') dim, this%fmodel%nlayers/kintrvl
+    write(fmt(2),'("(1i10,",i1,"i10,",i5,"es14.5)")') dim, this%fmodel%nlayers/kintrvl
 
     fwrite => open_file_writer(fname)
     unit = fwrite%unit
@@ -978,8 +978,8 @@ module m_T2P
         kintrvl = 2
     end select
 
-    write(fmt(1),'("(1a10,",i1,"a8,",i5,"i14)")') dim, this%fmodel%nlayers/kintrvl
-    write(fmt(2),'("(1i10,",i1,"i8,",i5,"es14.5)")') dim, this%fmodel%nlayers/kintrvl
+    write(fmt(1),'("(1a10,",i1,"a10,",i5,"i14)")') dim, this%fmodel%nlayers/kintrvl
+    write(fmt(2),'("(1i10,",i1,"i10,",i5,"es14.5)")') dim, this%fmodel%nlayers/kintrvl
 
     fwrite => open_file_writer(fname)
     unit = fwrite%unit
