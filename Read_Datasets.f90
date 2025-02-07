@@ -157,8 +157,6 @@ module m_read_datasets
           do k=1, t2p%fmodel%nlayers
             t2p%datasets(didx,k)%fmodel_loc(idx) = fmodel_loc
           end do
-          ! Get z at model location
-          fmodel_z = t2p%fmodel%elev(fmodel_loc,0)
           ! If using, get ppzone in model
           if (t2p%opt%INTERP_ORDER=="AFTER") then
             ! TODO for IWFM this is attempting to match element (fmodel_Loc) to node (ppzones)
@@ -175,6 +173,8 @@ module m_read_datasets
             end do
           end do
           call t2p%fmodel%get_elev_at_point(grid%coords(:,idx), local_elevs(:), fmodel_loc)
+          fmodel_z = local_elevs(0)
+          if (t2p%opt%USE_MODEL_GSE) intv_top = fmodel_z
           prev_idx = idx
         else
           thick = depth - prev_depth
