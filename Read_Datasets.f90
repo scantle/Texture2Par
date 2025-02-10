@@ -119,7 +119,6 @@ module m_read_datasets
 
       ! The real work begins
       do j=1, nlines
-        write(tmp,'(i10)') j+1   ! line of file
         read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
 	      call reader%iomsg_handler(iomsg)
         if (didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
@@ -323,7 +322,6 @@ module m_read_datasets
 
       ! The real work begins
       do j=1, nlines
-        write(tmp,'(i10)') j+1   ! line of file
         read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
 	      call reader%iomsg_handler(iomsg)
         if (didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
@@ -336,8 +334,6 @@ module m_read_datasets
         t2p%datasets(didx,1)%values(:, j) = wvalues(1:nsets)
         all_sum = all_sum + wvalues(1:nsets) * depth
         if (depth>0) all_count = all_count + 1
-        cycle
-
       end do
 
       ! Store means
@@ -348,7 +344,7 @@ module m_read_datasets
             t2p%datasets(didx,k)%mean(l) = (all_sum(l) / all_depth(l))
           end do
         else
-          all_sum(l) = sum(t2p%datasets(didx,k)%values(l, :)) / nlines
+          all_sum(l) = sum(t2p%datasets(didx,1)%values(l, :)) / nlines
           do k=1, t2p%fmodel%nlayers
             t2p%datasets(didx,k)%mean(l) = all_sum(l)
           end do
