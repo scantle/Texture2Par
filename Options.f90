@@ -18,6 +18,7 @@ module m_options
     real                     :: IDW_POWER             ! Inverse Distance Weighting Power Parameter
     real                     :: MAX_SECONDARY_DIST    ! Maximum distance to include secondary data in interpolation
     real                     :: MAX_OUTSIDE_DIST      ! Maximum distance data can be outside of [model] domain
+    real                     :: MAX_LOG_LENGTH        ! Maximum interval length when reading 3D data, longer logs will be split
     integer                  :: INTERP_DIM            ! 2D, 3D, stored as integer, read as string
     integer                  :: NSIM                  ! number of sequential gaussian simulation; default is zero which is Kriging
     integer                  :: SEED                  ! seed number for generating random path and samples for SGSIM
@@ -71,6 +72,7 @@ module m_options
     this%IDW_POWER            = 2.0
     this%MAX_SECONDARY_DIST   = 0.0                   ! Default is overwritten in filter_near_points
     this%MAX_OUTSIDE_DIST     = 0.0
+    this%MAX_LOG_LENGTH       = HUGE(0.0)
     this%INTERP_DIM           = 2
     this%NSIM                 = 0
     this%SEED                 = 0
@@ -152,8 +154,10 @@ subroutine read_options(this, reader)
         this%IDW_POWER            = item2real(strings, 2)
       case("MAX_SECONDARY_DIST")
         this%MAX_SECONDARY_DIST   = item2real(strings, 2)
-      case ("MAX_OUTSIDE_DIST")
+      case("MAX_OUTSIDE_DIST")
         this%MAX_OUTSIDE_DIST     = item2real(strings, 2)
+      case("MAX_LOG_LENGTH")
+        this%MAX_LOG_LENGTH       = item2real(strings, 2)
       case("SILENT_MODE")
         this%SILENT_MODE          = .true.
       case("DEBUG_MODE")
@@ -211,6 +215,7 @@ subroutine write_input_summary(this)
     call log%write_valueline('IDW Power Value:',this%IDW_POWER)
     call log%write_valueline('Max Secondary Data Dist:', this%MAX_SECONDARY_DIST)
     call log%write_valueline('Max Outside Bounds Dist:', this%MAX_OUTSIDE_DIST)
+    if (this%INTERP_DIM == 3) call log%write_valueline('Max Log Interval Length:', this%MAX_LOG_LENGTH)
     !call log%write_valueline('',this%INTERP_DIM)  ! unimplemented
     ! Going to do something a little nicer for the Interpolation Method
     select case(this%INTERP_METHOD)
@@ -226,7 +231,9 @@ subroutine write_input_summary(this)
     call log%write_valueline('Interpolation Method:',trim(interp_text))
     call log%write_valueline('Interpolation Order:',this%INTERP_ORDER)
     write(interp_text, *) this%NSIM; call log%write_valueline('Realization Number:', trim(interp_text))
-    write(interp_text, *) this%SEED; call log%write_valueline('Random Seed Number:', trim(interp_text))
+    if (this%NSIM > 1) then
+      write(interp_text, *) this%SEED; call log%write_valueline('Random Seed Number:', trim(interp_text))
+    end if
     !call log%write_valueline('',this%MAIN_OUTPUT) ! unneeded (we're writing to that file!)
     !call log%write_valueline('',this%OUTPUT_DIR)  ! unimplemented
     !call log%write_valueline('',this%INPUT_DIR)   ! unimplemented

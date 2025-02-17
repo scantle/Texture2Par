@@ -201,7 +201,7 @@ module m_read_datasets
             ! Find min top/bot values
             frac_thick = min(local_elevs(k-1), intv_top)-max(local_elevs(k), intv_bot)
             do l=1, nsets
-              if (wvalues(l)>=0) then
+              if (wvalues(l)>=0) then     !TODO Should this be > -999/NODATA?
                 wv_accumulator(l,k) = wv_accumulator(l,k) + wvalues(l) * frac_thick
                 total_thick(l,k) = total_thick(l,k) + frac_thick
               end if
@@ -246,11 +246,12 @@ module m_read_datasets
     character(256)                :: iomsg
     character(10)                 :: tmp
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
-    integer                       :: idx, idx_offset, iint, prev_idx, prev_iint, fmodel_loc, didx
-    integer,allocatable           :: cids(:), all_count(:)
-    real                          :: x, y, z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
-    real    ,allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:)
-    real    ,allocatable          :: all_sum(:), all_depth(:)
+    integer                       :: idx, iint, ipoint, prev_idx, prev_iint, fmodel_loc, didx, resized_intervals
+    integer                       :: all_count
+    integer,allocatable           :: cids(:)
+    real                          :: x, y, z, prev_depth, depth, re_depth, intv_top, intv_bot, thick, frac_thick
+    real    ,allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:), all_sum(:)
+    real                          :: all_thick
     type(t_grid),pointer          :: grid
     type(t_data_transformer)      :: data_transformer
 
@@ -280,32 +281,45 @@ module m_read_datasets
 
       ! Allocate for reading
       allocate(wvalues      (nsets))
-      allocate(all_count    (nsets))
+      !allocate(all_count    (nsets))
       allocate(all_sum      (nsets))
-      allocate(all_depth    (nsets))
-      allocate(total_thick   (nsets,t2p%fmodel%nlayers))
-      allocate(wv_accumulator(nsets,t2p%fmodel%nlayers))
+      !allocate(all_thick    (nsets))
+      !allocate(total_thick   (nsets,t2p%fmodel%nlayers))
+      !allocate(wv_accumulator(nsets,t2p%fmodel%nlayers))
       allocate(hsus(ncats))
       if (allocated(local_elevs)==.false.) allocate(local_elevs(0:t2p%fmodel%nlayers))
       all_count = 0
       all_sum = 0
-      all_depth = 0
+      all_thick = 0
       prev_idx = 0
       prev_iint = 0
       prev_depth = 0.0
+      npoints = 0    ! in 3D, npoints =/ nwells. Instead, its the total number of intervals.
 
-      ! Get data length (not file length, since we've gone past the header)
-      call reader%next_item(eof, strings)
-      idx_offset = item2int(strings,2) - 1          ! First well id, must be sequential after
-      nlines = reader%get_data_len(rewind_to_last_line=.true.) + 1
-      ! Get npoints
-      !backspace(reader%unit)  ! EOF
-      !backspace(reader%unit)  ! Last line of data
-      call reader%next_item(eof, strings)
-      npoints = item2int(strings,2) - idx_offset    ! Last - (First - 1) = npoints
+      ! OLD CODE !
+      !call reader%next_item(eof, strings)
+      !idx_offset = item2int(strings,2) - 1          ! First well id, must be sequential after
+      !nlines = reader%get_data_len(rewind_to_last_line=.true.) + 1
+      !! Get npoints
+      !!backspace(reader%unit)  ! EOF
+      !!backspace(reader%unit)  ! Last line of data
+      !call reader%next_item(eof, strings)
+      !npoints = item2int(strings,2) - idx_offset    ! Last - (First - 1) = npoints
+      
+      ! Pre-read to get npoints, given opt%MAX_LOG_LENGTH. Logs are to be split evenly into length/MAX_LOG_LENGTH
+      do
+        read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth
+        if (reader%ioerr /= 0) exit   ! done
+        nlines = nlines + 1
+        if (iint==1) prev_depth = 0.0 ! new log
+        ! How many points will this interval become?
+        npoints = npoints + ceiling((depth - prev_depth) / t2p%opt%MAX_LOG_LENGTH)
+        prev_depth = depth
+      end do
+      
       ! MOU: save as 3D dataset
-      grid => create_grid_object(3, nlines)
-      call t2p%datasets(didx,1)%initialize(nlines, nsets)
+      grid => create_grid_object(3, npoints)
+      call t2p%datasets(didx,1)%initialize(npoints, nsets)
       t2p%datasets(didx,1)%values = NODATA
       t2p%datasets(didx,1)%grid => grid
       t2p%datasets(didx,1)%id = didx
@@ -321,38 +335,46 @@ module m_read_datasets
       call reader%skip(1, eof)
 
       ! The real work begins
+      ipoint = 1
       do j=1, nlines
         read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
 	      call reader%iomsg_handler(iomsg)
         if (didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
-        all_depth = all_depth + depth
-
-        ! MOU: read 3d data
-        grid%coords(1, j) = x
-        grid%coords(2, j) = y
-        grid%coords(3, j) = z-depth
-        t2p%datasets(didx,1)%values(:, j) = wvalues(1:nsets)
-        all_sum = all_sum + wvalues(1:nsets) * depth
+        if (iint <= prev_iint) call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
+        if (prev_depth > depth) call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp)))
+        if (iint==1) prev_depth = 0.0  ! new log
+        all_thick = all_thick + (depth - prev_depth)
+        
+        resized_intervals = ceiling((depth - prev_depth) / t2p%opt%MAX_LOG_LENGTH)
+        
+        ! Transform values
+        if (minval(wvalues)>=0) then !TODO Should this be > -999/NODATA?
+          call data_transformer%apply(wvalues)
+          all_sum = all_sum + wvalues(1:nsets) * (depth - prev_depth)
+        end if
+        
+        do k=1, resized_intervals
+          grid%coords(1, ipoint) = x
+          grid%coords(2, ipoint) = y
+          re_depth = prev_depth+((depth-prev_depth)/resized_intervals)*(k-1) + (((depth-prev_depth)/resized_intervals)/2)
+          grid%coords(3, ipoint) = z - re_depth
+          t2p%datasets(didx,1)%values(:, ipoint) = wvalues(1:nsets)
+          ipoint = ipoint + 1
+        end do
+        
         if (depth>0) all_count = all_count + 1
+        prev_depth = depth
       end do
 
       ! Store means
-      do l=1, nsets
-        if (all_count(l)==nlines) then
-          ! all depth > 0
-          do k=1, t2p%fmodel%nlayers
-            t2p%datasets(didx,k)%mean(l) = (all_sum(l) / all_depth(l))
-          end do
-        else
-          all_sum(l) = sum(t2p%datasets(didx,1)%values(l, :)) / nlines
-          do k=1, t2p%fmodel%nlayers
-            t2p%datasets(didx,k)%mean(l) = all_sum(l)
-          end do
-        end if
-      end do
+      if (all_thick>0) then
+        do k=1, t2p%fmodel%nlayers
+          t2p%datasets(didx,k)%mean(:) = (all_sum(:) / all_thick)
+        end do
+      end if
 
       ! Cleanup loop variables
-      deallocate(wvalues, all_count, all_sum, all_depth, total_thick, wv_accumulator, hsus)
+      deallocate(wvalues, hsus)
     end do
   end subroutine read_datasets_3D
   
