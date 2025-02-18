@@ -38,7 +38,7 @@ module m_read_datasets
     character(200)                :: file, name
     character(30),allocatable     :: hsus(:)
     character(256)                :: iomsg
-    character(10)                 :: tmp
+    character(20)                 :: tmp
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
     integer                       :: idx, idx_offset, iint, prev_idx, prev_iint, fmodel_loc, didx
     integer,allocatable           :: cids(:), all_count(:)
@@ -119,6 +119,7 @@ module m_read_datasets
 
       ! The real work begins
       do j=1, nlines
+        write(tmp, '(i)') j+1
         read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
 	      call reader%iomsg_handler(iomsg)
         if (didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
@@ -151,7 +152,12 @@ module m_read_datasets
           prev_depth = 0.0
           ! Get location in model, get elevation at model layers in model
           fmodel_loc = t2p%fmodel%find_in_grid([x,y], t2p%opt%MAX_OUTSIDE_DIST)
-          if (fmodel_loc==0) call error_handler(1,file,"Well not found in model domain: "//name)
+          if (fmodel_loc==0) then
+            if (t2p%opt%MAX_OUTSIDE_DIST > 0.0) then
+              call error_handler(1,file,"Well distance from model greater than MAX_OUTSIDE_DIST: "//name)
+            else 
+              call error_handler(1,file,"Well not found in model domain: "//name)
+          end if
           ! Store location
           do k=1, t2p%fmodel%nlayers
             t2p%datasets(didx,k)%fmodel_loc(idx) = fmodel_loc
@@ -244,7 +250,7 @@ module m_read_datasets
     character(200)                :: file, name
     character(30),allocatable     :: hsus(:)
     character(256)                :: iomsg
-    character(10)                 :: tmp
+    character(20)                 :: tmp
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
     integer                       :: idx, iint, ipoint, prev_idx, prev_iint, fmodel_loc, didx, resized_intervals
     integer                       :: all_count
@@ -337,6 +343,7 @@ module m_read_datasets
       ! The real work begins
       ipoint = 1
       do j=1, nlines
+        write(tmp, '(i)') nlines+1
         read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
 	      call reader%iomsg_handler(iomsg)
         if (didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))

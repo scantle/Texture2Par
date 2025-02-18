@@ -392,7 +392,7 @@ end subroutine
     this%unit = get_next_iunit()
   
     open(this%unit, file=file, action='READ', STATUS='OLD', iostat=this%ioerr)
-    write(log_unit,'(3a)') 'Opening external file', trim(file), ' for reading.'
+    write(log_unit,'(3a)') 'Opening external file ', trim(file), ' for reading.'
     call this%iomsg_handler(iomsg)
     
   end subroutine jump_to_external

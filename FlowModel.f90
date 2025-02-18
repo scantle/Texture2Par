@@ -898,10 +898,12 @@ module m_flow_model
     real, intent(in)        :: max_outside_dist
     integer                 :: element
     integer                 :: nodeids(5)
-    real                    :: nodedist(5), elemx(4), elemy(4), inelem
-    integer                 :: inode, i, j, count, elem
+    real                    :: nodedist(5), elemx(4), elemy(4), inelem, mindist
+    integer                 :: inode, i, j, count, elem, minelem
 
     element = 0
+    minelem = 0
+    mindist = huge(0.0)
     call this%grid(this%lay2grid(1))%get_nnear(coords, 5, nodeids, nodedist)
 
     ! Loop over elements of closest node
@@ -919,12 +921,20 @@ module m_flow_model
         end do
         ! Check if the point is in this polygon
         inelem = pinpol(coords(1), coords(2), elemx, elemy, count)
-        if (inelem >= 0.0d0 .or. abs(inelem) <= max_outside_dist**2) then  ! Greedy, treats on line as in elem
+        if (inelem >= 0.0d0) then  ! Greedy, treats on line as in elem
           element = elem
           exit outerloop
+        else if (abs(inelem) < mindist) then
+          mindist = abs(inelem)
+          minelem = elem
         end if
       end do
     end do outerloop
+    
+    ! Didn't find an exact match? is it at least within max_outside_dist?
+    if (element == 0) then 
+      if (mindist <= max_outside_dist**2) element = minelem
+    end if
 
   end function find_in_grid_elem
 
