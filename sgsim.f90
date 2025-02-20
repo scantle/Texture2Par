@@ -11,14 +11,14 @@ module m_sgsim
   use kdtree2_module, only               : kdtree2_create, kdtree2, kdtree2_result, kdtree2_n_nearest
   implicit none
 !-------------------------------------------------------------------------------------------------!
-  type, extends(t_grid)     :: t_randgrid
-    integer , pointer      :: order(:)              ! cell visit order for SGSIM
-    integer , pointer      :: order_inv(:)          ! inverse SGSIM cell visit order; result_of_random_cell(order_inv) will put back in order of the original grid
-    real, pointer      :: sample(:)             ! random sample used in SGSIM
-    real, pointer      :: values(:)             ! values on the random grid
-    logical , pointer      :: mask(:)               ! logical array mask the data points used for kriging
+  type, extends(t_grid)     :: t_simgrid
+    integer , pointer       :: order(:)    =>null()     ! cell visit order for SGSIM
+    integer , pointer       :: order_inv(:)=>null()     ! inverse SGSIM cell visit order; result_of_random_cell(order_inv) will put back in order of the original grid
+    real    , pointer       :: sample(:)   =>null()     ! random sample used in SGSIM
+    real    , pointer       :: values(:)   =>null()     ! values on the random grid
+    logical , pointer       :: mask(:)     =>null()     ! logical array mask the data points used for kriging
   contains
-    procedure                  :: finalize => finalize_randgrid
+    procedure                  :: finalize => finalize_simgrid
   end type
 
   type, extends(t_treekrige) :: t_sgsim
@@ -53,8 +53,8 @@ module m_sgsim
     integer,intent(in)                    :: to_cats(:)
     type(t_options),intent(in)            :: opt
 
-    type(t_randgrid),intent(inout)        :: obsxy(:)
-    type(t_randgrid),intent(inout)        :: gridxy
+    type(t_simgrid),intent(inout)         :: obsxy(:)
+    type(t_simgrid),intent(inout)         :: gridxy
 
     ! Local
     integer                     :: i,class_id,matsize, mat_tot, success, k
@@ -139,8 +139,8 @@ module m_sgsim
     use kdtree2_module
     implicit none
     class(t_sgsim),intent(inout)    :: this
-    type(t_randgrid)                :: obsxy(:)
-    type(t_randgrid)                :: gridxy
+    type(t_simgrid)                 :: obsxy(:)
+    type(t_simgrid)                 :: gridxy
     integer                         :: idx, nsim
 
     ! local
@@ -167,15 +167,16 @@ module m_sgsim
       call kdtree2_n_nearest(obsxy(iset)%tree, newloc, loc_usenear(iset), kdnearest(:loc_usenear(iset)), mask=obsxy(iset)%mask)
       inear(:loc_usenear(iset),iset) = kdnearest(:loc_usenear(iset))%idx
       dist (:loc_usenear(iset),iset) = kdnearest(:loc_usenear(iset))%dis ** 0.5
-      !print*, "debug predict_point_sgsim 10", inear(:loc_usenear(iset),iset)
-      !print*, "debug predict_point_sgsim 11", dist (:loc_usenear(iset),iset)
-      ! Filter out points beyond max_sdist for covariate datasets
-      !print*, "debug predict_point_sgsim 12", this%max_sdist, dist (:loc_usenear(iset),iset)
+
       block
         logical :: valid(loc_usenear(iset))
         integer :: nvalid
         valid = dist (:loc_usenear(iset),iset) < this%max_sdist .and. inear(:loc_usenear(iset),iset) > 0
         nvalid = count(valid)
+        if (nvalid==0) then
+          write(*,*) "No near data point is found for Node", idx
+          stop 1
+        end if
         loc_usenear(iset) = nvalid
         inear(:nvalid,iset) = pack(inear(:loc_usenear(iset),iset), valid)
         dist (:nvalid,iset) = pack(dist (:loc_usenear(iset),iset), valid)
@@ -185,7 +186,6 @@ module m_sgsim
     osize   = sum(loc_usenear)
     matsize = osize+this%unbias+this%ndrift
     mat_tot = matsize * (matsize + 1) / 2
-    !print*, "debug predict_point_sgsim 20", osize
 
     ! Create obs-obs matrix
     call this%pset_cok_sgsim(obsxy, matsize, this%matA, this%pset_id, mat_tot, inear, loc_usenear, this%ndim)
@@ -224,7 +224,7 @@ module m_sgsim
 
     ! Inputs
     class(t_sgsim),intent(inout) :: this
-    type(t_randgrid)       :: obsxy(:)
+    type(t_simgrid)       :: obsxy(:)
     integer,intent(in)     :: maxpt, ntot, dim
     integer,intent(in)     :: inear(this%maxnear,this%nsets), nnear(this%nsets)
     integer,intent(inout)  :: id(ntot)
@@ -294,7 +294,7 @@ module m_sgsim
 
   subroutine pset_rhs(this, matsize, obsxy, newloc, inear, nnear)
     class(t_sgsim),intent(inout) :: this
-    type(t_randgrid)       :: obsxy(:)
+    type(t_simgrid)       :: obsxy(:)
     integer,intent(in)     :: inear(this%maxnear,this%nsets), nnear(this%nsets), matsize
     real    ,intent(in)    :: newloc(:)
     ! local
@@ -345,7 +345,7 @@ module m_sgsim
       ! Setup for each category
       cat = catlist(i)
       block
-        type(t_randgrid)  :: obsxy(this%nsets), gridxy
+        type(t_simgrid)  :: obsxy(this%nsets), gridxy
         ! Step 1: filter obs and grid to
         call this%setup_sgsim(obs_data, obs_idx, val_idx, to_grid, cat, to_cats, weights, opt, obsxy, gridxy)
         nobs1 = obsxy(1)%n - gridxy%n
@@ -366,8 +366,8 @@ module m_sgsim
   end subroutine calc_sgsim
 
 !-------------------------------------------------------------------------------------------------!
-  subroutine finalize_randgrid(this)
-    class(t_randgrid),intent(inout)  :: this
+  subroutine finalize_simgrid(this)
+    class(t_simgrid),intent(inout)  :: this
     if (associated(this%order))      deallocate(this%order)
     if (associated(this%order_inv))  deallocate(this%order_inv)
     if (associated(this%sample))     deallocate(this%sample)
