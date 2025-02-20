@@ -41,8 +41,8 @@ module m_T2P
     ! Trackers
     type(t_vstringlist),pointer      :: class_names           ! Data class names
     type(t_vstringlist)              :: parnames              ! Names of output parameters calculated
-    integer,pointer                  :: nsecondary_by_id(:)   ! Connections (covariates) per [class, hyd property]
-    integer,pointer                  :: connections(:,:)      ! (connections, [classes or hyd properties])
+    integer,pointer                  :: nsecondary_by_id(:)=>null() ! Connections (covariates) per [class, hyd property]
+    integer,pointer                  :: connections(:,:)   =>null() ! (connections, [classes or hyd properties])
     integer,allocatable              :: class_dataset(:)      ! Translation from class id to dataset_id, ie datasets(dataset_id, layer)
     type(t_vstringlist)              :: dataset_files         ! dataset filenames
     type(t_vstringlist)              :: dataset_trans         ! dataset transformations (same order as filenames)
@@ -159,8 +159,9 @@ module m_T2P
     call vstrlist_new (warnings)  ! belongs to m_error_handler
 
     ! Open the overwrite unit
+#ifdef __INTEL_COMPILER
     open(6, carriagecontrol='fortran')
-
+#endif
   end subroutine initialize
 
 !-------------------------------------------------------------------------------------------------!
@@ -303,7 +304,7 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     integer, allocatable          :: vario_map(:,:)  ! Keeps track of assigned variogram indices
     integer                       :: i, j, k, x, vidx, nconnected, nprimaries
-    
+
     ! Determine number of primaries based on INTERP_ORDER
     if (this%opt%INTERP_ORDER == "BEFORE") then
       nprimaries = this%ntexclasses
@@ -314,14 +315,14 @@ module m_T2P
       allocate(vario_map(this%npar + this%nsecondary, this%npar + this%nsecondary))
     end if
     this%nprimary = nprimaries
-    
+
     ! No need to setup if we're not kriging
     if (.not. (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK")) return
-    
+
     ! Initialize
     vidx = 0  ! Start variogram index counter
     vario_map = 0  ! Initialize to zero (unassigned)
-    
+
     ! Loop over each primary dataset
     do i = 1, this%nprimary
       ! Variogram for the primary dataset itself
@@ -349,7 +350,7 @@ module m_T2P
         end do
       end if
     end do
-    
+
     ! Loop over secondary-secondary pairs (assumed always symmetric)
     do i = 1, this%nsecondary
       k = this%ntexclasses + i  ! Secondary datasets start after primaries
@@ -365,7 +366,7 @@ module m_T2P
         end if
       end do
     end do
-    
+
     ! Add Pilot Point Variogram (if used/kriging)
     if (.not. this%opt%ONLY_TEXTURE) then
       vidx = vidx + 1
@@ -375,7 +376,7 @@ module m_T2P
           p%global_vario_idx(1, 1) = 1  ! Assign to pilot point interpolator
       end select
     end if
-    
+
     ! Update the total number of variograms
     this%nvario = vidx
 
@@ -558,7 +559,7 @@ module m_T2P
       ! T2P 1.0 Method
       allocate(this%dset_intermediate(1,this%fmodel%nlayers))
       ! Uses layer 1 grid
-      pp_to => this%fmodel%grid(1)
+      pp_to => this%fmodel%grid(1)%ptrgrid
       cat_to => this%fmodel%ppzones
     else if (this%opt%INTERP_ORDER=="AFTER") then
       call this%write_status("Interpolating Pilot Point Parameters to Dataset Grid")
@@ -690,9 +691,9 @@ module m_T2P
 
       ! Initialize results
       if (this%opt%INFER_LAST_CLASS) then
-        call dout(k)%initialize(this%fmodel%grid(1)%n, this%nprimary+1, default_value=NODATA)
+        call dout(k)%initialize(this%fmodel%grid(1)%ptrgrid%n, this%nprimary+1, default_value=NODATA)
       else
-        call dout(k)%initialize(this%fmodel%grid(1)%n, this%nprimary, default_value=NODATA)
+        call dout(k)%initialize(this%fmodel%grid(1)%ptrgrid%n, this%nprimary, default_value=NODATA)
       end if
       !dout(k)%values = 0.0
 
@@ -740,7 +741,7 @@ module m_T2P
   end subroutine interpolate_model
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine interpolate_prepare(this, k, obslayer, modelgrid)
     ! MOU: prepare data for interpolation for layer `k`
     class(t_T2P), intent(inout)   :: this
@@ -751,13 +752,13 @@ module m_T2P
     if (this%opt%INTERP_DIM==3) then
       obslayer = 1
       if (this%fmodel%get_layer_id(k)==1) then
-        modelgrid => create_grid_object(3, this%fmodel%grid(1)%n)
-        modelgrid%coords(1:2,:) = this%fmodel%grid(1)%coords(1:2,:)
+        modelgrid => create_grid_object(3, this%fmodel%grid(1)%ptrgrid%n)
+        modelgrid%coords(1:2,:) = this%fmodel%grid(1)%ptrgrid%coords(1:2,:)
       end if
       modelgrid%coords(3,:) = (this%fmodel%elev(:, k-1) + this%fmodel%elev(:, k)) * 0.5 ! set the Z coordintes at node center
     else
       obslayer = k
-      if (this%fmodel%get_layer_id(k)==1) modelgrid => this%fmodel%grid(1)
+      if (this%fmodel%get_layer_id(k)==1) modelgrid => this%fmodel%grid(1)%ptrgrid
     end if
   end subroutine
 !-------------------------------------------------------------------------------------------------!
@@ -778,8 +779,8 @@ module m_T2P
       call par_out(k)%initialize(this%fmodel%nnodes(k), this%npar, default_value=NODATA)
 
       ! Check if layer is active (generally IWFM: means it has thickness)
-      if (this%fmodel%is_active_layer(k)==.false.) cycle
-      par_out(k)%grid => this%fmodel%grid(this%fmodel%lay2grid(k))
+      if (.not. this%fmodel%is_active_layer(k)) cycle
+      par_out(k)%grid => this%fmodel%grid(this%fmodel%lay2grid(k))%ptrgrid
       call this%write_minor_status('- Layer:',this%fmodel%get_layer_id(k))
 
       ! Allocate arrays

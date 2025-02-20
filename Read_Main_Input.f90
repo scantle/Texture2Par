@@ -1,7 +1,7 @@
 module m_read_main_input
   use m_T2P, only: t_t2p
-  use m_vstring, only: t_vstring, vstring_new, vstrlist_append, vstring_toupper
-  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_split
+  use m_vstring, only: t_vstring, vstring_new, vstring_toupper
+  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_split, vstrlist_append, VSTRINGLIST_INDEX_UNKNOWN
   use m_file_io
   use m_error_handler, only: error_handler
   implicit none
@@ -13,15 +13,15 @@ module m_read_main_input
 
   subroutine read_main_input(t2p, file)
     implicit none
-    
+
     type(t_t2p),intent(inout)   :: t2p
     character(100), intent(in)  :: file
     integer                     :: eof_check
     character(100)              :: id
-  
+
     call t2p%write_status("Reading Input Files")
     reader => open_file_reader(file)
-    
+
     eof_check = 0
     do
       call reader%next_block_id(eof_check, id)
@@ -29,13 +29,13 @@ module m_read_main_input
       call block_redirect(t2p, id)
     end do
     !write(*,*) 'DONE READING!'
-    
+
     call close_file(reader)
-  
+
   end subroutine read_main_input
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine block_redirect(t2p, id)
     implicit none
 
@@ -44,7 +44,7 @@ module m_read_main_input
 
     ! Regardless of block
     call pre_block_read_check(t2p, id)
-    
+
     select case(trim(id))
       case("OPTIONS")
         ! This is the only block we let read it's own entries and set it's own read tracker (has_opt)
@@ -77,48 +77,48 @@ module m_read_main_input
     end select
 
   end subroutine block_redirect
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine pre_block_read_check(t2p, block_id)
     ! Generic hook for making sure a block has its prerequisite data read in.
     implicit none
     type(t_t2p),intent(inout)       :: t2p
     character(*), intent(in)        :: block_id
-    
+
     select case(trim(block_id))
       case("CLASSES")
-        if (t2p%has_opt==.false.) call error_handler(2,reader%file,"OPTIONS block must be declared before CLASSES")
+        if (.not. t2p%has_opt) call error_handler(2,reader%file,"OPTIONS block must be declared before CLASSES")
       case("COVARIATES")
-        if (t2p%has_classes==.false.) call error_handler(2,reader%file,"CLASSES block must be declared before COVARIATES")
+        if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before COVARIATES")
         if (t2p%has_vario) call error_handler(2,reader%file,"COVARIATES block cannot be declared after VARIOGRAMS")
       case("VARIOGRAMS")
-        if (t2p%has_classes==.false.) call error_handler(2,reader%file,"CLASSES block must be declared before VARIOGRAMS")
+        if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before VARIOGRAMS")
       case("PP_LOCS")
-        if (t2p%has_classes==.false.) call error_handler(2,reader%file,"CLASSES block must be declared before PP_LOCS")
+        if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before PP_LOCS")
       case("PP_PARAMETERS")
-        if (t2p%has_pplocs==.false.) call error_handler(2,reader%file,"PP_LOCS block must be declared before PP_PARAMETERS")
+        if (.not. t2p%has_pplocs) call error_handler(2,reader%file,"PP_LOCS block must be declared before PP_PARAMETERS")
       case("PP_AQUITARD_LOCS")
-        if (t2p%has_classes==.false.) call error_handler(2,reader%file,"CLASSES block must be declared before PP_AQUITARD_LOCS")
+        if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before PP_AQUITARD_LOCS")
       case DEFAULT
       ! Do nothing
     end select
-  
+
   end subroutine pre_block_read_check
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine read_FLOW_MODEL_block(t2p, reader)
     use m_flow_model, only: t_flow_model, create_flow_model_object, check_id_validity
     implicit none
     type(t_t2p),intent(inout)       :: t2p
     type(t_file_reader), pointer    :: reader
-    
+
     ! Standard file reader variables
     integer                    :: status, length
     character(30)              :: id, value
     type(t_vstringlist)        :: strings
-    
+
     ! Loop until end of block or end of file
     do
       call reader%next_block_item(status, id, strings, length)
@@ -162,19 +162,19 @@ module m_read_main_input
           call error_handler(1,reader%file,"Unknown Flow Model option: " // trim(id))
       end select
     end do
-    
+
     ! Hook for T2P to process flowmodel entries
     call t2p%setup_flow_model()
-  
+
   end subroutine read_FLOW_MODEL_block
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine read_class_block(t2p, reader)
     implicit none
     type(t_t2p),intent(inout)       :: t2p
     type(t_file_reader), pointer    :: reader
-    
+
     ! Standard file reader variables
     integer                    :: status, length
     character(30)              :: id, value
@@ -182,17 +182,17 @@ module m_read_main_input
     ! sub variables
     integer                       :: i, j, k, n, nclasses, prime_id, class_id
     type(t_vstringlist),pointer   :: class_names
-    
+
     allocate(class_names)
     call vstrlist_new(class_names)
-    
+
     ! Pre-read for number of classes
     !call reader%get_block_dim(n, nclasses)  ! returns primary, total classes, or generally (lines, items)
     n = reader%get_block_len()
     if (n < 1) then
       call error_handler(2,reader%file,"No Data Classes Listed")
     end if
-    
+
     ! Loop over data class lines
     do i=1, n
       call reader%next_block_item(status, id, strings, length)
@@ -200,50 +200,50 @@ module m_read_main_input
       call vstrlist_append(class_names, vstring_toupper(vstrlist_index(strings,1)))
     end do
     read(reader%unit,*)  ! Read past end block
-    
+
     ! Pass to T2P
     call t2p%setup_data_classes(n,class_names)
-    
+
   end subroutine read_class_block
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
-  subroutine read_covariates_block(t2p, reader)    
+
+  subroutine read_covariates_block(t2p, reader)
     implicit none
     type(t_t2p),intent(inout)       :: t2p
     type(t_file_reader), pointer    :: reader
     integer                         :: i,k,nlines,nitems,cid,nsecondary,prime_id
     integer,pointer                 :: connections(:,:)
     character(30)                   :: temp
-    
+
     ! Standard file reader variables
     integer                    :: status, length
     character(30)              :: id, value
     type(t_vstringlist)        :: strings
-    
+
     nsecondary = 0
-    
+
     ! Pre-read for number of classes
     call reader%get_block_dim(nlines, nitems)  ! returns nlines, total items
-    
+
     allocate(connections(nitems,t2p%nprimary))
     t2p%nsecondary_by_id(:) = 0
-    
+
     ! Setup matrix, values indicate variogram ID. Can start off assuming each class has a variogram
     connections = 0
     do i = 1, t2p%nprimary
       connections(1, i) = i
     end do
-    
+
     if (nlines < 1) then
       !call error_handler(2,reader%file,"No Covariates Listed")
       ! Instead, early return
       return
     end if
-    
+
     ! Ensure covariates are being used with a valid intepolation option
-    if (t2p%opt%INTERP_SECOND_OK==.false.) call error_handler(4,opt_msg="Covariates are not supported for non-kriging options.")
-    
+    if (.not. t2p%opt%INTERP_SECOND_OK) call error_handler(4,opt_msg="Covariates are not supported for non-kriging options.")
+
     ! Loop over data class lines
     do i=1, nlines
       call reader%next_block_item(status, id, strings, length)
@@ -256,7 +256,7 @@ module m_read_main_input
         prime_id = t2p%get_parameter_id(vstrlist_index(strings, 1))
         if (prime_id==0) call error_handler(1,reader%file,"Invalid Hydraulic Parameter Name in Covariates Block = "//id)
       end if
-        
+
       ! Loop over specifying the cross relationship(s)
       do k=2, length
         ! New covariate?
@@ -275,31 +275,31 @@ module m_read_main_input
       t2p%nsecondary_by_id(prime_id) = length-1
     end do
     read(reader%unit,*)  ! Read past end block
-    
+
     ! Pass to T2P
     call t2p%setup_covariates(nsecondary,connections)
-  
+
   end subroutine read_covariates_block
-    
+
 !-------------------------------------------------------------------------------------------------!
-  
+
 subroutine read_dataset_block(t2p, reader)
   implicit none
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
-  
+
   ! Standard file reader variables
   integer                    :: status, length
   character(30)              :: id, value
   type(t_vstringlist)        :: strings
-  
+
   ! Sub variables
   logical                    :: fname_set
   type(t_vstring)            :: fname, ftrans
-  
+
   ! Default values
   call vstring_new (ftrans , "NONE" )
-    
+
   ! Loop until end of block or end of file
   do
     call reader%next_block_item(status, id, strings, length)
@@ -314,36 +314,36 @@ subroutine read_dataset_block(t2p, reader)
         call error_handler(1,reader%file,"Unknown Dataset option: " // trim(id))
     end select
   end do
-  
+
   ! Did at least filename get set??
-  if (fname_set == .false.) then
+  if (.not. fname_set ) then
     call error_handler(2,reader%file,"Dataset Block must include a FILE")
   end if
-  
+
   ! Add to T2P
   t2p%ndatafiles = t2p%ndatafiles + 1
   call vstrlist_append(t2p%dataset_files, fname)
   call vstrlist_append(t2p%dataset_trans, ftrans)
-  
+
   ! No Hook (yet) for datasets
   t2p%has_datafiles = .true.
-      
+
 end subroutine read_dataset_block
 
 !-------------------------------------------------------------------------------------------------!
-  
+
 subroutine read_variogram_block(t2p, reader)
   use m_vario, only: t_vgm, get_vgm_from_line
   use m_kriging, only: t_krige
   implicit none
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
-  
+
   ! Standard file reader variables
   integer                    :: status, length
   character(30)              :: id, value
   type(t_vstringlist)        :: strings
-  
+
   ! Sub variables
   type(t_vgm),pointer        :: vgms(:,:)
   integer,pointer            :: nnear(:), nstruct(:)
@@ -352,14 +352,14 @@ subroutine read_variogram_block(t2p, reader)
   type(t_vstring)            :: class_name, cross_name
   type(t_vstringlist)        :: class_temp
   character(100)             :: msg
-  
+
   ! Allocate variograms
   ! nvario is currently set during the class block read, max structures in settings
   allocate(vgms(t2p%opt%max_vstruct,t2p%nvario), nnear(t2p%nvario), nstruct(t2p%nvario))
   vcount = 0
   nnear = 0
   nstruct = 0
-  
+
   ! Loop until end of block or end of file
   status = 0
   do
@@ -372,9 +372,9 @@ subroutine read_variogram_block(t2p, reader)
         iscross = .false.
         ispp    = .false.
         class_name = vstrlist_index(strings , 2)
-        
+
         ! Is this a single class covariogram or is this a cross covariogram?
-        if (length > 3 .and. vstrlist_search(strings,":")) then
+        if (length > 3 .and. vstrlist_search(strings,":")/=VSTRINGLIST_INDEX_UNKNOWN) then
           !Covar case 1 class_name : cross_name
           cross_name = vstrlist_index(strings,4)
           ! TODO if the cross name doesn't exist
@@ -388,7 +388,7 @@ subroutine read_variogram_block(t2p, reader)
           iscross = .true.
         !else if (vstring_match(class_name  ! WHAT ABOUT PPs?
         end if
-        
+
         ! Get variogram ids
         ! Check for pilot point class
         if (vstring_match(class_name,"PilotPoints",nocase=.true.)) then
@@ -431,14 +431,14 @@ subroutine read_variogram_block(t2p, reader)
               call error_handler(4,opt_msg="Variograms cannot be used without kriging as the interpolator")
           end select
         end if
-        
+
         ! Now we know what variogram, loop and read in structures
         do
           call reader%next_block_item(status, id, strings, length)
           if (status /= 0) exit       ! exit if end of block or end of file
           if (trim(id)=="CLASS") then ! move back one line & exit if it's the next class
             call reader%back(1)
-            exit 
+            exit
           end if
           ! Read structure
           struct_id = item2int(strings, 1)
@@ -461,7 +461,7 @@ subroutine read_variogram_block(t2p, reader)
         call error_handler(1,reader%file,"Unknown Variogram option: " // trim(id))
     end select
   end do ! end of variogram reading loop
-  
+
   ! Check we have all variograms, send to t2p object
   if (vcount < t2p%nvario) then
     write(msg, '(2(a,i3))') "Too Few Variograms, expected ", t2p%nvario, ", found: ", vcount
@@ -479,28 +479,28 @@ subroutine read_pploc_block(t2p, reader, p)
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
   type(t_pilotpoints),pointer     :: p
-  
+
   ! Standard file reader variables
   integer                    :: status, length
   character(30)              :: id, value
   type(t_vstringlist)        :: strings
-  
+
   ! Sub variables
   integer,pointer            :: pp_id(:)
   integer,allocatable        :: zone_tracker(:)
   integer                    :: i, j, npp, pid, nzones
   logical                    :: zone_counted
-  
+
   ! Assume block rows = # of pilot points
   npp = reader%get_block_len()
-  
+
   ! Allocate & setup PP object
   allocate(pp_id       (npp), &
            zone_tracker(npp)  )
   p => create_pilotpoint_object(npp, t2p%ntexclasses)
   nzones = 0
   zone_tracker = 0
-  
+
   ! Now read the pilot point locations
   do i=1, npp
     call reader%next_block_item(status, id, strings, length)
@@ -511,7 +511,7 @@ subroutine read_pploc_block(t2p, reader, p)
     p%grid%coords(2,i)  = item2dp (strings, 3)
     p%category(i)       = item2int(strings, 4)
     !t2p%pilot_points%lay_type(i)       = find_string_index_in_list(strings, 5, "A,T", .true.)
-    
+
     ! Early input checking & handling
     do j=1, i-1
       if (pp_id(j) == pp_id(i)) call error_handler(1,reader%file,"All pilot point IDs must be unique")
@@ -522,26 +522,26 @@ subroutine read_pploc_block(t2p, reader, p)
     do j=1, nzones
       if (zone_tracker(j) == p%category(i)) zone_counted = .true.
     end do
-    if (zone_counted == .false.) then
+    if (.not. zone_counted ) then
       nzones = nzones + 1
       zone_tracker(nzones) = p%category(i)
     end if
   end do
-  
+
   ! Should be at block end, check to be sure!
   call reader%next_block_item(status, id, strings, length)
   if (trim(id)/="END") then
     ! Assumption is the input file is formatted incorrectly... hopefully that's why
     call error_handler(1,reader%file,"PP_LOCS section improperly formatted.")
   end if
-  
+
   ! Run pplocs setup hook
   call t2p%setup_pplocs(pp_id, nzones, zone_tracker, p)
-  
+
 end subroutine read_pploc_block
 
 !-------------------------------------------------------------------------------------------------!
-  
+
 subroutine read_ppparm_block(t2p, reader)
   use m_global, only: NODATA
   use m_pilotpoints, only: global_props, nglobal_props
@@ -549,15 +549,15 @@ subroutine read_ppparm_block(t2p, reader)
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
   integer                         :: class_id
-  
+
   ! Standard file reader variables
   integer                    :: status, length, i
   character(30)              :: id, value
   type(t_vstringlist)        :: strings
-  
+
   ! Subroutine variables
   integer                    :: pp_index
-  
+
   ! Loop until end of block or end of file
   status = 0
   do
@@ -594,12 +594,12 @@ subroutine read_ppparm_block(t2p, reader)
         call error_handler(1,reader%file,"Unknown Pilot Point Parameter option: " // trim(id))
     end select
   end do
-  
+
   ! Did we get all the pp data we needed?
   ! Todo: where should we check for aquitard pp values? Should this all be checked later?
   if (any(t2p%pilot_points%values(:,global_props(1):global_props(nglobal_props),:)<=NODATA)) then
     call error_handler(2,reader%file,"Missing global parameters for pilot point(s)")
-  else 
+  else
     do i=1, t2p%ntexclasses
       if (any(t2p%pilot_points%values(:,1:global_props(1)-1,i)<0.0)) then
         call item2char(t2p%class_names, i, value)
@@ -607,12 +607,12 @@ subroutine read_ppparm_block(t2p, reader)
       end if
     end do
   end if
-    
+
   ! May need to be replaced with setup hook
   t2p%has_pp = .true.
-  
+
 end subroutine read_ppparm_block
 
 !-------------------------------------------------------------------------------------------------!
-  
+
 end module m_read_main_input

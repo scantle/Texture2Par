@@ -18,6 +18,10 @@ module m_flow_model
   integer,parameter            :: max_node_elem_members = 30
 !-------------------------------------------------------------------------------------------------!
 
+  type t_grid_arr
+    type(t_grid),pointer       :: ptrgrid            ! wrapper of grid to put in an array
+  end type
+
   type :: t_flow_model  ! Abstract Base Class
   ! Base class contains some derived type variables (e.g., the IWFM preproc file) since otherwise
   ! the compiler gets upset when you try to set them on the polymorphic t2p%fmodel type
@@ -40,7 +44,7 @@ module m_flow_model
     character(100)                :: grd_file        ! Grid specification file for grid type or MODFLOW-USG
     character(100)                :: output_file     ! File where aquifer parameters are written
     real    , allocatable         :: elev(:,:)       ! Bottom Elevations for each layer (node, layer) (indexed from zero = model top)
-    type(t_grid),pointer          :: grid(:)         ! xy grids for layers
+    type(t_grid_arr),allocatable  :: grid(:)         ! xy grids for layers
     type(t_category)              :: ppzones         ! Pilot point zone fmodel grid arrays & tracking
     type(t_category)              :: hsus            ! HSU fmodel grid arrays & tracking
     logical                       :: has_aquitards   ! For now, only in IWFM - but helps T2P w/ aquitard pilot points
@@ -50,6 +54,7 @@ module m_flow_model
     contains
       procedure,public            :: initialize
       procedure,public            :: read_model
+      procedure,public            :: build_tree
       procedure,public            :: read_category_files
       procedure,public            :: write_input_summary
       procedure,public            :: find_in_grid
@@ -143,7 +148,7 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_flow_fdmodel) :: t_modflow_model
 
-  type(t_grid),pointer        :: loc_grid(:)   ! LOCAL xy grids for layers (not global coords)
+  type(t_grid_arr),allocatable:: loc_grid(:)   ! LOCAL xy grids for layers (not global coords)
   integer                     :: layfile       ! LPF/UPW IUNIT number
   character(3)                :: gwftyp        ! LPF or UPW, for printing
 
@@ -248,6 +253,19 @@ module m_flow_model
 
   end subroutine read_model
 
+  !-------------------------------------------------------------------------------------------------!
+
+  subroutine build_tree(this)
+    ! build KDtree for model grid
+    implicit none
+    class(t_flow_model)       :: this
+
+    integer                   :: igrid
+    do igrid = 1, size(this%grid)
+      if (.not. associated(this%grid(igrid)%ptrgrid%tree)) call this%grid(igrid)%ptrgrid%build_tree()
+    end do
+  end subroutine build_tree
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine alloc_layers(this, lay2grid)
@@ -280,7 +298,7 @@ module m_flow_model
 
     ! Loop over layers creating grid object
     do i=1, this%ngrids
-      this%grid(i) = create_grid_object(2, this%nnodes(this%lay2grid(i)))
+      this%grid(i)%ptrgrid => create_grid_object(2, this%nnodes(this%lay2grid(i)))
     end do
 
   end subroutine alloc_nodes
@@ -629,7 +647,7 @@ module m_flow_model
       !call this%add_node2vert2node(i, nodevert/2, this%node2vert)  ! Only connecting to top vertices
       if (lay2grid(lay) == grid) then
         ! Process node
-        this%grid(grid)%coords(1:2,i) = rtemp(1:2)
+        this%grid(grid)%ptrgrid%coords(1:2,i) = rtemp(1:2)
       end if
       ! Get mean top/bot if grid
       select type (this)
@@ -706,7 +724,7 @@ module m_flow_model
     real                    :: nodedist(5), elemx(max_node_elem_members), elemy(max_node_elem_members)
 
     node = 0
-    call this%grid(this%lay2grid(1))%get_nnear(coords, 5, nodeids, nodedist)
+    call this%grid(this%lay2grid(1))%ptrgrid%get_nnear(coords, 5, nodeids, nodedist)
 
     ! Loop over elements of closest node
     do i=1, 5
@@ -769,7 +787,7 @@ module m_flow_model
     ! One node per line
     call reader%read_to_next_line(eof)
     do i=1,this%nnodes(1)
-      read(reader%unit,*) id, this%grid(1)%coords(1,i), this%grid(1)%coords(2,i), this%elev(i, :)
+      read(reader%unit,*) id, this%grid(1)%ptrgrid%coords(1,i), this%grid(1)%ptrgrid%coords(2,i), this%elev(i, :)
     end do
 
     call reader%close_file()
@@ -792,7 +810,7 @@ module m_flow_model
     real                :: nodedist(5), elemx(max_node_elem_members), elemy(max_node_elem_members)
 
     node = 0
-    call this%grid(this%lay2grid(1))%get_nnear(coords, 1, nodeids, nodedist)
+    call this%grid(this%lay2grid(1))%ptrgrid%get_nnear(coords, 1, nodeids, nodedist)
     if (nodedist(1) <= max_outside_dist**2) then
       node = nodeids(1)
     end if
@@ -823,7 +841,7 @@ module m_flow_model
     write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, this%nlayers)
     ! Values
     do i = 1, this%nnodes(1)
-      write(unit,fmt(2)) i, this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1, this%nlayers)
+      write(unit,fmt(2)) i, this%grid(1)%ptrgrid%coords(1:2,i), (par(k)%values(par_id,i), k=1, this%nlayers)
     end do
 
     call fwrite%close_file()
@@ -904,7 +922,7 @@ module m_flow_model
     element = 0
     minelem = 0
     mindist = huge(0.0)
-    call this%grid(this%lay2grid(1))%get_nnear(coords, 5, nodeids, nodedist)
+    call this%grid(this%lay2grid(1))%ptrgrid%get_nnear(coords, 5, nodeids, nodedist)
 
     ! Loop over elements of closest node
     outerloop:  do inode=1, 5
@@ -914,8 +932,8 @@ module m_flow_model
         ! Get Element node x,y coordinates
         do j=1, 4
           if (this%elements(j, elem) > 0) then
-            elemx(j) = this%grid(this%lay2grid(1))%coords(1, this%elements(j, elem))
-            elemy(j) = this%grid(this%lay2grid(1))%coords(2, this%elements(j, elem))
+            elemx(j) = this%grid(this%lay2grid(1))%ptrgrid%coords(1, this%elements(j, elem))
+            elemy(j) = this%grid(this%lay2grid(1))%ptrgrid%coords(2, this%elements(j, elem))
             count = count + 1
           end if
         end do
@@ -930,9 +948,9 @@ module m_flow_model
         end if
       end do
     end do outerloop
-    
+
     ! Didn't find an exact match? is it at least within max_outside_dist?
-    if (element == 0) then 
+    if (element == 0) then
       if (mindist <= max_outside_dist**2) element = minelem
     end if
 
@@ -1133,8 +1151,8 @@ module m_flow_model
     do i=1,this%nnodes(1)
       ! This marks the spot I realized that my reader class is far too slow for reading long datasets
       read(reader%unit,*) this%nodeid(i), rtemp1, rtemp2
-      this%grid(1)%coords(1,i) = rtemp1 * factor
-      this%grid(1)%coords(2,i) = rtemp2 * factor
+      this%grid(1)%ptrgrid%coords(1,i) = rtemp1 * factor
+      this%grid(1)%ptrgrid%coords(2,i) = rtemp2 * factor
     end do
     call this%init_nodebyid(maxval(this%nodeid)) ! Setup mapping from nodeid->array index
     call reader%close_file()                     ! Close Node file
@@ -1223,7 +1241,7 @@ module m_flow_model
       if (ObsElem.gt.0) then
         nodeID = this%elements(j,ObsElem)
         if (nodeID.gt.0) then
-          wgt_tmp = 1.0 / dist(coords, this%grid(1)%coords(:2,nodeID)) ! Assumes all layers share xy
+          wgt_tmp = 1.0 / dist(coords, this%grid(1)%ptrgrid%coords(:2,nodeID)) ! Assumes all layers share xy
 	        wgt = wgt + wgt_tmp
           InterpValues(:) =InterpValues(:) + wgt_tmp * this%elev(nodeID,:)
         end if
@@ -1294,7 +1312,7 @@ module m_flow_model
     write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, (this%nlayers/2))
     ! Values
     do i = 1, this%nnodes(1)
-      write(unit,fmt(2)) this%nodeid(i), this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=2, this%nlayers, 2)  ! Only writes aquifer params
+      write(unit,fmt(2)) this%nodeid(i), this%grid(1)%ptrgrid%coords(1:2,i), (par(k)%values(par_id,i), k=2, this%nlayers, 2)  ! Only writes aquifer params
     end do
 
     call fwrite%close_file()
@@ -1327,7 +1345,7 @@ module m_flow_model
     write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, (this%nlayers/2))
     ! Values
     do i = 1, this%nnodes(1)
-      write(unit,fmt(2)) this%nodeid(i), this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1, this%nlayers, 2)  ! Only writes aquitard params
+      write(unit,fmt(2)) this%nodeid(i), this%grid(1)%ptrgrid%coords(1:2,i), (par(k)%values(par_id,i), k=1, this%nlayers, 2)  ! Only writes aquitard params
     end do
 
     call fwrite%close_file()
@@ -1379,7 +1397,7 @@ module m_flow_model
     class(t_modflow_model)       :: this
 
     ! Create local grid object (see above layer caveat in alloc_layers_mf)
-    this%loc_grid(1) = create_grid_object(2, this%nnodes(1))
+    this%loc_grid(1)%ptrgrid => create_grid_object(2, this%nnodes(1))
 
     ! Call super
     call alloc_nodes(this)
@@ -1402,10 +1420,17 @@ module m_flow_model
       xbase = 0.0
       do j=1, ncol
         n = (i-1)*ncol+j                            ! node number
-        this%loc_grid(1)%coords(1,n) = xbase + 0.5 * delr(j)  ! x local
-        this%loc_grid(1)%coords(2,n) = ybase - 0.5 * delc(i)  ! y loca
+        this%loc_grid(1)%ptrgrid%coords(1,n) = xbase + 0.5 * delr(j)  ! x local
+        this%loc_grid(1)%ptrgrid%coords(2,n) = ybase - 0.5 * delc(i)  ! y loca
         ! get global
-        call loc2glo(this%loc_grid(1)%coords(1,n), this%loc_grid(1)%coords(2,n), this%xoff, this%yoff, this%rot, this%grid(1)%coords(1,n), this%grid(1)%coords(2,n))
+        call loc2glo(                           &
+          this%loc_grid(1)%ptrgrid%coords(1,n), &
+          this%loc_grid(1)%ptrgrid%coords(2,n), &
+          this%xoff,                            &
+          this%yoff,                            &
+          this%rot,                             &
+          this%grid(1)%ptrgrid%coords(1,n),             &
+          this%grid(1)%ptrgrid%coords(2,n))
         xbase = xbase + delr(j)
       end do
       ybase = ybase - delc(i)
@@ -1430,7 +1455,7 @@ module m_flow_model
     integer                 :: cell, i
 
     cell = 0
-    call this%grid(this%lay2grid(1))%get_nnear(coords, 4, cellids, celldist)  ! do we need more than 4 for USG?
+    call this%grid(this%lay2grid(1))%ptrgrid%get_nnear(coords, 4, cellids, celldist)  ! do we need more than 4 for USG?
 
     if (this%structured) then
       ! Check each cell center to see if well belongs
@@ -1445,7 +1470,7 @@ module m_flow_model
     else  ! USG
       !cell = find_in_grid_gsf(coord, max_outside_dist)
     end if
-    
+
     ! If we didn't find it in a cell, was it at least within max_outside_dist of a cell edge?
     min_dist = HUGE(1.0)
     do i=1, 4
@@ -1488,10 +1513,10 @@ module m_flow_model
 
     if (this%structured) then
       call this%cell2rowcol(cell, row, col)
-      xmin = this%loc_grid(this%lay2grid(1))%coords(1,cell) - 0.5 * delr(col)
-      xmax = this%loc_grid(this%lay2grid(1))%coords(1,cell) + 0.5 * delr(col)
-      ymin = this%loc_grid(this%lay2grid(1))%coords(2,cell) - 0.5 * delc(row)
-      ymax = this%loc_grid(this%lay2grid(1))%coords(2,cell) + 0.5 * delc(row)
+      xmin = this%loc_grid(this%lay2grid(1))%ptrgrid%coords(1,cell) - 0.5 * delr(col)
+      xmax = this%loc_grid(this%lay2grid(1))%ptrgrid%coords(1,cell) + 0.5 * delr(col)
+      ymin = this%loc_grid(this%lay2grid(1))%ptrgrid%coords(2,cell) - 0.5 * delc(row)
+      ymax = this%loc_grid(this%lay2grid(1))%ptrgrid%coords(2,cell) + 0.5 * delc(row)
     else
       ! TODO
     end if
@@ -1625,9 +1650,9 @@ module m_flow_model
     do i = 1, this%nnodes(1)
       if (this%structured) then
         call this%cell2rowcol(i, row, col)
-        write(unit,fmt(2)) row, col, this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
+        write(unit,fmt(2)) row, col, this%grid(1)%ptrgrid%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
       else
-        write(unit,fmt(2)) i, this%grid(1)%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
+        write(unit,fmt(2)) i, this%grid(1)%ptrgrid%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
       end if
     end do
 

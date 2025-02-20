@@ -18,7 +18,7 @@ module m_read_datasets
   subroutine read_datasets(t2p)
     implicit none
     class(t_T2P), intent(inout)   :: t2p
- 
+
     if (t2p%opt%INTERP_DIM==2) then
       call read_datasets_2D(t2p)
     else if (t2p%opt%INTERP_DIM==3) then
@@ -26,11 +26,11 @@ module m_read_datasets
     else
       ! Shouldn't ever reach here, input checked during m_options::read_options() subroutine
     end if
-    
+
   end subroutine read_datasets
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine read_datasets_2D(t2p)
     implicit none
     class(t_T2P), intent(inout)   :: t2p
@@ -80,7 +80,7 @@ module m_read_datasets
       allocate(total_thick   (nsets,t2p%fmodel%nlayers))
       allocate(wv_accumulator(nsets,t2p%fmodel%nlayers))
       allocate(hsus(ncats))
-      if (allocated(local_elevs)==.false.) allocate(local_elevs(0:t2p%fmodel%nlayers))
+      if (.not. allocated(local_elevs)) allocate(local_elevs(0:t2p%fmodel%nlayers))
       all_count = 0
       all_sum = 0
       all_depth = 0
@@ -155,8 +155,9 @@ module m_read_datasets
           if (fmodel_loc==0) then
             if (t2p%opt%MAX_OUTSIDE_DIST > 0.0) then
               call error_handler(1,file,"Well distance from model greater than MAX_OUTSIDE_DIST: "//name)
-            else 
+            else
               call error_handler(1,file,"Well not found in model domain: "//name)
+            end if
           end if
           ! Store location
           do k=1, t2p%fmodel%nlayers
@@ -240,9 +241,9 @@ module m_read_datasets
       deallocate(wvalues, all_count, all_sum, all_depth, total_thick, wv_accumulator, hsus)
     end do
   end subroutine read_datasets_2D
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine read_datasets_3D(t2p)
     implicit none
     class(t_T2P), intent(inout)   :: t2p
@@ -293,7 +294,7 @@ module m_read_datasets
       !allocate(total_thick   (nsets,t2p%fmodel%nlayers))
       !allocate(wv_accumulator(nsets,t2p%fmodel%nlayers))
       allocate(hsus(ncats))
-      if (allocated(local_elevs)==.false.) allocate(local_elevs(0:t2p%fmodel%nlayers))
+      if (.not. allocated(local_elevs)) allocate(local_elevs(0:t2p%fmodel%nlayers))
       all_count = 0
       all_sum = 0
       all_thick = 0
@@ -311,7 +312,7 @@ module m_read_datasets
       !!backspace(reader%unit)  ! Last line of data
       !call reader%next_item(eof, strings)
       !npoints = item2int(strings,2) - idx_offset    ! Last - (First - 1) = npoints
-      
+
       ! Pre-read to get npoints, given opt%MAX_LOG_LENGTH. Logs are to be split evenly into length/MAX_LOG_LENGTH
       do
         read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth
@@ -322,7 +323,7 @@ module m_read_datasets
         npoints = npoints + ceiling((depth - prev_depth) / t2p%opt%MAX_LOG_LENGTH)
         prev_depth = depth
       end do
-      
+
       ! MOU: save as 3D dataset
       grid => create_grid_object(3, npoints)
       call t2p%datasets(didx,1)%initialize(npoints, nsets)
@@ -351,15 +352,15 @@ module m_read_datasets
         if (prev_depth > depth) call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp)))
         if (iint==1) prev_depth = 0.0  ! new log
         all_thick = all_thick + (depth - prev_depth)
-        
+
         resized_intervals = ceiling((depth - prev_depth) / t2p%opt%MAX_LOG_LENGTH)
-        
+
         ! Transform values
         if (minval(wvalues)>=0) then !TODO Should this be > -999/NODATA?
           call data_transformer%apply(wvalues)
           all_sum = all_sum + wvalues(1:nsets) * (depth - prev_depth)
         end if
-        
+
         do k=1, resized_intervals
           grid%coords(1, ipoint) = x
           grid%coords(2, ipoint) = y
@@ -368,7 +369,7 @@ module m_read_datasets
           t2p%datasets(didx,1)%values(:, ipoint) = wvalues(1:nsets)
           ipoint = ipoint + 1
         end do
-        
+
         if (depth>0) all_count = all_count + 1
         prev_depth = depth
       end do
@@ -384,7 +385,7 @@ module m_read_datasets
       deallocate(wvalues, hsus)
     end do
   end subroutine read_datasets_3D
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine process_header(t2p, file, header, nsets, dataset_idx, class_ids)
