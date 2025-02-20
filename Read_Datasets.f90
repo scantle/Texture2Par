@@ -3,7 +3,7 @@ module m_read_datasets
 !  use m_datasets
   use m_T2P, only: t_t2p
   use m_vstring, only: t_vstring, vstring_is
-  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_split, vstrlist_length,vstrlist_index
+  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_length,vstrlist_index
   use m_file_io, only: t_file_reader, open_file_reader, item2int, item2char
   use m_error_handler, only: error_handler, warning_handler
   use m_grid, only: t_grid, create_grid_object
@@ -38,6 +38,7 @@ module m_read_datasets
     character(200)                :: file, name
     character(30),allocatable     :: hsus(:)
     character(256)                :: iomsg
+    character(2048)               :: line
     character(20)                 :: tmp
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
     integer                       :: idx, idx_offset, iint, prev_idx, prev_iint, fmodel_loc, didx
@@ -69,7 +70,7 @@ module m_read_datasets
       call data_transformer%set_transform(vstrlist_index(t2p%dataset_trans,i))
 
       ! Read in header
-      call reader%next_item(eof, strings)
+      call reader%next_item(eof, strings, comma=.true.)
       call process_header(t2p, file, strings, nsets, didx, cids)
 
       ! Allocate for reading
@@ -89,13 +90,13 @@ module m_read_datasets
       prev_depth = 0.0
 
       ! Get data length (not file length, since we've gone past the header)
-      call reader%next_item(eof, strings)
+      call reader%next_item(eof, strings, comma=.true.)
       idx_offset = item2int(strings,2) - 1          ! First well id, must be sequential after
       nlines = reader%get_data_len(rewind_to_last_line=.true.) + 1
       ! Get npoints
       !backspace(reader%unit)  ! EOF
       !backspace(reader%unit)  ! Last line of data
-      call reader%next_item(eof, strings)
+      call reader%next_item(eof, strings, comma=.true.)
       npoints = item2int(strings,2) - idx_offset    ! Last - (First - 1) = npoints
       ! Allocate shared grid
       grid => create_grid_object(2, npoints)
@@ -120,7 +121,8 @@ module m_read_datasets
       ! The real work begins
       do j=1, nlines
         write(tmp, '(i)') j+1
-        read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
+        read(reader%unit, "(A)", iostat=reader%ioerr, iomsg=iomsg) line
+        read(line, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
 	      call reader%iomsg_handler(iomsg)
         if (didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
         all_depth = all_depth + depth
@@ -191,7 +193,7 @@ module m_read_datasets
           end if
           ! Some data checking
           if (iint <= prev_iint) call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
-          if (prev_depth > depth) call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp)))
+          if (prev_depth > depth)  call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp))//new_line("")//trim(line)//new_line(""))
         end if  ! End of new log handling
 
         ! Start of accumulator
@@ -283,7 +285,7 @@ module m_read_datasets
       call data_transformer%set_transform(vstrlist_index(t2p%dataset_trans,i))
 
       ! Read in header
-      call reader%next_item(eof, strings)
+      call reader%next_item(eof, strings, comma=.true.)
       call process_header(t2p, file, strings, nsets, didx, cids)
 
       ! Allocate for reading

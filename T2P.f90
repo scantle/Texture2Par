@@ -1025,7 +1025,12 @@ module m_T2P
       end do
     end if
 
-    write(*,'(2x,a)') line
+#ifdef __INTEL_COMPILER
+    write(*,fmt='(2x,a)') line
+#else
+    ! TODO: write(*,fmt='(2x,a)',advance="no") line
+    write(*,fmt='(2x,a)') line
+#endif
 
     if (present(blank_end)) then
       do i=1, blank_end
