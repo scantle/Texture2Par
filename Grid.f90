@@ -7,8 +7,8 @@ module m_grid
 
     integer                   :: n
     integer                   :: dim
-    real    , allocatable     :: coords(:,:)         ! xy by n points
-    real    , allocatable     :: masked_coords(:,:)  ! xy by n points, subject to a mask (for kdtree)
+    real    , allocatable     :: coords(:,:)         ! xy[z] by n points
+    real    , allocatable     :: masked_coords(:,:)  ! xy[z] by n points, subject to a mask (for kdtree)
     type(kdtree2),pointer     :: tree => null()      ! Tree for locating model nodes
     integer, allocatable      :: true_idx(:)         ! Mapping of indices from masked to full dataset
 

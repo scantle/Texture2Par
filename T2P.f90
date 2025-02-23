@@ -868,23 +868,31 @@ module m_T2P
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer                       :: i
-    character(100)                :: fname, temp
+    character(100)                :: fname, suffix(2), temp
     type(t_layerdata),pointer     :: p(:)
-
+    
+    if (this%opt%INTERP_DIM==2) then
+      suffix(1) = '_layavg.out'
+      suffix(2) = '_aqtard_layavg.out'
+    else if (this%opt%INTERP_DIM==3) then
+      suffix(1) = '_logxyz.out'
+      suffix(2) = '_aqtard_logxyz.out'
+    end if
+    
     do i=1, this%get_active_texture_classes()
       p=>this%datasets(1,:)
       call item2char(this%class_names, i, temp)
-      write(fname,'(3a)') 't2p_', trim(temp), '_layavg.out'
+      write(fname,'(3a)') 't2p_', trim(temp), trim(suffix(1))
       call this%write_dataset_file(fname, p, i)
       if (this%fmodel%has_aquitards) then
-        write(fname,'(3a)') 't2p_', trim(temp), '_aqtard_layavg.out'
+        write(fname,'(3a)') 't2p_', trim(temp), trim(suffix(2))
         call this%write_dataset_file_aqtard(fname, p, i)
       end if
     end do
 
     do i=1, this%nsecondary
       call item2char(this%class_names, this%ntexclasses + i, temp)
-      write(fname,'(3a)') 't2p_', trim(temp), '_layavg.out'
+      write(fname,'(3a)') 't2p_', trim(temp), trim(suffix(1))
       p=>this%datasets(1+i,:)
       call this%write_dataset_file(fname, p,1)
     end do
@@ -906,7 +914,10 @@ module m_T2P
     integer                       :: rowcol(2,this%fmodel%nnodes(1))
     character(60)                 :: fmt(2)
     type(t_file_writer),pointer   :: fwrite
-
+    
+    fwrite => open_file_writer(fname)
+    unit = fwrite%unit
+    
     dim     = 1   ! Number of indices needed to express location, e.g. node # vs row col
     kstart  = 1   ! Start layer
     kintrvl = 1   ! Interval of layers
@@ -921,27 +932,51 @@ module m_T2P
         kintrvl = 2
     end select
 
-    write(fmt(1),'("(1a10,",i1,"a10,",i5,"i14)")') dim, this%fmodel%nlayers/kintrvl
-    write(fmt(2),'("(1i10,",i1,"i10,",i5,"es14.5)")') dim, this%fmodel%nlayers/kintrvl
+    if (this%opt%INTERP_DIM==2) then
 
-    fwrite => open_file_writer(fname)
-    unit = fwrite%unit
+      write(fmt(1),'("(1a10,",i1,"a10,",i5,"i14)")') dim, this%fmodel%nlayers/kintrvl
+      write(fmt(2),'("(1i10,",i1,"i10,",i5,"es14.5)")') dim, this%fmodel%nlayers/kintrvl
 
-    ! Header
-    if (dim==1) then
       ! Header
-      write(unit,fmt(1)) 'Well', 'Element', (k, k=1, this%fmodel%nlayers/kintrvl)
-      ! Values
-      do i = 1, size(dataset(1)%values,2)
-        write(unit,fmt(2)) i, dataset(1)%fmodel_loc(i), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
-      end do
-    else
+      if (dim==1) then
+        ! Header
+        write(unit,fmt(1)) 'Well', 'Element', (k, k=1, this%fmodel%nlayers/kintrvl)
+        ! Values
+        do i = 1, size(dataset(1)%values,2)
+          write(unit,fmt(2)) i, dataset(1)%fmodel_loc(i), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
+        end do
+      else
+        ! Header
+        write(unit,fmt(1)) 'Well', 'Row','Col', (k, k=1, this%fmodel%nlayers/kintrvl)
+        ! Values
+        do i = 1, size(dataset(1)%values,2)
+          write(unit,fmt(2)) i, rowcol(1:2,dataset(1)%fmodel_loc(i)), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
+        end do
+      end if
+    else if (this%opt%INTERP_DIM==3) then
+      ! 3D is an easier situation, somewhat
+      ! Well [elem/row, col] x y z value
+      write(fmt(1),'("(1a10,",i1,"a10,",i5,"a14)")') dim, 4
+      write(fmt(2),'("(1i10,",i1,"i10,",i5,"es14.5)")') dim, 4
+    
       ! Header
-      write(unit,fmt(1)) 'Well', 'Row','Col', (k, k=1, this%fmodel%nlayers/kintrvl)
-      ! Values
-      do i = 1, size(dataset(1)%values,2)
-        write(unit,fmt(2)) i, rowcol(1:2,dataset(1)%fmodel_loc(i)), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
-      end do
+      ! TODO "ID" should really be the ID from the dataset file (is this stored anywhere for 3D?)
+      if (dim==1) then
+        ! Header
+        write(unit,fmt(1)) 'ID', 'Element', 'x', 'y', 'z', 'value'
+        ! Values
+        do i = 1, size(dataset(1)%values,2)
+          write(unit,fmt(2)) i, dataset(1)%fmodel_loc(i), dataset(k)%grid%coords(1:3,i), dataset(k)%values(idx,i)
+        end do
+      else
+        ! Header
+        write(unit,fmt(1)) 'ID', 'Row', 'Col', 'x', 'y', 'z', 'value'
+        ! Values
+        do i = 1, size(dataset(1)%values,2)
+          write(unit,fmt(2)) i, rowcol(1:2,dataset(1)%fmodel_loc(i)), dataset(1)%grid%coords(1:3,i), dataset(1)%values(idx,i)
+        end do
+      end if
+      
     end if
 
     call fwrite%close_file()
