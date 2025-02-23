@@ -216,6 +216,7 @@ subroutine write_input_summary(this)
     call log%write_valueline('Max Secondary Data Dist:', this%MAX_SECONDARY_DIST)
     call log%write_valueline('Max Outside Bounds Dist:', this%MAX_OUTSIDE_DIST)
     if (this%INTERP_DIM == 3) call log%write_valueline('Max Log Interval Length:', this%MAX_LOG_LENGTH)
+    call log%write_valueline('Interpolation Dimensions:',this%INTERP_DIM)
     !call log%write_valueline('',this%INTERP_DIM)  ! unimplemented
     ! Going to do something a little nicer for the Interpolation Method
     select case(this%INTERP_METHOD)
@@ -230,9 +231,9 @@ subroutine write_input_summary(this)
     end select
     call log%write_valueline('Interpolation Method:',trim(interp_text))
     call log%write_valueline('Interpolation Order:',this%INTERP_ORDER)
-    write(interp_text, *) this%NSIM; call log%write_valueline('Realization Number:', trim(interp_text))
     if (this%NSIM > 1) then
-      write(interp_text, *) this%SEED; call log%write_valueline('Random Seed Number:', trim(interp_text))
+      call log%write_valueline('Simulation Realizations:', this%NSIM)
+      call log%write_valueline('Random Seed Number:', this%SEED)
     end if
     !call log%write_valueline('',this%MAIN_OUTPUT) ! unneeded (we're writing to that file!)
     !call log%write_valueline('',this%OUTPUT_DIR)  ! unimplemented
