@@ -254,13 +254,12 @@ module m_read_datasets
     character(30),allocatable     :: hsus(:)
     character(256)                :: iomsg
     character(20)                 :: tmp
-    integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
+    integer                       :: i, j, k, l, nlines, npoints, nsets, ncats, eof
     integer                       :: idx, iint, ipoint, prev_idx, prev_iint, fmodel_loc, didx, resized_intervals
     integer                       :: all_count
     integer,allocatable           :: cids(:)
-    real                          :: x, y, z, prev_depth, depth, re_depth, intv_top, intv_bot, thick, frac_thick
-    real    ,allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:), all_sum(:)
-    real                          :: all_thick
+    real                          :: x, y, z, prev_depth, depth, re_depth, thick, fmodel_z
+    real    ,allocatable          :: wvalues(:), local_elevs(:), all_thick(:), all_sum(:)
     type(t_grid),pointer          :: grid
     type(t_data_transformer)      :: data_transformer
 
@@ -290,13 +289,10 @@ module m_read_datasets
 
       ! Allocate for reading
       allocate(wvalues      (nsets))
-      !allocate(all_count    (nsets))
       allocate(all_sum      (nsets))
-      !allocate(all_thick    (nsets))
-      !allocate(total_thick   (nsets,t2p%fmodel%nlayers))
-      !allocate(wv_accumulator(nsets,t2p%fmodel%nlayers))
+      allocate(all_thick    (nsets))
       allocate(hsus(ncats))
-      if (.not. allocated(local_elevs)) allocate(local_elevs(0:t2p%fmodel%nlayers))
+      if (allocated(local_elevs)==.false.) allocate(local_elevs(0:t2p%fmodel%nlayers))
       all_count = 0
       all_sum = 0
       all_thick = 0
@@ -326,7 +322,7 @@ module m_read_datasets
         prev_depth = depth
       end do
 
-      ! MOU: save as 3D dataset
+      ! Initialize, setup
       grid => create_grid_object(3, npoints)
       call t2p%datasets(didx,1)%initialize(npoints, nsets)
       t2p%datasets(didx,1)%values = NODATA
@@ -346,29 +342,59 @@ module m_read_datasets
       ! The real work begins
       ipoint = 1
       do j=1, nlines
-        write(tmp, '(i)') nlines+1
+        write(tmp, '(i)') j+1
+        !write(*,*) tmp
         read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
 	      call reader%iomsg_handler(iomsg)
         if (didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
         if (iint <= prev_iint) call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
+        if (iint==1) then
+          prev_depth = 0.0  ! new log
+          if (idx <= prev_idx) call error_handler(1,file,"Well IDs must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
+          prev_idx = idx
+          ! Get location in model, get top elevation at location
+          fmodel_loc = t2p%fmodel%find_in_grid([x,y], t2p%opt%MAX_OUTSIDE_DIST)
+          if (fmodel_loc==0) then
+            if (t2p%opt%MAX_OUTSIDE_DIST > 0.0) then
+              call error_handler(1,file,"Well distance from model greater than MAX_OUTSIDE_DIST: "//name)
+            else
+              call error_handler(1,file,"Well not found in model domain: "//name)
+            end if
+          end if
+          call t2p%fmodel%get_elev_at_point([x,y], local_elevs(:), fmodel_loc)
+          fmodel_z = local_elevs(0)
+        end if
         if (prev_depth > depth) call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp)))
-        if (iint==1) prev_depth = 0.0  ! new log
-        all_thick = all_thick + (depth - prev_depth)
 
-        resized_intervals = ceiling((depth - prev_depth) / t2p%opt%MAX_LOG_LENGTH)
+        thick = (depth - prev_depth)
+        resized_intervals = ceiling(thick / t2p%opt%MAX_LOG_LENGTH)
 
         ! Transform values
         if (minval(wvalues)>=0) then !TODO Should this be > -999/NODATA?
           call data_transformer%apply(wvalues)
-          all_sum = all_sum + wvalues(1:nsets) * (depth - prev_depth)
         end if
+
+        do k=1, nsets
+          if (wvalues(k) > NODATA) then
+            all_sum(k) = all_sum(k) + wvalues(k) * thick
+            all_thick(k) = all_thick(k) + thick
+          end if
+        end do
 
         do k=1, resized_intervals
           grid%coords(1, ipoint) = x
           grid%coords(2, ipoint) = y
-          re_depth = prev_depth+((depth-prev_depth)/resized_intervals)*(k-1) + (((depth-prev_depth)/resized_intervals)/2)
-          grid%coords(3, ipoint) = z - re_depth
+          re_depth = prev_depth+(thick/resized_intervals)*(k-1) + ((thick/resized_intervals)/2)
+          if (t2p%opt%USE_MODEL_GSE) then
+            grid%coords(3, ipoint) = fmodel_z - re_depth
+          else
+            grid%coords(3, ipoint) = z - re_depth
+          end if
           t2p%datasets(didx,1)%values(:, ipoint) = wvalues(1:nsets)
+          ! Store location
+          do l=1, t2p%fmodel%nlayers
+            t2p%datasets(didx,l)%fmodel_loc(ipoint) = fmodel_loc
+          end do
           ipoint = ipoint + 1
         end do
 
@@ -377,14 +403,16 @@ module m_read_datasets
       end do
 
       ! Store means
-      if (all_thick>0) then
-        do k=1, t2p%fmodel%nlayers
-          t2p%datasets(didx,k)%mean(:) = (all_sum(:) / all_thick)
-        end do
-      end if
+      do j=1, nsets
+        if (all_thick(j)>0) then
+          do k=1, t2p%fmodel%nlayers
+            t2p%datasets(didx,k)%mean(j) = (all_sum(j) / all_thick(j))
+          end do
+        end if
+      end do
 
       ! Cleanup loop variables
-      deallocate(wvalues, hsus)
+      deallocate(wvalues, all_sum, all_thick, hsus)
     end do
   end subroutine read_datasets_3D
 
@@ -402,7 +430,7 @@ module m_read_datasets
     character(30)                      :: badclass
     character(5)                       :: cint
 
-    ! Columns of header should be Location ID n X Y Zland Depth follwed by class data, then layer groups
+    ! Columns of header should be Location ID n X Y Zland Depth followed by class data, then layer groups
     !                             1        2  3 4 5 6     7
     nsets = vstrlist_length(header) - 7
     if (t2p%has_hsus) nsets = nsets - t2p%fmodel%nlayers

@@ -744,6 +744,7 @@ module m_T2P
 
   subroutine interpolate_prepare(this, k, obslayer, modelgrid)
     ! MOU: prepare data for interpolation for layer `k`
+    !TODO Would it be easier to just set z at the midpoint when reading in the model, and only use it when 3D kriging? -LS
     class(t_T2P), intent(inout)   :: this
     integer, intent(in )          :: k
     integer, intent(out)          :: obslayer
@@ -1025,12 +1026,7 @@ module m_T2P
       end do
     end if
 
-#ifdef __INTEL_COMPILER
     write(*,fmt='(2x,a)') line
-#else
-    ! TODO: write(*,fmt='(2x,a)',advance="no") line
-    write(*,fmt='(2x,a)') line
-#endif
 
     if (present(blank_end)) then
       do i=1, blank_end
