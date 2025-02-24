@@ -96,7 +96,7 @@ module m_datasets
     ! For dataset, ignore all NA values
     select type(this)
       class is (t_layerdata)
-        na_mask = (this%values(class_idx,1:this%grid%n) > NODATA)
+        na_mask = (this%values(class_idx,1:this%grid%n) /= NODATA)
     end select
     call this%grid%build_tree(catmask.and.na_mask, rotmat=rotmat)
     deallocate(catmask, na_mask)
@@ -120,7 +120,7 @@ module m_datasets
     select type(this)
       class is (t_layerdata)
         do i=1, this%grid%n
-          if ((this%values(class_idx,i) > NODATA).and.(this%category(i)==cat)) then
+          if ((this%values(class_idx,i) /= NODATA).and.(this%category(i)==cat)) then
             cat_idx(nidx) = i
             nidx = nidx + 1
           end if

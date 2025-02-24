@@ -1,4 +1,5 @@
 module m_sgsim
+  use m_global, only: t2plog=>log
   use m_interpolator, only: t_interpolator
   use m_weights, only: t_weights
   use m_grid, only: t_grid, create_grid_object
@@ -21,13 +22,15 @@ module m_sgsim
     procedure                  :: finalize => finalize_simgrid
   end type
 
-  type, extends(t_treekrige) :: t_sgsim
+  type, extends(t_treekrige):: t_sgsim
     ! Attributes for KD-tree and search parameters could be added here
+    integer                 :: matsize
   contains
     procedure               :: setup_sgsim
     procedure               :: pset_cok_sgsim
     procedure               :: pset_rhs
     procedure               :: predict_point_sgsim
+    procedure               :: write_weights
     procedure               :: calc => calc_sgsim
   end type t_sgsim
 
@@ -57,7 +60,7 @@ module m_sgsim
     type(t_simgrid),intent(inout)         :: gridxy
 
     ! Local
-    integer                     :: i,class_id,matsize, mat_tot, success, k
+    integer                     :: i,class_id, mat_tot, success, k, addsim
     integer, allocatable        :: igrid(:)
 
     igrid = pack([(i,i=1,to_grid%n)], to_cats==cat)
@@ -78,16 +81,22 @@ module m_sgsim
              gridxy%coords   (gridxy%dim, gridxy%n))
 
     ! set up the random grid
-    gridxy%order  = igrid(scramble(gridxy%n))
-    !do i=1, to_grid%n
-    !  gridxy%order_inv(gridxy%order(i)) = igrid(i)
-    !end do
-    if (opt%NSIM>0) then; gridxy%sample = rnorm_box_muller_vec(gridxy%n); else; gridxy%sample = 0.0; end if
+    if (opt%NSIM>0) then
+      gridxy%order  = igrid(scramble(gridxy%n))
+      gridxy%sample = rnorm_box_muller_vec(gridxy%n)
+    else
+      gridxy%order  = igrid
+      gridxy%sample = 0.0
+    end if
     gridxy%coords = to_grid%coords(:, gridxy%order)
 
     ! set up the obs
     do k = 1, this%nsets
-
+      if (k==1 .and. opt%NSIM>0) then
+        addsim=1
+      else
+        addsim=0
+      end if
       if (allocated (obsxy(k)%coords)) deallocate(obsxy(k)%coords)
       if (associated(obsxy(k)%values)) deallocate(obsxy(k)%values)
       if (associated(obsxy(k)%mask))   deallocate(obsxy(k)%mask)
@@ -95,20 +104,20 @@ module m_sgsim
       block
         integer, allocatable     :: iobs(:)
         integer                  :: nobs
-        iobs = pack([(i,i=1,obs_data(k)%grid%n)], obs_data(k)%category == cat)
+        iobs = pack([(i,i=1,obs_data(k)%grid%n)], &
+                     (obs_data(k)%category==cat) .and. (obs_data(k)%values(val_idx(k),:)/=opt%NO_DATA_VALUE))
         nobs = size(iobs)
-        obsxy(k)%n = nobs
         obsxy(k)%dim = to_grid%dim
-        if (k==1)  obsxy(k)%n = obsxy(k)%n + gridxy%n
+        obsxy(k)%n = nobs + gridxy%n * addsim
         allocate(obsxy(k)%values(              obsxy(k)%n))
         allocate(obsxy(k)%mask  (              obsxy(k)%n))
         allocate(obsxy(k)%coords(obsxy(k)%dim, obsxy(k)%n))
-        obsxy(k)%coords(:, 1:nobs) = obs_data(k)%grid%coords(:, iobs)
-        obsxy(k)%values(   1:nobs) = obs_data(k)%values(val_idx(k), iobs)
+        obsxy(k)%coords(:, (gridxy%n*addsim+1):) = obs_data(k)%grid%coords(:, iobs)
+        obsxy(k)%values(   (gridxy%n*addsim+1):) = obs_data(k)%values(val_idx(k), iobs)
         obsxy(k)%mask              = .true.
-        if (k==1) then
-          obsxy(k)%coords(:, nobs+1:) = gridxy%coords
-          obsxy(k)%mask  (   nobs+1:) = .false.
+        if (addsim==1) then
+          obsxy(k)%coords(:, :gridxy%n) = gridxy%coords
+          obsxy(k)%mask  (   :gridxy%n) = .false.
         end if
         obsxy(k)%tree => kdtree2_create(obsxy(k)%coords, success, dim=obsxy(k)%dim, sort=.false., rearrange=.false.)
       end block
@@ -121,15 +130,15 @@ module m_sgsim
 
     this%maxnear =  maxval(this%usenear)  !this%nnear(1)
     !if (this%nsets > 1) this%maxnear = this%maxnear + maxval(this%nnear)
-    matsize = sum(this%usenear)+this%unbias+this%ndrift
+    this%matsize = sum(this%usenear)+this%unbias+this%ndrift
 
-    mat_tot = matsize * (matsize + 1) / 2
+    mat_tot = this%matsize * (this%matsize + 1) / 2
 
     if (allocated(this%matA)) deallocate(this%matA)
     if (allocated(this%rhsB)) deallocate(this%rhsB)
     if (allocated(this%pset_id)) deallocate(this%pset_id)
     if (allocated(this%w)) deallocate(this%w)
-    allocate(this%matA(mat_tot), this%rhsB(matsize), this%pset_id(matsize), this%w(matsize))
+    allocate(this%matA(mat_tot), this%rhsB(this%matsize), this%pset_id(this%matsize), this%w(this%matsize))
 
   end subroutine setup_sgsim
 
@@ -149,71 +158,86 @@ module m_sgsim
     ! local
     integer                         :: iset
     integer                         :: inear(this%maxnear,this%nsets), loc_usenear(this%nsets)
-    real                            :: dist(this%maxnear,this%nsets)
+    real                            :: dist(this%maxnear,this%nsets), maxdist
     type(kdtree2_result)            :: kdnearest(this%maxnear)
-    real                            :: newloc(2)
+    real                            :: newloc(2), var0, var_reduce
 
     ! local
-    integer                         :: j, d, vidx, wi, osize, matsize, mat_tot, ier
+    integer                         :: j, d, vidx, wi, osize, mat_tot, ier
 
     ! print*, "debug predict_point_sgsim 00", idx, gridxy%order(idx)
     ! Get nearest for each obs dataset
     newloc = gridxy%coords(:, idx)
     loc_usenear = this%usenear  ! LOCAL VERSION
-    if (nsim>0) obsxy(1)%mask(idx-1) = .true.
+    maxdist = this%max_sdist**2
 
     do iset=1, this%nsets
       loc_usenear(iset) = min(loc_usenear(iset), count(obsxy(iset)%mask))
       call kdtree2_n_nearest(obsxy(iset)%tree, newloc, loc_usenear(iset), kdnearest(:loc_usenear(iset)), mask=obsxy(iset)%mask)
       inear(:loc_usenear(iset),iset) = kdnearest(:loc_usenear(iset))%idx
-      dist (:loc_usenear(iset),iset) = kdnearest(:loc_usenear(iset))%dis ** 0.5
+      dist (:loc_usenear(iset),iset) = kdnearest(:loc_usenear(iset))%dis
 
       block
         logical :: valid(loc_usenear(iset))
         integer :: nvalid
         valid = inear(:loc_usenear(iset),iset) > 0
-        if (iset>1) valid = dist (:loc_usenear(iset),iset) < this%max_sdist .and. valid
+        if (iset>1) valid = valid .and. (dist(:loc_usenear(iset),iset) < maxdist)
         nvalid = count(valid)
-        if (nvalid==0) then
-          write(*,*) "No near data point is found for Node", idx
-          stop 1
-        end if
-        loc_usenear(iset) = nvalid
         inear(:nvalid,iset) = pack(inear(:loc_usenear(iset),iset), valid)
-        dist (:nvalid,iset) = pack(dist (:loc_usenear(iset),iset), valid)
+        loc_usenear(iset) = nvalid
+        ! dist (:nvalid,iset) = pack(dist (:loc_usenear(iset),iset), valid)
       end block
     end do
 
     osize   = sum(loc_usenear)
-    matsize = osize+this%unbias+this%ndrift
-    mat_tot = matsize * (matsize + 1) / 2
+    if (osize==0) then
+      write(*,*) "No data point is found for Node", idx
+      stop 1
+    end if
+    this%matsize = osize+this%unbias+this%ndrift
+    mat_tot = this%matsize * (this%matsize + 1) / 2
 
     ! Create obs-obs matrix
-    call this%pset_cok_sgsim(obsxy, matsize, this%matA, this%pset_id, mat_tot, inear, loc_usenear, this%ndim)
-    call decomp(this%matA, this%pset_id, matsize, ier)
+    call this%pset_cok_sgsim(obsxy, this%matsize, this%matA, this%pset_id, mat_tot, inear, loc_usenear, this%ndim)
+    if (this%write_matrix) then
+      write(t2plog%unit, '(/,A,i0)') 'DEBUG - POINT:',idx
+      call this%write_amat(t2plog%unit)
+    end if
+    call decomp(this%matA, this%pset_id, this%matsize, ier)
 
-    if (ier == 1) call error_handler(4,opt_msg="Kriging Matrix Decomposition Failure. This is often caused by co-located wells")
+    if (ier == 1) then
+      call error_handler(4,opt_msg="Kriging Matrix Decomposition Failure. This is often caused by co-located wells")
+    end if
 
-    call this%pset_rhs(matsize, obsxy, newloc, inear, loc_usenear)
+    call this%pset_rhs(this%matsize, obsxy, newloc, inear, loc_usenear)
 
     ! Solve & Out
-    this%w = 0.0d0
-    call doolittle(this%rhsB,this%matA,this%pset_id,this%w,matsize)
+    this%w = 0.0
+    call doolittle(this%rhsB,this%matA,this%pset_id,this%w,this%matsize)
 
     ! calculate kriging result and standard deviation
-    res = 0.0d0
+    res = 0.0
     osize = 0
     do iset=1, this%nsets
       res = res + sum(obsxy(iset)%values(inear(1:loc_usenear(iset), iset)) * this%w(osize+1:osize+loc_usenear(iset)))
       osize = osize + loc_usenear(iset)
     end do
-    std = 0.0d0
+    var0 = 0.0
     vidx = this%vario_idx(1,1)
     do j=1, this%nstruct(vidx)
-      std = std + this%variograms(j,vidx)%cov(newloc,newloc)
+      var0 = var0 + this%variograms(j,vidx)%cov(newloc,newloc)
     end do
-    std = sqrt(max(std - sum(this%w(1:matsize) * this%rhsB(1:matsize)), 0.0d0))
+    var_reduce = sum(this%w(1:this%matsize) * this%rhsB(1:this%matsize))
+    std = sqrt(max(var0 - var_reduce, 0.0))
     res = res + gridxy%sample(idx) * std
+    res = max(0.0, min(1.0, res))
+    obsxy(1)%mask(idx) = .true.
+
+    if (this%write_matrix) then
+      call this%write_inear(t2plog%unit, loc_usenear, inear)
+      call this%write_rhs_array(t2plog%unit)
+      call this%write_weights(t2plog%unit)
+    end if
   end function predict_point_sgsim
 
   subroutine pset_cok_sgsim(this, obsxy, ntot, p, id, maxpt, inear, nnear,  dim)
@@ -267,7 +291,7 @@ module m_sgsim
           if (i/=j) ii=1
           do while (ii <= nnear(i))
             coordi=obsxy(i)%coords(1:,inear(ii,i))
-            value_sum=0.0d0
+            value_sum=0.0
             do n=1, this%nstruct(ind)
               value = this%variograms(n,ind)%cov(coordi,coordj)
               value_sum = value_sum + value
@@ -301,8 +325,8 @@ module m_sgsim
     ! local
     integer                :: i, j, rcount, d, vidx
     ! Create RHS
-    this%rhsB = 0.d0
-    if (this%unbias==1) this%rhsB(matsize) = 1.0d0
+    this%rhsB = 0.0
+    if (this%unbias==1) this%rhsB(matsize) = 1.0
 
     rcount = 1
     ! Loop over datasets
@@ -334,7 +358,6 @@ module m_sgsim
     integer                               :: i, j, iset, cat,  nobs1
     real    , allocatable                 :: weights(:,:)
 
-    results = 0.0d0  ! necessary?
 
     ! Call super setup
     call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
@@ -349,15 +372,13 @@ module m_sgsim
         type(t_simgrid)  :: obsxy(this%nsets), gridxy
         ! Step 1: filter obs and grid to
         call this%setup_sgsim(obs_data, obs_idx, val_idx, to_grid, cat, to_cats, weights, opt, obsxy, gridxy)
-        nobs1 = obsxy(1)%n - gridxy%n
-
         ! Step 2: estimate values
         do j=1, gridxy%n
           ! Interpolate for each point
-          obsxy(1)%values(nobs1+j) = this%predict_point_sgsim(j, obsxy, gridxy, opt%NSIM)
+          obsxy(1)%values(j) = this%predict_point_sgsim(j, obsxy, gridxy, opt%NSIM)
         end do
         ! Step 3: put back the values
-        results(gridxy%order) = obsxy(1)%values(nobs1+1:)
+        results(gridxy%order) = obsxy(1)%values(:gridxy%n)
         ! Step 4: clean up
         !call gridxy%finalize()
         !do iset=1, this%nsets; call obsxy(iset)%finalize(); end do
@@ -365,6 +386,21 @@ module m_sgsim
     end do
 
   end subroutine calc_sgsim
+
+  !-------------------------------------------------------------------------------------------------!
+
+    subroutine write_weights(this, log_unit)
+      implicit none
+      class(t_sgsim),intent(inout)  :: this
+      integer,intent(in)            :: log_unit
+      integer                       :: i
+
+      call t2plog%write_line("* WEIGHTS:")
+      do i =1, this%matsize
+        write(log_unit, "(*(ES15.7))") this%w(i)
+      end do
+
+    end subroutine write_weights
 
 !-------------------------------------------------------------------------------------------------!
   subroutine finalize_simgrid(this)

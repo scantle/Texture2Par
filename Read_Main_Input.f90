@@ -597,7 +597,7 @@ subroutine read_ppparm_block(t2p, reader)
 
   ! Did we get all the pp data we needed?
   ! Todo: where should we check for aquitard pp values? Should this all be checked later?
-  if (any(t2p%pilot_points%values(:,global_props(1):global_props(nglobal_props),:)<=NODATA)) then
+  if (any(t2p%pilot_points%values(:,global_props(1):global_props(nglobal_props),:)==NODATA)) then
     call error_handler(2,reader%file,"Missing global parameters for pilot point(s)")
   else
     do i=1, t2p%ntexclasses

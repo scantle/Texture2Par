@@ -64,12 +64,13 @@ module m_options
 !-------------------------------------------------------------------------------------------------!
 
   subroutine initialize(this)
+    use m_global, only: NODATA
     implicit none
     class(t_options),intent(inout)         :: this
 
     this%MAX_VSTRUCT          = -1
     !this%DATA_CLASSES         = -1
-    this%NO_DATA_VALUE        = -999.0
+    this%NO_DATA_VALUE        = NODATA
     this%IDW_POWER            = 2.0
     this%MAX_SECONDARY_DIST   = 0.0                   ! Default is overwritten in filter_near_points
     this%MAX_OUTSIDE_DIST     = 0.0

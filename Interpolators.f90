@@ -328,6 +328,7 @@ end subroutine single_point_full_weight
 !-------------------------------------------------------------------------------------------------!
 
   subroutine setup_idw(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+    use m_global, only             : NODATA
     implicit none
     class(t_idw),intent(inout)    :: this
     class(t_dataset)              :: obs_data(:)
@@ -348,7 +349,7 @@ end subroutine single_point_full_weight
     ! For layer dataset, ignore all NA values
     select type(p=>obs_data(1))
       class is (t_layerdata)
-        na_mask = .not. any(p%values(1:, :) == -999.0, dim=1)
+        na_mask = .not. any(p%values(1:, :) == NODATA, dim=1)
     end select
     this%catmask = (obs_data(1)%category == cat) .and. (na_mask)
   end subroutine setup_idw

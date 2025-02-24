@@ -39,7 +39,7 @@ module m_kriging
     procedure               :: setup => setup_krige
     procedure               :: pset_cok
     procedure               :: filter_near_points
-    procedure               :: write_amat, write_rhs_array
+    procedure               :: write_amat, write_rhs_array, write_inear
     procedure               :: finalize => finalize_krige
   end type t_krige
 !-------------------------------------------------------------------------------------------------!
@@ -258,6 +258,20 @@ end subroutine doolittle
     end do
 
   end subroutine write_rhs_array
+
+  !-------------------------------------------------------------------------------------------------!
+
+    subroutine write_inear(this, log_unit, usenear, inear)
+      implicit none
+      class(t_krige),intent(inout)  :: this
+      integer,intent(in)            :: log_unit, usenear(:), inear(:,:)
+      integer                       :: iset, i
+
+      do iset=1, this%nsets
+        write(log_unit, *) "* inear", iset
+        write(log_unit, "(20I10)") inear(:usenear(iset), iset)
+      end do
+    end subroutine write_inear
 
 !-------------------------------------------------------------------------------------------------!
 
@@ -545,6 +559,7 @@ end subroutine doolittle
     end if
 
     if (this%write_matrix) then
+      call this%write_inear(log%unit, loc_usenear, inear)
       call this%write_rhs_array(log%unit)
     end if
 
