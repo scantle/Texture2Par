@@ -293,6 +293,7 @@ module m_read_datasets
       allocate(all_thick    (nsets))
       allocate(hsus(ncats))
       if (allocated(local_elevs)==.false.) allocate(local_elevs(0:t2p%fmodel%nlayers))
+      nlines = 0
       all_count = 0
       all_sum = 0
       all_thick = 0
@@ -320,6 +321,7 @@ module m_read_datasets
         ! How many points will this interval become?
         npoints = npoints + ceiling((depth - prev_depth) / t2p%opt%MAX_LOG_LENGTH)
         prev_depth = depth
+        !write(*,*) nlines
       end do
 
       ! Initialize, setup
@@ -343,7 +345,7 @@ module m_read_datasets
       ipoint = 1
       do j=1, nlines
         write(tmp, '(i)') j+1
-        !write(*,*) tmp
+        !write(*,*) tmp // " / ", nlines
         read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
 	      call reader%iomsg_handler(iomsg)
         if (didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
