@@ -4,14 +4,18 @@ module m_log
   contains
 
 !-------------------------------------------------------------------------------------------------!
-  subroutine log_init(log)
+  subroutine log_init(log, main_input_file)
     use m_file_io, only: log_unit
     implicit none
-
     type(t_file_writer),pointer  :: log
-
+    character(100)               :: main_input_file
+    integer                      :: i
+    character(100)               :: basename
     ! Initialize
-    log => open_file_writer("log.t2p")
+    do i=max(1,len_trim(main_input_file)-20), len_trim(main_input_file)
+      if (main_input_file(i:i)==".") basename=main_input_file(1:i-1)
+    end do
+    log => open_file_writer(trim(basename)//".out")
     ! To avoid a circular dependency with the FileIO class
     log_unit = log%unit
 

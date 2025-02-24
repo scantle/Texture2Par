@@ -4,7 +4,7 @@ module m_T2P
   use m_vstring, only: t_vstring, vstring_toupper
   use m_error_handler, only: error_handler,warnings
   use m_options, only: t_options
-  use m_datasets, only: t_layerdata, t_dataset
+  use m_datasets, only: t_layerdata, t_dataset, write_layerdata
   use m_flow_model, only: t_flow_model, t_iwfm_model
   use m_pilotpoints, only: t_pilotpoints
   use m_interpolator, only: t_interpolator, t_idw
@@ -14,6 +14,13 @@ module m_T2P
   use m_vario, only: t_vgm
   use m_grid, only: t_grid, create_grid_object
 !-------------------------------------------------------------------------------------------------!
+
+#ifdef __INTEL_COMPILER
+  integer :: nblank = 0
+#else
+  integer :: nblank = 1
+#endif
+
   type t_T2P
     type(t_options)                  :: opt  ! avoid conflict with Fortran intrinsic 'options'
     class(t_flow_model),pointer      :: fmodel      => null()
@@ -548,7 +555,7 @@ module m_T2P
     if (this%opt%ONLY_TEXTURE) then
       ! If just texture, our jobs is very easy
       allocate(this%dset_intermediate(1,this%fmodel%nlayers))
-      call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid")
+      call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid", nblank)
       call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
       RETURN
     end if
@@ -576,23 +583,23 @@ module m_T2P
 
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! Krige textures to fmodel grid
-      call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid")
+      call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid", nblank)
       call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
       ! Write weights
       ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
-      call this%write_status("Calculating Hydraulic Parameters")
+      call this%write_status("Calculating Hydraulic Parameters", nblank)
       call this%calc_block_parameters(pp_intermediate, this%dset_intermediate(1,1:), this%par)
 
     else if (this%opt%INTERP_ORDER=="AFTER") then
       ! Calc parameters at data locations
-    call this%write_status("Calculating Hydraulic Parameters")
+    call this%write_status("Calculating Hydraulic Parameters", nblank)
       call this%calc_block_parameters(pp_intermediate, this%datasets(1,1:), this%dset_intermediate(1,1:))
       ! Krige parameters to fmodel grid
       call this%write_status("Interpolating Hydraulic Parameters to "//trim(this%fmodel%name)//" Grid")
       call this%interpolate_model(this%dset_intermediate, this%par)
       ! Write weights
     end if
-    call this%write_status("Calculations finished!")
+    call this%write_status("Calculations finished!", nblank)
 
   end subroutine predict
 !-------------------------------------------------------------------------------------------------!
@@ -870,29 +877,30 @@ module m_T2P
     integer                       :: i
     character(100)                :: fname, suffix(2), temp
     type(t_layerdata),pointer     :: p(:)
-    
+
     if (this%opt%INTERP_DIM==2) then
-      suffix(1) = '_layavg.out'
-      suffix(2) = '_aqtard_layavg.out'
+      suffix(1) = '_layavg.csv'
+      suffix(2) = '_aqtard_layavg.csv'
     else if (this%opt%INTERP_DIM==3) then
-      suffix(1) = '_logxyz.out'
-      suffix(2) = '_aqtard_logxyz.out'
+      suffix(1) = '_logxyz.csv'
+      suffix(2) = '_aqtard_logxyz.csv'
     end if
-    
+
     do i=1, this%get_active_texture_classes()
       p=>this%datasets(1,:)
       call item2char(this%class_names, i, temp)
-      write(fname,'(3a)') 't2p_', trim(temp), trim(suffix(1))
+
+      write(fname,'(3a)') trim(this%opt%PROJECT_NAME)//'_', trim(temp), trim(suffix(1))
       call this%write_dataset_file(fname, p, i)
       if (this%fmodel%has_aquitards) then
-        write(fname,'(3a)') 't2p_', trim(temp), trim(suffix(2))
+        write(fname,'(3a)') trim(this%opt%PROJECT_NAME)//'_', trim(temp), trim(suffix(2))
         call this%write_dataset_file_aqtard(fname, p, i)
       end if
     end do
 
     do i=1, this%nsecondary
       call item2char(this%class_names, this%ntexclasses + i, temp)
-      write(fname,'(3a)') 't2p_', trim(temp), trim(suffix(1))
+      write(fname,'(3a)') trim(this%opt%PROJECT_NAME)//'_', trim(temp), trim(suffix(1))
       p=>this%datasets(1+i,:)
       call this%write_dataset_file(fname, p,1)
     end do
@@ -901,7 +909,7 @@ module m_T2P
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine write_dataset_file(this, fname, dataset, idx)
+  subroutine write_dataset_file(this, fname, dataset, idx, aquitard)
     use m_flow_model, only: t_flow_model,t_modflow_model, t_iwfm_model
     use m_file_io, only: t_file_writer, open_file_writer
     implicit none
@@ -910,77 +918,47 @@ module m_T2P
     type(t_layerdata),pointer     :: dataset(:)  ! (nlayers)
     integer, intent(in)           :: idx
     class(t_flow_model),pointer   :: fm
-    integer                       :: i, k, dim, unit, kstart, kintrvl
-    integer                       :: rowcol(2,this%fmodel%nnodes(1))
-    character(60)                 :: fmt(2)
-    type(t_file_writer),pointer   :: fwrite
-    
-    fwrite => open_file_writer(fname)
-    unit = fwrite%unit
-    
-    dim     = 1   ! Number of indices needed to express location, e.g. node # vs row col
+    integer, intent(in), optional :: aquitard
+    integer                       :: i, unit, kstart, kintrvl, nwell, aqt
+    character(30), allocatable    :: rownames(:)
+    character(10)                 :: nodecol, lname
+
     kstart  = 1   ! Start layer
     kintrvl = 1   ! Interval of layers
+    aqt = 0       ! aquifer or aquitard
+    nodecol = 'Node'
+    lname = "Layer"
+    if (present(aquitard)) then
+      aqt = aquitard
+      lname = "Aquitard"
+    end if
     select type(fm=>this%fmodel)
-      class is(t_modflow_model)
-        if (fm%structured) dim=2
-        do i=1, this%fmodel%nnodes(1)
-          call fm%cell2rowcol(i, rowcol(1,i), rowcol(2,i))
-        end do
       class is(t_iwfm_model)
-        kstart  = 2  ! Ignore aquitards
+        kstart  = 2 + aqt ! aquitard starts Layer 1
         kintrvl = 2
+        nodecol = 'Element'
     end select
 
-    if (this%opt%INTERP_DIM==2) then
+    nwell = dataset(1)%grid%n
+    allocate(rownames(0:nwell))
+    rownames(0) = "Well"
+    do i=1, nwell
+      ! TODO: use well names?
+      write(rownames(i), "(I0)") i
+    end do
 
-      write(fmt(1),'("(1a10,",i1,"a10,",i5,"i14)")') dim, this%fmodel%nlayers/kintrvl
-      write(fmt(2),'("(1i10,",i1,"i10,",i5,"es14.5)")') dim, this%fmodel%nlayers/kintrvl
-
-      ! Header
-      if (dim==1) then
-        ! Header
-        write(unit,fmt(1)) 'Well', 'Element', (k, k=1, this%fmodel%nlayers/kintrvl)
-        ! Values
-        do i = 1, size(dataset(1)%values,2)
-          write(unit,fmt(2)) i, dataset(1)%fmodel_loc(i), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
-        end do
-      else
-        ! Header
-        write(unit,fmt(1)) 'Well', 'Row','Col', (k, k=1, this%fmodel%nlayers/kintrvl)
-        ! Values
-        do i = 1, size(dataset(1)%values,2)
-          write(unit,fmt(2)) i, rowcol(1:2,dataset(1)%fmodel_loc(i)), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
-        end do
-      end if
-    else if (this%opt%INTERP_DIM==3) then
-      ! 3D is an easier situation, somewhat
-      ! Well [elem/row, col] x y z value
-      write(fmt(1),'("(1a10,",i1,"a10,",i5,"a14)")') dim, 4
-      write(fmt(2),'("(1i10,",i1,"i10,",i5,"es14.5)")') dim, 4
-    
-      ! Header
-      ! TODO "ID" should really be the ID from the dataset file (is this stored anywhere for 3D?)
-      if (dim==1) then
-        ! Header
-        write(unit,fmt(1)) 'ID', 'Element', 'x', 'y', 'z', 'value'
-        ! Values
-        do i = 1, size(dataset(1)%values,2)
-          write(unit,fmt(2)) i, dataset(1)%fmodel_loc(i), dataset(k)%grid%coords(1:3,i), dataset(k)%values(idx,i)
-        end do
-      else
-        ! Header
-        write(unit,fmt(1)) 'ID', 'Row', 'Col', 'x', 'y', 'z', 'value'
-        ! Values
-        do i = 1, size(dataset(1)%values,2)
-          write(unit,fmt(2)) i, rowcol(1:2,dataset(1)%fmodel_loc(i)), dataset(1)%grid%coords(1:3,i), dataset(1)%values(idx,i)
-        end do
-      end if
-      
-    end if
-
-    call fwrite%close_file()
-
+    call write_layerdata(               &
+      fname,                            &
+      dataset,                          &
+      dataset(1)%grid%coords,           &
+      kstart,                           &
+      kintrvl,                          &
+      idx,                              &
+      gridncol=this%fmodel%ncol,        &
+      rownames=rownames,                &
+      modelnodes=dataset(1)%fmodel_loc, &
+      mdim=this%opt%INTERP_DIM,         &
+      nodecol=nodecol)
   end subroutine write_dataset_file
 
 !-------------------------------------------------------------------------------------------------!
@@ -996,49 +974,10 @@ module m_T2P
     type(t_layerdata),pointer     :: dataset(:)  ! (nlayers)
     integer, intent(in)           :: idx
     class(t_flow_model),pointer   :: fm
-    integer                       :: i, k, dim, unit, kstart, kintrvl
-    integer                       :: rowcol(2,this%fmodel%nnodes(1))
-    character(60)                 :: fmt(2)
-    type(t_file_writer),pointer   :: fwrite
+    integer                       :: i, unit, nwell
+    character(30), allocatable    :: rownames(:)
 
-    dim     = 1   ! Number of indices needed to express location, e.g. node # vs row col
-    kstart  = 1   ! Start layer
-    kintrvl = 1   ! Interval of layers
-    select type(fm=>this%fmodel)
-      class is(t_modflow_model)
-        if (fm%structured) dim=2
-        do i=1, this%fmodel%nnodes(1)
-          call fm%cell2rowcol(i, rowcol(1,i), rowcol(2,i))
-        end do
-      class is(t_iwfm_model)
-        kstart  = 1  ! Only aquitards
-        kintrvl = 2
-    end select
-
-    write(fmt(1),'("(1a10,",i1,"a10,",i5,"i14)")') dim, this%fmodel%nlayers/kintrvl
-    write(fmt(2),'("(1i10,",i1,"i10,",i5,"es14.5)")') dim, this%fmodel%nlayers/kintrvl
-
-    fwrite => open_file_writer(fname)
-    unit = fwrite%unit
-
-    ! Header
-    if (dim==1) then
-      ! Header
-      write(unit,fmt(1)) 'Well', 'Element', (k, k=1, this%fmodel%nlayers/kintrvl)
-      ! Values
-      do i = 1, size(dataset(1)%values,2)
-        write(unit,fmt(2)) i, dataset(1)%fmodel_loc(i), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
-      end do
-    else
-      ! Header
-      write(unit,fmt(1)) 'Well', 'Row','Col', (k, k=1, this%fmodel%nlayers/kintrvl)
-      ! Values
-      do i = 1, size(dataset(1)%values,2)
-        write(unit,fmt(2)) i, rowcol(1:2,dataset(1)%fmodel_loc(i)), (dataset(k)%values(idx,i), k=kstart, this%fmodel%nlayers, kintrvl)
-      end do
-    end if
-
-    call fwrite%close_file()
+    call this%write_dataset_file(fname, dataset, idx, aquitard=-1)
 
   end subroutine write_dataset_file_aqtard
 
@@ -1092,7 +1031,11 @@ module m_T2P
     call log%write_line(line_out)
 
     ! To Screen (with overwrite)
+#ifdef __INTEL_COMPILER
     write(6,'("+",2x,a100)') line_out
+#else
+    write(6,fmt='(a1,2x,a100)',advance="no") char(13),line_out
+#endif
 
   end subroutine write_minor_status
 

@@ -1,9 +1,9 @@
 module m_vario
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   real    , parameter   :: pi = 3.141592653589793d0
-  
+
 type :: t_vgm
 ! Variogram or cross variogram structure
   integer                 :: itype       ! Variogram model (0-linear, 1-spherical, 2-exponential)
@@ -31,30 +31,30 @@ end type t_vgm
 !-------------------------------------------------------------------------------------------------!
 
   contains
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! MODULE PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
-  function get_vgm_from_line(strings, struct_id,interp_dim,maxread) result(vgm)
+  subroutine get_vgm_from_line(vgm, strings, struct_id,interp_dim,maxread)
     use m_file_io
     use m_vstringlist, only: t_vstringlist
     use m_error_handler, only: error_handler
     implicit none
-    
+
     type(t_vstringlist),intent(in)   :: strings
     integer, intent(in)              :: struct_id, interp_dim
     integer, intent(out)             :: maxread
-    class(t_vgm),pointer             :: vgm
-    
-    allocate(vgm)
+    class(t_vgm), intent(inout)      :: vgm
+
+    ! allocate(vgm)
     maxread = 0
-    
+
     vgm%itype  = find_string_index_in_list(strings, 2, "SPH,EXP,HOL,GAU,POW,CIR,LIN", toupper=.true.)
     if (vgm%itype==0) then
       call error_handler(1,"Invalid variogram type - must be one of Exp, Sph, Hol, Gau, Cir, Lin")
     end if
-    
+
     ! TODO implement different reading for nonstandard variograms (e.g. power)
     if (interp_dim==2) then
       vgm%nugget = item2dp(strings, 3)
@@ -80,18 +80,17 @@ end type t_vgm
       maxread = 10
       !nnear read outside of routine
     end if
-    
+
     ! TODO - more parameters for search ellipsoid? Read elsewhere?
-    
+
     ! initialize
     call vgm%initialize(struct_id)
-    
-  end function get_vgm_from_line
+  end subroutine get_vgm_from_line
 
 !-------------------------------------------------------------------------------------------------!
 ! BASE CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine initialize(this, sid)
     implicit none
     class(t_vgm)         :: this
@@ -101,18 +100,18 @@ end type t_vgm
     ! Sets anis1, anis2 ratios based on ranges aa1, aa2
     this%anis1 = this%a_hmin/this%a_hmax
     this%anis2 = this%a_vert/this%a_hmax
-    
+
     ! Correct for zero a_vert (may not be using 3D kriging)
     if (this%anis2 < tiny(this%anis2)) this%anis2 = 1.0
-      
+
     ! Zero out nuggets on structures above 1
     if (sid > 1) this%nugget = 0.0
-    
+
     ! Now the rotation matrices get initialized
     call this%setrot()
-    
+
   end subroutine initialize
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine setrot(this)
@@ -211,9 +210,9 @@ end type t_vgm
     sqdist = sum(matmul(this%rotmat(1:dim, 1:dim), (p1 - p2))**2)
     return
   end function sqdist
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function sqdist_vec(this, dim, p, points, n)
     implicit none
     class(t_vgm)            :: this
@@ -227,12 +226,12 @@ end type t_vgm
     sqdist_vec = sum(matmul(this%rotmat(1:dim, 1:dim), dd)**2, dim=1)
 
   end function sqdist_vec
-    
+
 !-------------------------------------------------------------------------------------------------!
 
   function cov(this, p1,p2) result(cov_value)
     implicit none
-    
+
     real    ,parameter       :: epsilon=1.e-10
     class(t_vgm)          :: this
     real    , intent(in)  :: p1(:), p2(:)
@@ -273,11 +272,11 @@ end type t_vgm
     if (this%nugget > 0.0) then
       if (dist < epsilon) cov_value = cov_value + this%nugget
     end if
-  
+
   end function cov
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function cov_vec(this, dist, n) result(cov)
     implicit none
     real    ,parameter    :: epsilon=1.e-10
@@ -325,7 +324,7 @@ end type t_vgm
 
   end function cov_vec
 !-------------------------------------------------------------------------------------------------!
-  
+
   !function cov(this, x1, y1, z1, x2, y2, z2) result(value)
   !  implicit none
   !  class(t_vgm)         :: this
@@ -361,6 +360,6 @@ end type t_vgm
   !  value=this%sill-h
   !
   !end function cov
-  
+
 !-------------------------------------------------------------------------------------------------!
 end module m_vario

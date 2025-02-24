@@ -32,6 +32,7 @@ module m_flow_model
     real                          :: xoff,yoff,rot   ! Conversion from/to global coordinates
     integer                       :: nlayers         ! Number of model layers
     integer                       :: ngrids          ! Number of unique model grid (xy) layers
+    integer                       :: ncol=0          ! Number of columns for structured grid
     integer,allocatable           :: nnodes(:)       ! Number of nodes (points at which flow is solved) by layer
     integer,pointer               :: lay2grid(:)     ! Which grid each layer uses (e.g., same xy between layers)
     character(30)                 :: name            ! For printing nicely to log/screen
@@ -43,11 +44,13 @@ module m_flow_model
     character(3)                  :: grd_file_type   ! Character string of grid file type (GSF, ...)
     character(100)                :: grd_file        ! Grid specification file for grid type or MODFLOW-USG
     character(100)                :: output_file     ! File where aquifer parameters are written
+    character(60)                 :: projectname     ! project name from T2P, used as output prefix
     real    , allocatable         :: elev(:,:)       ! Bottom Elevations for each layer (node, layer) (indexed from zero = model top)
     type(t_grid_arr),allocatable  :: grid(:)         ! xy grids for layers
     type(t_category)              :: ppzones         ! Pilot point zone fmodel grid arrays & tracking
     type(t_category)              :: hsus            ! HSU fmodel grid arrays & tracking
     logical                       :: has_aquitards   ! For now, only in IWFM - but helps T2P w/ aquitard pilot points
+    logical                       :: structured      ! T/F Structured (row/col) model
     logical,allocatable           :: lay_aqtard(:)   ! Tracks whether layer is an aquitard
     logical,allocatable           :: pparr_aqtard(:) ! Tracks if a *pilot_point* array is an aquitard
 
@@ -69,6 +72,7 @@ module m_flow_model
       procedure,public            :: write_node_files
       procedure,public            :: write_node_file
       procedure,public            :: write_node_file_aqtard
+      procedure,public            :: cell2rowcol
       procedure,private           :: alloc_layers
       procedure,private           :: alloc_nodes
 
@@ -76,7 +80,6 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
   type,extends(t_flow_model) :: t_flow_fdmodel    ! Finite Difference Model
     ! Ineligant solution to both MF-USG and Grid using the GSF
-    logical                   :: structured    ! T/F Structured (row/col) model
     integer                   :: nvert
     ! I am not sure we actually need either of these vert arrays since we have node coordinates
     !integer,allocatable       :: vertnnode(:)   ! Number of nodes that include each vertex
@@ -160,7 +163,6 @@ module m_flow_model
     procedure,public          :: find_in_grid => find_in_grid_cell
     procedure,public          :: write_node_file => write_node_file_mf
     procedure,public          :: write_fmodel_input => write_fmodel_input_mf
-    procedure,public          :: cell2rowcol
     procedure,private         :: get_cell_local
     procedure,private         :: calc_mfcell_centers
 
@@ -173,11 +175,12 @@ module m_flow_model
 ! MODULE PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
-  function create_flow_model_object(model_type_char) result(object)
+  function create_flow_model_object(model_type_char, projectname) result(object)
     implicit none
 
     character(*),intent(in)        :: model_type_char
     class(t_flow_model),pointer    :: object
+    character(60), optional        :: projectname
 
     select case(model_type_char)
       case ("IWFM")
@@ -191,6 +194,12 @@ module m_flow_model
       case DEFAULT
         call error_handler(1,opt_msg="Unknown Flow Model Type Name: " // trim(model_type_char))
     end select
+
+    if (present(projectname)) then
+      object%projectname = trim(projectname)
+    else
+      object%projectname = "t2p"
+    end if
 
     ! Initialize new object
     call object%initialize()
@@ -232,6 +241,7 @@ module m_flow_model
 
     this%model_type    = 0
     this%nlayers       = 0
+    this%ncol          = 0
     this%preproc_file  = ''
     this%sim_file      = ''
     this%ppzone_file   = ''
@@ -476,13 +486,13 @@ module m_flow_model
 
     do i=1, vstrlist_length(dat_names)  ! ndat, hopefully
       call item2char(dat_names, i, temp)
-      write(fname,'(3a)') 't2p_', trim(temp), '.out'
+      write(fname,'(3a)') trim(this%projectname)//'_', trim(temp), '.csv'
       call this%write_node_file(fname, datasets, i)
     end do
 
     if (this%has_aquitards) then
       call item2char(dat_names, 2, temp)
-      write(fname,'(3a)') 't2p_', trim(temp), '_aqtard.out'
+      write(fname,'(3a)') trim(this%projectname)//'_', trim(temp), '_aqtard.csv'
       call this%write_node_file_aqtard(fname, datasets, 2)  ! Only implemented for IWFM
     end if
 
@@ -686,7 +696,7 @@ module m_flow_model
     call initialize(this)
     this%model_type  = 1
     this%name = "GSF"
-
+    this%structured = .false.
   end subroutine init_mgrid
 
 !-------------------------------------------------------------------------------------------------!
@@ -755,7 +765,7 @@ module m_flow_model
     call initialize(this)
     this%model_type  = 1
     this%name = "SIMPLE"
-
+    this%structured = .false.
   end subroutine init_simpgrid
 
 !-------------------------------------------------------------------------------------------------!
@@ -819,7 +829,7 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
 
   subroutine write_node_file_simpgrid(this, fname, par, par_id)
-    use m_datasets, only: t_layerdata
+    use m_datasets, only: t_layerdata, write_layerdata
     implicit none
     class(t_simpgrid)        :: this
     character(*)               :: fname
@@ -829,22 +839,7 @@ module m_flow_model
     character(60)              :: fmt(2)
     type(t_file_writer),pointer:: fwrite
 
-    !write(*,'(4x,a,a35)') 'Writing:', trim(filename)
-
-    write(fmt(1),'("(1a8,2a18,",i5,"i14)")') this%nlayers
-    write(fmt(2),'("(1i8,2f18.5,",i5,"e14.5)")') this%nlayers
-
-    fwrite => open_file_writer(fname)
-    unit = fwrite%unit
-
-    ! Header
-    write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, this%nlayers)
-    ! Values
-    do i = 1, this%nnodes(1)
-      write(unit,fmt(2)) i, this%grid(1)%ptrgrid%coords(1:2,i), (par(k)%values(par_id,i), k=1, this%nlayers)
-    end do
-
-    call fwrite%close_file()
+    call write_layerdata(fname, par, this%grid(1)%ptrgrid%coords, 1, 1, par_id)
 
   end subroutine write_node_file_simpgrid
 
@@ -861,7 +856,7 @@ module m_flow_model
     call initialize(this)
     this%model_type  = 2
     this%name = "IWFM"
-
+    this%structured = .false.
   end subroutine init_iwfm
 
 !-------------------------------------------------------------------------------------------------!
@@ -1289,7 +1284,7 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
 
   subroutine write_node_file_iwfm(this, fname, par, par_id)
-    use m_datasets, only: t_layerdata
+    use m_datasets, only: t_layerdata, write_layerdata
     implicit none
     class(t_iwfm_model)        :: this
     character(*)               :: fname
@@ -1299,30 +1294,14 @@ module m_flow_model
     character(60)              :: fmt(2)
     type(t_file_writer),pointer:: fwrite
 
-    !write(*,'(4x,a,a35)') 'Writing:', trim(filename)
-
-    write(fmt(1),'("(1a8,2a18,",i5,"i14)")') this%nlayers
-    write(fmt(2),'("(1i8,2f18.5,",i5,"e14.5)")') this%nlayers
-
-    !open(20, file=trim(filename), status='replace', action='write', buffered='YES')
-    fwrite => open_file_writer(fname)
-    unit = fwrite%unit
-
-    ! Header
-    write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, (this%nlayers/2))
-    ! Values
-    do i = 1, this%nnodes(1)
-      write(unit,fmt(2)) this%nodeid(i), this%grid(1)%ptrgrid%coords(1:2,i), (par(k)%values(par_id,i), k=2, this%nlayers, 2)  ! Only writes aquifer params
-    end do
-
-    call fwrite%close_file()
+    call write_layerdata(fname, par, this%grid(1)%ptrgrid%coords, 2, 2, par_id)
 
   end subroutine write_node_file_iwfm
 
 !-------------------------------------------------------------------------------------------------!
 
   subroutine write_node_file_aqtard_iwfm(this, fname, par, par_id)
-    use m_datasets, only: t_layerdata
+    use m_datasets, only: t_layerdata, write_layerdata
     implicit none
     class(t_iwfm_model)        :: this
     character(*)               :: fname
@@ -1332,23 +1311,7 @@ module m_flow_model
     character(60)              :: fmt(2)
     type(t_file_writer),pointer:: fwrite
 
-    !write(*,'(4x,a,a35)') 'Writing:', trim(filename)
-
-    write(fmt(1),'("(1a8,2a18,",i5,"i14)")') this%nlayers
-    write(fmt(2),'("(1i8,2f18.5,",i5,"e14.5)")') this%nlayers
-
-    !open(20, file=trim(filename), status='replace', action='write', buffered='YES')
-    fwrite => open_file_writer(fname)
-    unit = fwrite%unit
-
-    ! Header
-    write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, (this%nlayers/2))
-    ! Values
-    do i = 1, this%nnodes(1)
-      write(unit,fmt(2)) this%nodeid(i), this%grid(1)%ptrgrid%coords(1:2,i), (par(k)%values(par_id,i), k=1, this%nlayers, 2)  ! Only writes aquitard params
-    end do
-
-    call fwrite%close_file()
+    call write_layerdata(fname, par, this%grid(1)%ptrgrid%coords, 1, 2, par_id, lname="Aquitard")
 
   end subroutine write_node_file_aqtard_iwfm
 
@@ -1489,14 +1452,13 @@ module m_flow_model
   !-------------------------------------------------------------------------------------------------!
 
   subroutine cell2rowcol(this, cell, row, col)
-    use GLOBAL, ONLY : NCOL
     implicit none
-    class(t_modflow_model)  :: this
+    class(t_flow_model)    :: this
     integer,intent(in)     :: cell
     integer,intent(out)    :: row, col
 
-    row = CEILING(real(cell) / real(NCOL))
-    col = cell - (row-1) * NCOL
+    row = int((cell-1)/this%ncol) + 1
+    col = cell - (row-1) * this%ncol
 
   end subroutine cell2rowcol
 
@@ -1540,7 +1502,7 @@ module m_flow_model
 
     ! MODFLOW-USG does the heavy lifting
     call init_modflow_usg(this%sim_file,ierr,iomsg,mfmaxunit)
-
+    this%ncol = NCOL
     ! Error handling for external reader...
     if (ierr /= 0) then
       ! Todo replace with actual log writing function
@@ -1621,7 +1583,7 @@ module m_flow_model
 
   subroutine write_node_file_mf(this, fname, par, par_id)
     ! Base class method, should not be run
-    use m_datasets, only: t_layerdata
+    use m_datasets, only: t_layerdata, write_layerdata
     implicit none
     class(t_modflow_model)     :: this
     character(*)               :: fname
@@ -1631,32 +1593,7 @@ module m_flow_model
     character(60)              :: fmt(2)
     type(t_file_writer),pointer:: fwrite
 
-    !write(*,'(4x,a,a35)') 'Writing:', trim(filename)
-    i = 1
-    if (this%structured) i = 2
-    write(fmt(1),'("(",i1,"a8,2a18,",i5,"i14)")') i, this%nlayers
-    write(fmt(2),'("(",i1,"i8,2f18.5,",i5,"e14.5)")') i, this%nlayers
-
-    !open(20, file=trim(filename), status='replace', action='write', buffered='YES')
-    fwrite => open_file_writer(fname)
-    unit = fwrite%unit
-    ! Header
-    if (this%structured) then
-      write(unit,fmt(1)) 'Row','Col', 'X', 'Y', (k, k=1, this%nlayers)
-    else
-      write(unit,fmt(1)) 'Node', 'X', 'Y', (k, k=1, this%nlayers)
-    end if
-    ! Values
-    do i = 1, this%nnodes(1)
-      if (this%structured) then
-        call this%cell2rowcol(i, row, col)
-        write(unit,fmt(2)) row, col, this%grid(1)%ptrgrid%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
-      else
-        write(unit,fmt(2)) i, this%grid(1)%ptrgrid%coords(1:2,i), (par(k)%values(par_id,i), k=1,this%nlayers)
-      end if
-    end do
-
-    call fwrite%close_file()
+    call write_layerdata(fname, par, this%grid(1)%ptrgrid%coords, 1, 1, par_id, gridncol=this%ncol)
 
   end subroutine write_node_file_mf
 !-------------------------------------------------------------------------------------------------!

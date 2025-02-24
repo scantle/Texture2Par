@@ -1,5 +1,5 @@
 module m_options
-!-------------------------------------------------------------------------------------------------!  
+!-------------------------------------------------------------------------------------------------!
 ! HOW TO ADD AN OPTION
 !  1. Add it as a variable in the type t_options
 !  2. Add it to the initialize routine and give it a default value
@@ -8,7 +8,7 @@ module m_options
 !  5. If necessary, add a handler for the option to the t2p%process_options() hook that is called
 !     after the options are read.
 !-------------------------------------------------------------------------------------------------!
-  
+
   type t_options
     ! Required Options:
     integer                  :: MAX_VSTRUCT           ! Maximum variogram structures
@@ -24,7 +24,8 @@ module m_options
     integer                  :: SEED                  ! seed number for generating random path and samples for SGSIM
     character(10)            :: INTERP_METHOD         ! OK, SK, IDW
     character(10)            :: INTERP_ORDER          ! Interpolate to grid: [BEFORE, AFTER] upscaling/aggegating?
-    character(60)            :: MAIN_OUTPUT           ! 
+    character(60)            :: MAIN_OUTPUT           !
+    character(60)            :: PROJECT_NAME          ! project name, used as prefix for output file names
     !character(100)           :: OUTPUT_DIR            ! Directory where output gets written
     !character(100)           :: INPUT_DIR             ! Direction where input gets read
     logical                  :: SILENT_MODE           !
@@ -44,20 +45,20 @@ module m_options
     logical                  :: INFER_LAST_CLASS      ! For classic T2P, where the data is only percent coarse
     logical                  :: CORRECT_WEIGHTS       ! Zero negative (kriging) weights and rebalance if true, see Deutsch (1996) (only for OK, COK)
     logical                  :: USE_MODEL_GSE         ! Use model cell ground surface elevation (GSE) rather than dataset GSEs for depth->elevation calcs
-    
+
     ! Internal Options (to be set by t2p%process_options)
     logical                  :: INTERP_SECOND_OK      ! Can the interpolator handle covariates?
     logical                  :: ASYMMETRIC_COV        ! Whether relationships between covariates can be asymmetric
-    
+
     contains
       procedure, public :: initialize
       procedure, public :: read_options
       procedure, public :: write_input_summary
-    
+
   end type t_options
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   contains
 
 !-------------------------------------------------------------------------------------------------!
@@ -78,7 +79,8 @@ module m_options
     this%SEED                 = 0
     this%INTERP_METHOD        = 'OK'
     this%INTERP_ORDER         = 'BEFORE'
-    this%MAIN_OUTPUT          = 't2p_log.txt'
+    this%PROJECT_NAME         = 't2p'
+    this%MAIN_OUTPUT          = ''
     !this%OUTPUT_DIR           = './'
     !this%INPUT_DIR            = './'
     this%SILENT_MODE          = .false.
@@ -103,7 +105,7 @@ module m_options
   end subroutine initialize
 
 !-------------------------------------------------------------------------------------------------!
-  
+
 subroutine read_options(this, reader)
   use m_file_io, only: t_file_reader, item2int, item2char, item2real
   use m_vstringlist, only: t_vstringlist
@@ -144,6 +146,8 @@ subroutine read_options(this, reader)
         call item2char(strings, 2, this%INTERP_ORDER,toupper=.true.)
       case("MAIN_OUTPUT")
         call item2char(strings, 2, this%MAIN_OUTPUT)
+      case("PROJECT_NAME")
+        call item2char(strings, 2, this%PROJECT_NAME)
       !case("OUTPUT_DIR")
       !  call item2char(strings, 2, this%OUTPUT_DIR)
       !case("INPUT_DIR")
@@ -196,9 +200,10 @@ subroutine read_options(this, reader)
         call error_handler(1,reader%file,"Unknown Option Name: " // trim(id))
     end select
   end do
+  if (this%MAIN_OUTPUT=="") this%MAIN_OUTPUT = trim(this%PROJECT_NAME)//"_log.txt"
   call random_seed_initialize(this%SEED)
   ! Handle EOF
-    
+
 end subroutine read_options
 
 !-------------------------------------------------------------------------------------------------!
@@ -238,11 +243,11 @@ subroutine write_input_summary(this)
     !call log%write_valueline('',this%MAIN_OUTPUT) ! unneeded (we're writing to that file!)
     !call log%write_valueline('',this%OUTPUT_DIR)  ! unimplemented
     !call log%write_valueline('',this%INPUT_DIR)   ! unimplemented
-    
+
     ! Logical variables
     logic_true = ''
     no_true_len = 0 !len(trim(logic_true))
-    
+
     if (this%SILENT_MODE        ) logic_true = trim(logic_true) // "SILENT_MODE"         // ","
     if (this%DEBUG_MODE         ) logic_true = trim(logic_true) // "DEBUG_MODE"          // ","
     if (this%ONLY_TEXTURE       ) logic_true = trim(logic_true) // "ONLY_TEXTURE"        // ","
@@ -260,7 +265,7 @@ subroutine write_input_summary(this)
     if (this%INFER_LAST_CLASS   ) logic_true = trim(logic_true) // "INFER_LAST_CLASS"    // ","
     if (this%CORRECT_WEIGHTS    ) logic_true = trim(logic_true) // "CORRECT_WEIGHTS"     // ","
     if (this%USE_MODEL_GSE      ) logic_true = trim(logic_true) // "USE_MODEL_GSE"       // ","
-    
+
     if (len(trim(logic_true)) > no_true_len) then
       !call log%write_line(logic_true)
       call log%write_valueline('Logical Options Set to TRUE:',logic_true)
@@ -268,7 +273,7 @@ subroutine write_input_summary(this)
       !call log%write_line("All Logical Options Set to FALSE")
       call log%write_valueline('All Logical Options Set to','FALSE')
     end if
-  
+
 end subroutine write_input_summary
 !-------------------------------------------------------------------------------------------------!
 

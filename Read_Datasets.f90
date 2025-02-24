@@ -292,7 +292,7 @@ module m_read_datasets
       allocate(all_sum      (nsets))
       allocate(all_thick    (nsets))
       allocate(hsus(ncats))
-      if (allocated(local_elevs)==.false.) allocate(local_elevs(0:t2p%fmodel%nlayers))
+      if (.not. allocated(local_elevs)) allocate(local_elevs(0:t2p%fmodel%nlayers))
       nlines = 0
       all_count = 0
       all_sum = 0

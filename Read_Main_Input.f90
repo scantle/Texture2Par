@@ -126,7 +126,7 @@ module m_read_main_input
       select case(trim(id))
         case("TYPE")
           call item2char(strings, 2, value, toupper=.true.)
-          t2p%fmodel => create_flow_model_object(value)
+          t2p%fmodel => create_flow_model_object(value, t2p%opt%PROJECT_NAME)
         case("SIM_FILE")
           call check_id_validity(id, t2p%fmodel, 2) ! Only IWFM
           call item2char(strings, 2, t2p%fmodel%sim_file)
@@ -445,7 +445,7 @@ subroutine read_variogram_block(t2p, reader)
           nstruct(vario_id) = struct_id
           !TODO validate struct_id
           ! Get full variogram item from the rest of the line
-          vgms(struct_id,vario_id) = get_vgm_from_line(strings, struct_id, t2p%OPT%INTERP_DIM, maxread)
+          call get_vgm_from_line(vgms(struct_id,vario_id), strings, struct_id, t2p%OPT%INTERP_DIM, maxread)
           ! NNear on first struct read, if not cross, advance vcount
           if (struct_id == 1) then
             if (iscross) then

@@ -82,7 +82,7 @@ module m_sgsim
     !do i=1, to_grid%n
     !  gridxy%order_inv(gridxy%order(i)) = igrid(i)
     !end do
-    if (opt%NSIM>0) then; gridxy%sample = rnorm_box_muller_vec(gridxy%n); else; gridxy%sample = 0.0d0; end if
+    if (opt%NSIM>0) then; gridxy%sample = rnorm_box_muller_vec(gridxy%n); else; gridxy%sample = 0.0; end if
     gridxy%coords = to_grid%coords(:, gridxy%order)
 
     ! set up the obs
@@ -171,7 +171,8 @@ module m_sgsim
       block
         logical :: valid(loc_usenear(iset))
         integer :: nvalid
-        valid = dist (:loc_usenear(iset),iset) < this%max_sdist .and. inear(:loc_usenear(iset),iset) > 0
+        valid = inear(:loc_usenear(iset),iset) > 0
+        if (iset>1) valid = dist (:loc_usenear(iset),iset) < this%max_sdist .and. valid
         nvalid = count(valid)
         if (nvalid==0) then
           write(*,*) "No near data point is found for Node", idx
@@ -439,7 +440,7 @@ module m_sgsim
     real         , parameter  :: two_pi=8.0*atan(1.0)
     do
         call random_number(u)
-        if (u(1) > 0.0d0) exit
+        if (u(1) > 0.0) exit
     end do
     factor = sqrt(-2 * log(u(1)))
     arg = two_pi*u(2)

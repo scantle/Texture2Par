@@ -37,7 +37,7 @@ program Texture2Par
   ! Pre-read initializations
   call get_command_args(main_input_file)
   call io_initialize()
-  call log_init(log)
+  call log_init(log, main_input_file)
   call t2p%initialize()
 
   ! Read Main Input

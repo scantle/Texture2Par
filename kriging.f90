@@ -174,11 +174,8 @@ end subroutine doolittle
     this%ndrift = 0  ! Hardcoded out for now
     this%unbias = 0
     this%nsets  = size(obs_data)
-    this%no_negative_weights = .false.
-    this%write_matrix = .false.
-
-    if (opt%CORRECT_WEIGHTS) this%no_negative_weights = .true.
-    if (opt%WRITE_MATRIX) this%write_matrix = .true.
+    this%no_negative_weights = opt%CORRECT_WEIGHTS
+    this%write_matrix = opt%WRITE_MATRIX
 
     ! If MAX_SECONDARY_DIST is zero, will use 3x the largest structure range
     this%max_sdist = opt%MAX_SECONDARY_DIST
@@ -222,7 +219,7 @@ end subroutine doolittle
   end subroutine filter_near_points
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_amat(this, log_unit)
     implicit none
     class(t_krige), intent(inout) :: this
@@ -245,9 +242,9 @@ end subroutine doolittle
     end do
     write(log_unit,*)
   end subroutine write_amat
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_rhs_array(this, log_unit)
     implicit none
     class(t_krige),intent(inout)  :: this
@@ -302,7 +299,7 @@ end subroutine doolittle
 
     ! Call super setup
     call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
-    
+
     ! TODO: Could these instead be local?
     if (allocated(this%npoints)) deallocate(this%npoints)
     if (allocated(this%useidx)) deallocate(this%useidx)
@@ -311,7 +308,7 @@ end subroutine doolittle
       this%npoints = obs_data(i)%grid%n
     end do
     allocate(this%useidx(maxval(this%npoints),this%nsets))
-    
+
     ! Build search trees in observed grid objects
     ! Also, figure out number of datasets in each category
     do i=1, this%nsets
@@ -333,7 +330,7 @@ end subroutine doolittle
 
     this%matA = 0.0
     this%w = 0.0
-    
+
     call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, this%useidx, this%npoints, this%ndim)
     if (this%write_matrix) then
       write(log%unit, '(/,A)') 'DEBUG - STARTING SIMPLE (CO)KRIGING'
@@ -359,7 +356,7 @@ end subroutine doolittle
     integer                           :: i, j, d, rcount, start_idx, end_idx
     real                              :: value
     character(20)                     :: cidx
-    
+
     this%rhsB = 0.0
     weights = 0.0
     if (this%unbias==1) this%rhsB(size(this%rhsB)) = 1.0d0
@@ -374,16 +371,16 @@ end subroutine doolittle
         rcount = rcount + 1
       end do
     end do
-    
+
     ! Solve weights using the precomputed A matrix
     call doolittle(this%rhsB, this%matA, this%pset_id, weights, size(this%rhsB))
-    
+
     ! If CORRECT_WEIGHTS, zero negative weights and rebalance
     if (this%no_negative_weights .and. minval(weights) < 0.0) then
       where (weights < 0.0) weights = 0.0
       weights = weights / sum(weights)
     end if
-    
+
     ! Optional: Return observation indices
     if (present(widx)) then
         rcount = 1
@@ -394,11 +391,11 @@ end subroutine doolittle
             end do
         end do
     end if
-    
+
     if (present(ppd)) then
       ppd(1:) = this%npoints(1:)
     end if
-    
+
     if (this%write_matrix) then
       write(log%unit, '(/,A,i0)') 'DEBUG - POINT:',idx
       call this%write_rhs_array(log%unit)
@@ -546,7 +543,7 @@ end subroutine doolittle
         woffset = woffset + obs_data(i)%grid%n
       end do
     end if
-    
+
     if (this%write_matrix) then
       call this%write_rhs_array(log%unit)
     end if
