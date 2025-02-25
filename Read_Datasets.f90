@@ -49,7 +49,6 @@ module m_read_datasets
     type(t_grid),pointer          :: grid
     type(t_data_transformer)      :: data_transformer
 
-    ! Allocate datasets (is this the right place for this to happen?)
     allocate(t2p%datasets(t2p%ndatasets, t2p%fmodel%nlayers))
 
     ! Setup for HSUs - if a HSU file was given/read, then they are expected in the dataset files
@@ -263,8 +262,7 @@ module m_read_datasets
     type(t_grid),pointer          :: grid
     type(t_data_transformer)      :: data_transformer
 
-    ! Allocate datasets (is this the right place for this to happen?)
-    allocate(t2p%datasets(t2p%ndatasets, t2p%fmodel%nlayers))
+    allocate(t2p%datasets(t2p%ndatasets, 1)) ! For 3D, we store it all in one layer
 
     ! Setup for HSUs - if a HSU file was given/read, then they are expected in the dataset files
     ! Should we skip if ncat is 1???
@@ -301,16 +299,6 @@ module m_read_datasets
       prev_iint = 0
       prev_depth = 0.0
       npoints = 0    ! in 3D, npoints =/ nwells. Instead, its the total number of intervals.
-
-      ! OLD CODE !
-      !call reader%next_item(eof, strings)
-      !idx_offset = item2int(strings,2) - 1          ! First well id, must be sequential after
-      !nlines = reader%get_data_len(rewind_to_last_line=.true.) + 1
-      !! Get npoints
-      !!backspace(reader%unit)  ! EOF
-      !!backspace(reader%unit)  ! Last line of data
-      !call reader%next_item(eof, strings)
-      !npoints = item2int(strings,2) - idx_offset    ! Last - (First - 1) = npoints
 
       ! Pre-read to get npoints, given opt%MAX_LOG_LENGTH. Logs are to be split evenly into length/MAX_LOG_LENGTH
       do
@@ -394,9 +382,7 @@ module m_read_datasets
           end if
           t2p%datasets(didx,1)%values(:, ipoint) = wvalues(1:nsets)
           ! Store location
-          do l=1, t2p%fmodel%nlayers
-            t2p%datasets(didx,l)%fmodel_loc(ipoint) = fmodel_loc
-          end do
+          t2p%datasets(didx,1)%fmodel_loc(ipoint) = fmodel_loc
           ipoint = ipoint + 1
         end do
 
@@ -407,9 +393,7 @@ module m_read_datasets
       ! Store means
       do j=1, nsets
         if (all_thick(j)>0) then
-          do k=1, t2p%fmodel%nlayers
-            t2p%datasets(didx,k)%mean(j) = (all_sum(j) / all_thick(j))
-          end do
+          t2p%datasets(didx,1)%mean(j) = (all_sum(j) / all_thick(j))
         end if
       end do
 

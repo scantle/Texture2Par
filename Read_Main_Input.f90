@@ -290,7 +290,7 @@ subroutine read_dataset_block(t2p, reader)
 
   ! Standard file reader variables
   integer                    :: status, length
-  character(30)              :: id, value
+  character(30)              :: id, value, tmp
   type(t_vstringlist)        :: strings
 
   ! Sub variables
@@ -443,7 +443,15 @@ subroutine read_variogram_block(t2p, reader)
           ! Read structure
           struct_id = item2int(strings, 1)
           nstruct(vario_id) = struct_id
+          
           !TODO validate struct_id
+          ! Is the variogram line long enough?
+          write(msg, '(2(a,i3))') 'variogram', vcount+1, ', structure', struct_id
+          if (t2p%opt%INTERP_DIM==2 .and. length < 7) then
+            call error_handler(2,reader%file,"Too few variogram parameters for 2D (7+ expected). See "//msg)
+          else if (t2p%opt%INTERP_DIM==3 .and. length < 10) then
+            call error_handler(2,reader%file,"Too few variogram parameters for 3D (10+ expected). See "//msg)
+          end if
           ! Get full variogram item from the rest of the line
           call get_vgm_from_line(vgms(struct_id,vario_id), strings, struct_id, t2p%OPT%INTERP_DIM, maxread)
           ! NNear on first struct read, if not cross, advance vcount

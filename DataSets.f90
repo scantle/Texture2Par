@@ -67,6 +67,105 @@ module m_datasets
 ! MODULE PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
+  subroutine write_layerdata(&
+    fname,         & ! output filename
+    layerdata,     & ! array of layerdata
+    coords,        & ! coordinates
+    kstart,        & ! starting layer for ourput
+    kintrvl,       & ! layer step for ourput (used for IWFM)
+    classid,       & ! index of values
+    gridncol,      & ! optional; number of columns for structured grid; default is 0 for unstructured grid
+    lname,         & ! optional; prefix of layer name
+    rownames,      & ! optional; row names written in the first column in the output file
+    modelnodes,    & ! optional; index of the node numbers of the output, used when output corresponding cell of the wells
+    mdim,          & ! optional; number of dimensions; default is 2
+    nodecol        & ! optional; column name of the node number
+    
+  )
+    !
+    ! Base class method, should not be run
+    implicit none
+    character(*)               :: fname
+    type(t_layerdata),pointer  :: layerdata(:)  ! (nlayers)
+    integer,intent(in)         :: kstart, kintrvl, classid
+    real   ,intent(in)         :: coords(:,:)
+    integer,intent(in),optional:: gridncol, mdim, modelnodes(:)
+    character(*),intent(in),optional :: lname, rownames(0:), nodecol
+    ! local
+    integer                    :: inode, igrid, k, row, col, unit, ncol, ndim, nlayers
+    integer, allocatable       :: inodes(:)
+    integer                    :: nnodes
+    character(:),allocatable   :: header, fmt, nodename
+    character(20)              :: tmpstr
+
+    nlayers = size(layerdata)
+    nodename = "Node"
+    if (present(nodecol)) nodename = trim(nodecol)
+    if (present(modelnodes)) then
+      inodes = modelnodes
+    else
+      inodes = [(inode, inode=1,size(layerdata(1)%values, dim=2))]
+    end if
+    ndim = 2
+    if (present(mdim)) ndim = mdim
+    nnodes = size(inodes)
+    ncol = 0
+    if (present(gridncol)) then
+      ncol = gridncol
+    end if
+    if (ncol>0) then
+      header="Row,Column,X,Y"
+      fmt="I0,',',I0,2(',',G0.10)"
+    else
+      header=nodename//",X,Y"
+      fmt="I0,2(',',G0.10)"
+    end if
+    if (present(rownames)) then
+      header = trim(rownames(0))//","//header
+      fmt = "A,',',"//fmt
+    end if
+    if (ndim==3) then
+      header = header//",Z"
+      fmt = fmt//",',',G0.6"
+    end if
+
+    do k=1, int(nlayers/kintrvl)
+      if (present(lname)) then
+        write(tmpstr, "(2A,I0)") ",", trim(lname), k
+      else
+        write(tmpstr, "(2A,I0)") ",","Layer", k
+      end if
+      header = header//trim(tmpstr)
+    end do
+    fmt = "("//fmt//",*(:',',G0.6))"
+
+    open(newunit=unit, file=trim(fname), status='replace')
+
+    ! Header
+    write(unit,"(A)") header
+
+    ! Values
+    do inode = 1, nnodes
+      igrid = inodes(inode)
+      if (ncol>0) then
+        row = int((igrid-1)/ncol)+1
+        col = igrid-(row-1)*ncol
+        if (present(rownames)) then
+          write(unit,fmt) trim(rownames(inode)), row, col, coords(1:ndim,inode), (layerdata(k)%values(classid,inode), k=kstart,nlayers,kintrvl)
+        else
+          write(unit,fmt) row, col, coords(1:ndim,inode), (layerdata(k)%values(classid,inode), k=kstart,nlayers,kintrvl)
+        end if
+      else
+        if (present(rownames)) then
+          write(unit,fmt) trim(rownames(inode)), igrid, coords(1:ndim,inode), (layerdata(k)%values(classid,inode), k=kstart,nlayers,kintrvl)
+        else
+          write(unit,fmt) igrid, coords(1:ndim,inode), (layerdata(k)%values(classid,inode), k=kstart,nlayers,kintrvl)
+        end if
+      end if
+    end do
+    close(unit)
+  end subroutine write_layerdata
+
 !-------------------------------------------------------------------------------------------------!
 
 !-------------------------------------------------------------------------------------------------!
@@ -168,105 +267,6 @@ module m_datasets
   end subroutine init_layerdata
 
 !-------------------------------------------------------------------------------------------------!
-
-
-  subroutine write_layerdata(&
-    fname,         & ! output filename
-    layerdata,     & ! array of layerdata
-    coords,        & ! coordinates
-    kstart,        & ! starting layer for ourput
-    kintrvl,       & ! layer step for ourput (used for IWFM)
-    classid,       & ! index of values
-    gridncol,      & ! optional; number of columns for structured grid; default is 0 for unstructured grid
-    lname,         & ! optional; prefix of layer name
-    rownames,      & ! optional; row names written in the first column in the output file
-    modelnodes,    & ! optional; index of the node numbers of the output, used when output corresponding cell of the wells
-    mdim,          & ! optional; number of dimensions; default is 2
-    nodecol        & ! optional; column name of the node number
-  )
-    !
-    ! Base class method, should not be run
-    implicit none
-    character(*)               :: fname
-    type(t_layerdata),pointer  :: layerdata(:)  ! (nlayers)
-    integer,intent(in)         :: kstart, kintrvl, classid
-    real   ,intent(in)         :: coords(:,:)
-    integer,intent(in),optional:: gridncol, mdim, modelnodes(:)
-    character(*),intent(in),optional :: lname, rownames(0:), nodecol
-    ! local
-    integer                    :: inode, igrid, k, row, col, unit, ncol, ndim, nlayers
-    integer, allocatable       :: inodes(:)
-    integer                    :: nnodes
-    character(:),allocatable   :: header, fmt, nodename
-    character(20)              :: tmpstr
-
-    nlayers = size(layerdata)
-    nodename = "Node"
-    if (present(nodecol)) nodename = trim(nodecol)
-    if (present(modelnodes)) then
-      inodes = modelnodes
-    else
-      inodes = [(inode, inode=1,size(layerdata(1)%values, dim=2))]
-    end if
-    ndim = 2
-    if (present(mdim)) ndim = mdim
-    nnodes = size(inodes)
-    ncol = 0
-    if (present(gridncol)) then
-      ncol = gridncol
-    end if
-    if (ncol>0) then
-      header="Row,Column,X,Y"
-      fmt="I0,',',I0,2(',',G0.10)"
-    else
-      header=nodename//",X,Y"
-      fmt="I0,2(',',G0.10)"
-    end if
-    if (present(rownames)) then
-      header = trim(rownames(0))//","//header
-      fmt = "A,',',"//fmt
-    end if
-    if (ndim==3) then
-      header = header//",Z"
-      fmt = fmt//",',',G0.6"
-    end if
-
-    do k=1, int(nlayers/kintrvl)
-      if (present(lname)) then
-        write(tmpstr, "(2A,I0)") ",", trim(lname), k
-      else
-        write(tmpstr, "(2A,I0)") ",","Layer", k
-      end if
-      header = header//trim(tmpstr)
-    end do
-    fmt = "("//fmt//",*(:',',G0.6))"
-
-    open(newunit=unit, file=trim(fname), status='replace')
-
-    ! Header
-    write(unit,"(A)") header
-
-    ! Values
-    do inode = 1, nnodes
-      igrid = inodes(inode)
-      if (ncol>0) then
-        row = int((igrid-1)/ncol)+1
-        col = igrid-(row-1)*ncol
-        if (present(rownames)) then
-          write(unit,fmt) trim(rownames(inode)), row, col, coords(1:ndim,inode), (layerdata(k)%values(classid,inode), k=kstart,nlayers,kintrvl)
-        else
-          write(unit,fmt) row, col, coords(1:ndim,inode), (layerdata(k)%values(classid,inode), k=kstart,nlayers,kintrvl)
-        end if
-      else
-        if (present(rownames)) then
-          write(unit,fmt) trim(rownames(inode)), igrid, coords(1:ndim,inode), (layerdata(k)%values(classid,inode), k=kstart,nlayers,kintrvl)
-        else
-          write(unit,fmt) igrid, coords(1:ndim,inode), (layerdata(k)%values(classid,inode), k=kstart,nlayers,kintrvl)
-        end if
-      end if
-    end do
-    close(unit)
-  end subroutine write_layerdata
 
 !-------------------------------------------------------------------------------------------------!
 ! LAYER MULTI-DATA CLASS TYPE-BOUND PROCEDURES
