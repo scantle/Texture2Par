@@ -184,21 +184,28 @@ module m_datasets
     implicit none
     class(t_dataset),intent(inout)  :: this
     integer, intent(in)             :: cat, class_idx
-    !logical                         :: catmask(this%grid%n), na_mask(this%grid%n)
-    logical,allocatable             :: catmask(:), na_mask(:)
+    !logical,allocatable             :: catmask(:), na_mask(:)
+    logical, allocatable            :: combined_mask(:)
     real    ,optional               :: rotmat(:,:) ! Rotation Matrix
+    integer                         :: i
 
     call this%grid%burn_tree()  ! Clear out previous tree
-    allocate(catmask(this%grid%n), na_mask(this%grid%n))  ! Avoids stack overflow issue (?)
-    catmask = (this%category==cat)
-    na_mask = .true.
-    ! For dataset, ignore all NA values
+    !allocate(catmask(this%grid%n), na_mask(this%grid%n))
+    allocate(combined_mask(this%grid%n))
+    
+    ! Compute combined mask in a single loop - in category & not NA
+    ! Should consider parallelization
     select type(this)
-      class is (t_layerdata)
-        na_mask = (this%values(class_idx,1:this%grid%n) /= NODATA)
+        class is (t_layerdata)
+            do i = 1, this%grid%n
+                combined_mask(i) = (this%category(i) == cat) .and. (this%values(class_idx, i) /= NODATA)
+            end do
+        class default
+          combined_mask = (this%category == cat)
     end select
-    call this%grid%build_tree(catmask.and.na_mask, rotmat=rotmat)
-    deallocate(catmask, na_mask)
+    
+    call this%grid%build_tree(combined_mask, rotmat=rotmat)
+    deallocate(combined_mask)
 
   end subroutine build_tree_by_category
 

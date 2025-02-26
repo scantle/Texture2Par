@@ -67,15 +67,19 @@ module m_grid
     class(t_Grid), intent(inout) :: this
     logical,intent(in),optional  :: mask(this%n)
     real    ,optional            :: rotmat(:,:) ! Rotation Matrix
-    integer                      :: j, success
+    integer                      :: j, n_points, success
 
     allocate(this%tree)
 
     if (present(mask)) then
-      allocate(this%true_idx(count(mask)))
-      allocate(this%masked_coords(this%dim, count(mask)))
+      n_points = count(mask)
+      allocate(this%true_idx(n_points))
+      allocate(this%masked_coords(this%dim, n_points))
       this%true_idx = indices_from_mask(mask)
-      this%masked_coords = this%coords(1:,this%true_idx)  ! Copy subset to prevent pointer to temporary array
+      !this%masked_coords = this%coords(1:,this%true_idx)  ! Copy subset to prevent pointer to temporary array
+      do j = 1, n_points
+        this%masked_coords(:, j) = this%coords(:, this%true_idx(j))
+      end do
       this%tree => kdtree2_create(this%masked_coords, success, dim=this%dim, rotmat=rotmat)
     else
       this%tree => kdtree2_create(this%coords, success, dim=this%dim, rotmat=rotmat)

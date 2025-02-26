@@ -1071,6 +1071,9 @@ contains
     logical, intent (In), target, optional :: mask(1:)
     type(kdtree2_result), target :: results(:)
     real(kdkind), target, optional  :: rotmat(:,:) ! Rotation Matrix
+    
+    ! If rearrange
+    integer :: i, n_points
 
     sr%ballsize = huge(1.0)
     sr%qv => qv
@@ -1095,12 +1098,37 @@ contains
 
     sr%ind => tp%ind
     sr%rearrange = tp%rearrange
+    
+    !if (present(mask)) then
+      !sr%mask => mask
+    !else
+      !sr%mask => tp%mask
+    !end if
+    !if (tp%rearrange) sr%mask = sr%mask(sr%ind)
+    
     if (tp%rearrange) then
        sr%Data => tp%rearranged_data
     else
        sr%Data => tp%the_data
     endif
-    if (present(mask)) then; sr%mask => mask; else; sr%mask => tp%mask; end if; if (tp%rearrange) sr%mask = sr%mask(sr%ind)
+    if (present(mask)) then
+      if (tp%rearrange) then
+        !sr%mask = sr%mask(sr%ind) ! temporary array causes stack overflow when big data
+        n_points = size(sr%ind)
+
+        if(associated(sr%mask)) deallocate(sr%mask)
+        allocate(sr%mask(n_points))
+        do i = 1, n_points
+            sr%mask(i) = mask(sr%ind(i))
+        end do
+
+      else
+        sr%mask => mask
+      end if
+    else
+      sr%mask => tp%mask
+    end if
+    
     sr%dimen = tp%dimen
 
     call validate_query_storage(nn)

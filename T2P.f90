@@ -855,7 +855,8 @@ module m_T2P
 
     ! Write the observed datasets that were averaged by layer
     if (this%opt%WRITE_DATASET_FILES) then
-      call this%write_minor_status('Writing Layer-Averaged Dataset File(s)')
+      if (this%opt%INTERP_DIM==2) call this%write_minor_status('Writing Layer-Averaged Dataset File(s)')
+      if (this%opt%INTERP_DIM==3) call this%write_minor_status('Writing Dataset XYZ File(s)')
       call this%write_dataset_files()
     end if
 
