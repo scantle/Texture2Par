@@ -370,16 +370,22 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  function get_midpoint_depths(this, k) result(depths)
-    ! To be overloaded where necessary (should be the same for all models...
+  subroutine get_midpoint_depths(this, k, depths)
+    ! To be overloaded where necessary (should be the same for all models)...
     implicit none
     class(t_flow_model)                :: this
     integer,intent(in)                 :: k
-    real                               :: depths(this%nnodes(k))
+    integer                            :: i
+    real, intent(inout)                :: depths(:)
 
-    depths = this%elev(:,0) - ((this%elev(:,k-1) + this%elev(:,k)) / 2.0)
+    !depths = this%elev(:,0) - ((this%elev(:,k-1) + this%elev(:,k)) / 2.0)
+    
+    ! Loop & compute depths to avoid large temporary arrays
+    do i = 1, this%nnodes(k)
+      depths(i) = this%elev(i,0) - ((this%elev(i,k-1) + this%elev(i,k)) * 0.5)
+    end do
 
-  end function get_midpoint_depths
+  end subroutine get_midpoint_depths
 
 !-------------------------------------------------------------------------------------------------!
 

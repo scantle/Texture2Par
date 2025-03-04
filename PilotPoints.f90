@@ -133,8 +133,8 @@ module m_pilotpoints
         this%values(pp_index,5,class_id) = item2dp(strings, 7)  ! Aniso
         this%values(pp_index,6,class_id) = item2dp(strings, 8)  ! Kd
         ! K Processing & Checking
-        if (this%values(pp_index,2,class_id) <= this%values(pp_index,1,class_id)) then
-          call error_handler(1,"KMax <= Kmin for pilot point " // trim(id))
+        if (this%values(pp_index,2,class_id) < this%values(pp_index,1,class_id)) then
+          call error_handler(1,"KMax < Kmin for pilot point " // trim(id))
         else
           ! We krige the *difference* to ensure Kmax > Kmin everywhere
           ! Store this value as a difference
@@ -146,8 +146,8 @@ module m_pilotpoints
         this%values(pp_index,5,class_id) = item2dp(strings, 5)  ! Aniso
         this%values(pp_index,6,class_id) = item2dp(strings, 6)  ! Kd
         ! K Processing & Checking
-        if (this%values(pp_index,2,class_id) <= this%values(pp_index,1,class_id)) then
-          call error_handler(1,"KMax <= Kmin for pilot point " // trim(id))
+        if (this%values(pp_index,2,class_id) < this%values(pp_index,1,class_id)) then
+          call error_handler(1,"KMax < Kmin for pilot point " // trim(id))
         else
           ! We krige the *difference* to ensure Kmax > Kmin everywhere
           ! Store this value as a difference

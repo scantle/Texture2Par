@@ -792,11 +792,13 @@ module m_T2P
       call this%write_minor_status('- Layer:',this%fmodel%get_layer_id(k))
 
       ! Allocate arrays
+      if (allocated(depths)) deallocate(depths)
+      allocate(depths(this%fmodel%nnodes(k)))
       allocate(KhD(this%fmodel%nnodes(k), this%ntexclasses))
       allocate(KvD(this%fmodel%nnodes(k), this%ntexclasses))
 
       ! Get node midpoint depths
-      depths = this%fmodel%get_midpoint_depths(k)
+      call this%fmodel%get_midpoint_depths(k, depths)
 
       ! Get pilot point array  (point, parameter, class_id)
       r = this%fmodel%ppzones%lay2arr(k)
