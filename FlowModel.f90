@@ -1614,7 +1614,7 @@ module m_flow_model
   type(t_file_reader),pointer  :: fread
   type(t_file_writer),pointer  :: fwrite
     integer                    :: ierr, upwflag
-    character(300)             :: fname, cerr
+    character(500)             :: fname
     logical                    :: lop
 
     !write(*,'(2x,2(a,3a))') 'Reading temp ', this%gwftyp, ', writing new ', this%gwftyp

@@ -8,7 +8,7 @@ module m_file_io
 !-------------------------------------------------------------------------------------------------!
   type t_file_handler  ! Abstract Base Class
 
-    character(100)           :: file
+    character(500)           :: file
     integer                  :: unit
     integer                  :: ioerr
 
