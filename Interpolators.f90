@@ -164,7 +164,7 @@ module m_interpolator
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine calc(this, obs_data, obs_idx, val_idx, to_grid, results, catlist, to_cats, opt)
+  subroutine calc(this, obs_data, obs_idx, val_idx, to_grid, results, catlist, to_cats, opt, layer)
     use m_weights, only: t_sosa_weights
     implicit none
     class(t_interpolator),intent(inout)   :: this
@@ -174,41 +174,77 @@ module m_interpolator
     real                                  :: results(:)
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
+    integer,intent(in)                    :: layer
     type(t_sosa_weights)                  :: weights
     integer                               :: i, j, k, woffset, cat, wlen
     real                                  :: fake_weights(1,1), v_adjust
-    integer                               :: ppd(size(obs_data))
+    !integer                               :: ppd(size(obs_data))  !LS moved to sosa weights
+    character(100)                        :: wtfile
+    
+    ! TODO need to move all weight-related operations to separate routines. This is too messy.
 
     results = 0.0  ! necessary?
-    call weights%initialize(this%wsize_estimate(obs_data, obs_idx, opt))
-
-    do i=1, size(catlist)
-      ! Setup for each category
-      cat = catlist(i)
-      call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, fake_weights, opt)
-
-      do j=1, to_grid%n
-        ! Interpolate for each point
-        if (to_cats(j)==cat) then
-          call this%predict_point(j, to_grid%coords(:,j), obs_data, cat, weights%values, weights%idx, ppd)
-          ! Calculate for each point
-          woffset = 0
-          do k=1, size(obs_data)
-            v_adjust = 0.0
-            if (opt%INTERP_METHOD=="SK") then
-              v_adjust = -1 * obs_data(k)%mean(val_idx(k))                              ! Subtract out mean
-            else if (k>1) then
-              v_adjust = obs_data(1)%mean(val_idx(1)) - obs_data(k)%mean(1)             ! Primary - Secondary Means
-            end if
-            results(j) = results(j) + dot_product(weights%values(woffset+1:woffset+ppd(k)), obs_data(k)%values(val_idx(k), weights%idx(woffset+1:woffset+ppd(k)))+v_adjust)
-            woffset = woffset + ppd(k)
-          end do
-          ! For SK, add back in mean
-          if (opt%INTERP_METHOD == "SK") results(j) = results(j) + obs_data(1)%mean(val_idx(1))     ! Add back in primary mean
-        end if
+    call weights%initialize(this%wsize_estimate(obs_data, obs_idx, opt), size(obs_data))
+    
+    ! Open weights file if using (call does nothing if options are false)
+    write(wtfile, '(A,I0,A,I0,A)') 't2p_grdweights_arr', layer, '_obs', obs_idx(1), '.wts'
+    call weights%open_file(trim(wtfile), opt%WRITE_GRID_WEIGHTS, opt%READ_GRID_WEIGHTS)
+    
+    if (opt%READ_GRID_WEIGHTS) then
+      ! Read in weights by grid point
+      do i=1, to_grid%n  ! tracks progress through file, may not match grid id! Use j, as below!
+        ! Read in one grid point of data
+        call weights%load_from_file(j)
+        ! Apply weight
+        woffset = 0
+        do k=1, size(obs_data)
+          v_adjust = 0.0
+          if (opt%INTERP_METHOD=="SK") then
+            v_adjust = -1 * obs_data(k)%mean(val_idx(k))                              ! Subtract out mean
+          else if (k>1) then
+            v_adjust = obs_data(1)%mean(val_idx(1)) - obs_data(k)%mean(1)             ! Primary - Secondary Means
+          end if
+          results(j) = results(j) + dot_product(weights%values(woffset+1:woffset+weights%ppd(k)), obs_data(k)%values(val_idx(k), weights%idx(woffset+1:woffset+weights%ppd(k)))+v_adjust)
+          woffset = woffset + weights%ppd(k)
+        end do
+        
       end do
-    end do
+      
+    else  ! Calculating, not reading
+      do i=1, size(catlist)
+        ! Setup for each category
+        cat = catlist(i)
+        call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, fake_weights, opt)
 
+        ! Calculate weights
+        do j=1, to_grid%n
+          ! Interpolate for each point
+          if (to_cats(j)==cat) then
+            call this%predict_point(j, to_grid%coords(:,j), obs_data, cat, weights%values, weights%idx, weights%ppd)
+            if (opt%WRITE_GRID_WEIGHTS) then
+              call weights%save_to_file(j)
+            end if
+            ! Calculate for each point
+            woffset = 0
+            do k=1, size(obs_data)
+              v_adjust = 0.0
+              if (opt%INTERP_METHOD=="SK") then
+                v_adjust = -1 * obs_data(k)%mean(val_idx(k))                              ! Subtract out mean
+              else if (k>1) then
+                v_adjust = obs_data(1)%mean(val_idx(1)) - obs_data(k)%mean(1)             ! Primary - Secondary Means
+              end if
+              results(j) = results(j) + dot_product(weights%values(woffset+1:woffset+weights%ppd(k)), obs_data(k)%values(val_idx(k), weights%idx(woffset+1:woffset+weights%ppd(k)))+v_adjust)
+              woffset = woffset + weights%ppd(k)
+            end do
+            ! For SK, add back in mean
+            if (opt%INTERP_METHOD == "SK") results(j) = results(j) + obs_data(1)%mean(val_idx(1))     ! Add back in primary mean
+          end if
+        end do
+      end do
+     end if
+      
+    if (opt%WRITE_GRID_WEIGHTS.or.opt%READ_GRID_WEIGHTS) call weights%close_file()
+   
   end subroutine calc
 
 !-------------------------------------------------------------------------------------------------!

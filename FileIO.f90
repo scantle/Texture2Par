@@ -116,19 +116,24 @@ module m_file_io
 
 !-------------------------------------------------------------------------------------------------!
 
-  function open_file_reader(file) result(f)
+  function open_file_reader(file, binary) result(f)
     implicit none
 
-    type(t_file_reader),pointer  :: f
-    character(*), intent(in)   :: file
-    character(256)             :: iomsg
+    type(t_file_reader),pointer   :: f
+    character(*), intent(in)      :: file
+    character(256)                :: iomsg
+    logical, intent(in), optional :: binary
 
     allocate(f)
-
     f%unit = get_next_iunit()
     f%file = trim(file)
 
-    open(f%unit, file=f%file, action='READ', STATUS='OLD', iostat=f%ioerr, iomsg=iomsg)
+    if (present(binary).and.binary) then
+      open(f%unit, file=f%file, action='READ', status='OLD', form='UNFORMATTED', iostat=f%ioerr, iomsg=iomsg)
+    else
+      open(f%unit, file=f%file, action='READ', STATUS='OLD', iostat=f%ioerr, iomsg=iomsg)
+    end if
+    
     write(log_unit,'(3a)') 'Opening file ', trim(f%file), ' for reading.'
     call f%iomsg_handler(iomsg)
 
@@ -137,19 +142,24 @@ module m_file_io
 
 !-------------------------------------------------------------------------------------------------!
 
-  function open_file_writer(file) result(f)
+  function open_file_writer(file, binary) result(f)
     implicit none
 
-    type(t_file_writer),pointer  :: f
-    character(*), intent(in)   :: file
-    character(256)             :: iomsg
+    type(t_file_writer),pointer   :: f
+    character(*), intent(in)      :: file
+    character(256)                :: iomsg
+    logical, intent(in), optional :: binary
 
     allocate(f)
 
     f%unit = get_next_iunit()
     f%file = trim(file)
 
-    open(f%unit, file=f%file, action='WRITE', STATUS='REPLACE', iostat=f%ioerr, iomsg=iomsg)
+    if (present(binary).and.binary) then
+      open(f%unit, file=f%file, action='WRITE', STATUS='REPLACE', form='UNFORMATTED', iostat=f%ioerr, iomsg=iomsg)
+    else
+      open(f%unit, file=f%file, action='WRITE', STATUS='REPLACE', iostat=f%ioerr, iomsg=iomsg)
+    end if
     if (log_unit > 0) write(log_unit,'(3a)') 'Opening file ', trim(f%file), ' for writing.'
     call f%iomsg_handler(iomsg)
 

@@ -314,8 +314,8 @@ module m_sgsim
     RETURN
 
   end subroutine pset_cok_sgsim
-!-------------------------------------------------------------------------------------------------!
 
+!-------------------------------------------------------------------------------------------------!
 
   subroutine pset_rhs(this, matsize, obsxy, newloc, inear, nnear)
     class(t_sgsim),intent(inout) :: this
@@ -342,7 +342,9 @@ module m_sgsim
     end do
   end subroutine
 
-  subroutine calc_sgsim(this, obs_data, obs_idx, val_idx, to_grid, results, catlist, to_cats, opt)
+  !-------------------------------------------------------------------------------------------------!
+  
+  subroutine calc_sgsim(this, obs_data, obs_idx, val_idx, to_grid, results, catlist, to_cats, opt, layer)
     use m_weights, only: t_sosa_weights
     use kdtree2_module
     implicit none
@@ -351,13 +353,12 @@ module m_sgsim
     integer,intent(in)                    :: obs_idx(:), val_idx(:)
     type(t_grid),intent(in)               :: to_grid
     real                                  :: results(:)
-    integer,intent(in)                    :: catlist(:), to_cats(:)
+    integer,intent(in)                    :: catlist(:), to_cats(:), layer
     type(t_options),intent(in)            :: opt
 
     ! local
     integer                               :: i, j, iset, cat,  nobs1
     real    , allocatable                 :: weights(:,:)
-
 
     ! Call super setup
     call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)

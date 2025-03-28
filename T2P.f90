@@ -213,6 +213,19 @@ module m_T2P
       if (this%opt%ONLY_TEXTURE) call error_handler(1,opt_msg='ONLY_TEXTURE option is only valid for INTERP_ORDER=="BEFORE"')
       if (this%opt%INFER_LAST_CLASS) call error_handler(1,opt_msg='Cannot use INFER_LAST_CLASS with INTERP_ORDER=="AFTER"')
     end if
+    
+    if (this%opt%WRITE_GRID_WEIGHTS.and.this%opt%READ_GRID_WEIGHTS) then
+      call error_handler(1,opt_msg='Cannot both WRITE_GRID_WEIGHTS and READ_GRID_WEIGHTS - only one')
+    end if
+    
+    if (this%opt%WRITE_PP_WEIGHTS.and.this%opt%READ_PP_WEIGHTS) then
+      call error_handler(1,opt_msg='Cannot both WRITE_PP_WEIGHTS and READ_PP_WEIGHTS - only one')
+    end if
+    
+    if (this%opt%nsim > 1) then
+      if (this%opt%WRITE_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot WRITE_GRID_WEIGHTS while using SGSIM (NSIM>1)')
+      if (this%opt%READ_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot READ_GRID_WEIGHTS while using SGSIM (NSIM>1)')
+    end if
 
   end subroutine process_options
 
@@ -618,6 +631,7 @@ module m_T2P
     integer                         :: i,j,k
     integer                         :: class_idx(1)
     type(t_pilotpoints)             :: obs_data(1)  ! a little trick to appease calc_weights
+    character(5)                    :: temp
 
     class_idx(1) = 1
 
@@ -640,7 +654,8 @@ module m_T2P
 
       ! Check if we have precalculated weights for the pilot point interpolation
       if (this%opt%READ_PP_WEIGHTS) then
-        ! TODO READ
+        write(temp,'(i0)') k
+        call weights%load_from_file('t2p_ppweights_arr'//trim(temp)//'.wts')
       else
         call this%interp_pp%calc_weights(obs_data, &
                                          class_idx,  &
@@ -653,7 +668,8 @@ module m_T2P
 
       ! Write PP weights
       if (this%opt%WRITE_PP_WEIGHTS) then
-        ! TODO WRITE
+        write(temp,'(i0)') k
+        call weights%save_to_file('t2p_ppweights_arr'//trim(temp)//'.wts')
       end if
 
       ! Apply weights and create results
@@ -712,30 +728,31 @@ module m_T2P
       ! Loop over primary classes
       do i=1, this%nprimary
 
-        ! Check if we have precalculated weights for the model grid interpolation
-        if (this%opt%READ_GRID_WEIGHTS) then
+        ! Check if we have precalculated weights for the model grid interpolation (MOVED TO CALC)
+        !if (this%opt%READ_GRID_WEIGHTS) then
           ! TODO READ
-        else
-          ! Interpolate
-          class_idx   = this%get_connection_list(i)           ! Classes involved
-          dataset_idx = this%get_dataset_idx_list(class_idx)  ! What datasets those classes are in
-          dataval_idx = this%get_dataval_idx_list(class_idx)  ! What index is associated with those values
+        !else
+        ! Interpolate
+        class_idx   = this%get_connection_list(i)           ! Classes involved
+        dataset_idx = this%get_dataset_idx_list(class_idx)  ! What datasets those classes are in
+        dataval_idx = this%get_dataval_idx_list(class_idx)  ! What index is associated with those values
 
-          x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
-          call this%interp_data%calc(obs(dataset_idx,obslayer), &
-                                             class_idx,  &
-                                             dataval_idx,&
-                                             modelgrid,  &
-                                             dout(k)%values(i,1:), &
-                                             this%fmodel%hsus%catlist(1:this%fmodel%hsus%arrncat(x),x), &
-                                             this%fmodel%hsus%array(1:,x),&
-                                             this%opt)
-        end if
+        x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
+        call this%interp_data%calc(obs(dataset_idx,obslayer), &
+                                            class_idx,  &
+                                            dataval_idx,&
+                                            modelgrid,  &
+                                            dout(k)%values(i,1:), &
+                                            this%fmodel%hsus%catlist(1:this%fmodel%hsus%arrncat(x),x), &
+                                            this%fmodel%hsus%array(1:,x),&
+                                            this%opt,&
+                                            k)
+        !end if
 
-        ! Write weights
-        if (this%opt%WRITE_GRID_WEIGHTS) then
+        ! Write weights (MOVED TO CALC)
+        !if (this%opt%WRITE_GRID_WEIGHTS) then
           ! TODO WRITE
-        end if
+        !end if
         ! Enforce values must be greater than zero
         where(dout(k)%values(i,1:) < 0.0) dout(k)%values(i,1:) = 0.0
         ! If we're kriging texture - must be below 1.0
