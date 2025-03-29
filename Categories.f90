@@ -162,8 +162,9 @@ module m_categories
     type(t_vstringlist)              :: strings
     !type(t_vstring)                  :: temp
     integer                          :: lay2arr(nlayers)
-    integer                          :: eof, narr, cidx, i, j, inode, itemp
+    integer                          :: eof, ierr, narr, cidx, i, j, inode, itemp
     character(30),allocatable        :: chartemp(:)
+    character(256)                   :: iomsg
     logical                          :: has_aquitard
     
     lay2arr = 0
@@ -172,16 +173,26 @@ module m_categories
     if (len(trim(file))>0) then
       this%from_file = .true.
       reader => open_file_reader(file)
-      call reader%next_item(eof, strings)
+      !call reader%next_item(eof, strings)
       
-      if (vstrlist_length(strings) < nlayers) then
-        call error_handler(2,filename=file,opt_msg="Not enough array indices assigned: need one index for each layer")
-      end if
+      !if (vstrlist_length(strings) < nlayers) then
+      !  call error_handler(2,filename=file,opt_msg="Not enough array indices assigned: need one index for each layer")
+      !end if
       
       ! Move to temp lay2arr
-      do i=1, nlayers
-        lay2arr(i) = item2int(strings, i)
-      end do
+      !do i=1, nlayers
+      !  lay2arr(i) = item2int(strings, i)
+      !end do
+      
+      ! Free read version, allows for one "layer" per line (i.e., can list aquitard & aquifer for IWFM)
+      read(reader%unit, *, iomsg=iomsg, iostat=ierr) lay2arr(:)
+      if (ierr/=0) then
+        if (ierr==59) then
+          call error_handler(2,filename=file,opt_msg="Not enough array indices assigned: need one index for each layer")
+        else
+          call reader%iomsg_handler(iomsg)  ! Something weirder happened
+        end if
+      end if
       
       narr = maxval(lay2arr)
       call this%initialize(narr, nlayers, nnodes, datatype)
