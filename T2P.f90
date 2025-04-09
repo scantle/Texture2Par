@@ -559,6 +559,7 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     class(t_grid),pointer         :: pp_to                                      ! Where we interpolate the pilot points to
     type(t_category),pointer      :: cat_to                                     ! Categories the pilot points are interpolated using
+    logical,allocatable           :: active_to(:)                               ! Whether the given to point is active (skipped if inactive)
     type(t_pilotpoints)           :: pp_intermediate(this%fmodel%ppzones%narr)  ! The pilot point data interpolated to pp_to (by ppzone array)
     integer                       :: i,j
 
@@ -576,29 +577,32 @@ module m_T2P
     ! Assign PPTO_grid (data or fmodel)
     if (this%opt%INTERP_ORDER=="BEFORE") then
       call this%write_status("Interpolating Pilot Point Parameters to "//trim(this%fmodel%name)//" Grid")
-      ! T2P 1.0 Method
+      ! T2P 1.0 Default Method
       allocate(this%dset_intermediate(1,this%fmodel%nlayers))
+      allocate(active_to(this%fmodel%grid(1)%ptrgrid%n))
       ! Uses layer 1 grid
       pp_to => this%fmodel%grid(1)%ptrgrid
       cat_to => this%fmodel%ppzones
+      active_to = this%fmodel%active_nodes_flat  ! copy over
     else if (this%opt%INTERP_ORDER=="AFTER") then
       call this%write_status("Interpolating Pilot Point Parameters to Dataset Grid")
       allocate(this%dset_intermediate(size(this%datasets,1),this%fmodel%nlayers))
+      allocate(active_to(this%datasets(1,1)%grid%n))
       this%dset_intermediate(this%nprimary:,1:) => this%datasets(this%nprimary:,1:)  ! All secondary data gets pointed over
       ! Uses primary dataset layer 1 grid
       ! Again, assumes uniformity of grid by layer
       pp_to => this%datasets(1,1)%grid
       cat_to => this%dataset_ppzones
+      active_to = 1  ! all dataset points must be active
     end if
 
     ! Interpolate PP to PPTO_grid
-    call this%interpolate_pp(pp_to, cat_to, pp_intermediate)
+    call this%interpolate_pp(pp_to, cat_to, active_to, pp_intermediate)
 
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! Krige textures to fmodel grid
       call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid", nblank)
       call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
-      ! Write weights
       ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
       call this%write_status("Calculating Hydraulic Parameters", nblank)
       call this%calc_block_parameters(pp_intermediate, this%dset_intermediate(1,1:), this%par)
@@ -610,14 +614,13 @@ module m_T2P
       ! Krige parameters to fmodel grid
       call this%write_status("Interpolating Hydraulic Parameters to "//trim(this%fmodel%name)//" Grid")
       call this%interpolate_model(this%dset_intermediate, this%par)
-      ! Write weights
     end if
     call this%write_status("Calculations finished!", nblank)
 
   end subroutine predict
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine interpolate_pp(this, to_grid, to_categories, results)
+  subroutine interpolate_pp(this, to_grid, to_categories, to_active, results)
     use m_grid, only: t_grid
     use m_weights, only: t_weights
     use m_pilotpoints, only: nproperties, naquitard_props, aquitard_props
@@ -627,6 +630,7 @@ module m_T2P
     type(t_pilotpoints)             :: results(this%fmodel%ppzones%narr)
     class(t_grid),pointer           :: to_grid
     type(t_category)                :: to_categories
+    logical                         :: to_active(:)
     type(t_weights)                 :: weights
     integer                         :: i,j,k
     integer                         :: class_idx(1)
@@ -655,11 +659,12 @@ module m_T2P
       ! Check if we have precalculated weights for the pilot point interpolation
       if (this%opt%READ_PP_WEIGHTS) then
         write(temp,'(i0)') k
-        call weights%load_from_file('t2p_ppweights_arr'//trim(temp)//'.wts')
+        call weights%load_from_file('t2p_ppweights_arr'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
       else
         call this%interp_pp%calc_weights(obs_data, &
                                          class_idx,  &
                                          to_grid,  &
+                                         to_active, &
                                          weights%values, &
                                          to_categories%catlist(1:to_categories%arrncat(k),k), &
                                          to_categories%array(:,k),&
@@ -669,7 +674,7 @@ module m_T2P
       ! Write PP weights
       if (this%opt%WRITE_PP_WEIGHTS) then
         write(temp,'(i0)') k
-        call weights%save_to_file('t2p_ppweights_arr'//trim(temp)//'.wts')
+        call weights%save_to_file('t2p_ppweights_arr'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
       end if
 
       ! Apply weights and create results
@@ -727,11 +732,6 @@ module m_T2P
 
       ! Loop over primary classes
       do i=1, this%nprimary
-
-        ! Check if we have precalculated weights for the model grid interpolation (MOVED TO CALC)
-        !if (this%opt%READ_GRID_WEIGHTS) then
-          ! TODO READ
-        !else
         ! Interpolate
         class_idx   = this%get_connection_list(i)           ! Classes involved
         dataset_idx = this%get_dataset_idx_list(class_idx)  ! What datasets those classes are in
@@ -742,21 +742,18 @@ module m_T2P
                                             class_idx,  &
                                             dataval_idx,&
                                             modelgrid,  &
+                                            this%fmodel%active_nodes_flat(1:), &
                                             dout(k)%values(i,1:), &
                                             this%fmodel%hsus%catlist(1:this%fmodel%hsus%arrncat(x),x), &
                                             this%fmodel%hsus%array(1:,x),&
                                             this%opt,&
                                             k)
-        !end if
-
-        ! Write weights (MOVED TO CALC)
-        !if (this%opt%WRITE_GRID_WEIGHTS) then
-          ! TODO WRITE
-        !end if
         ! Enforce values must be greater than zero
         where(dout(k)%values(i,1:) < 0.0) dout(k)%values(i,1:) = 0.0
         ! If we're kriging texture - must be below 1.0
         if (this%opt%INTERP_ORDER=="BEFORE") where(dout(k)%values(i,1:) > 1.0) dout(k)%values(i,1:) = 1.0
+        ! Inactive cells should be NODATA
+        where(.not.this%fmodel%active_nodes_flat(1:)) dout(k)%values(i,1:) = NODATA
       end do
       ! If we need to, infer the last class
       if (this%opt%INFER_LAST_CLASS) dout(k)%values(this%nprimary+1,1:) = 1.0 - sum(dout(k)%values(1:this%nprimary,1:), dim=1)
@@ -823,6 +820,8 @@ module m_T2P
       do i=1, this%fmodel%nnodes(k)
         ! Skip if any texture class value is missing/invalid
         if (any(tex_obs(k)%values(:,i) < 0.0)) cycle
+        ! Skip if cell is inactive (would the above cycle catch that?
+        if (.not.this%fmodel%active_nodes_flat(i)) cycle
         ! Ensure classes add to one
         tex_obs(k)%values(:,i) = tex_obs(k)%values(:,i) / sum(tex_obs(k)%values(:,i))
         ! Kh - Depth adjusted

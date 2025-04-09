@@ -11,6 +11,7 @@ module m_file_io
     character(500)           :: file
     integer                  :: unit
     integer                  :: ioerr
+    logical                  :: binary
 
     contains
       procedure,public       :: iomsg_handler
@@ -127,8 +128,10 @@ module m_file_io
     allocate(f)
     f%unit = get_next_iunit()
     f%file = trim(file)
+    f%binary = .false.
+    if (present(binary)) f%binary = binary
 
-    if (present(binary).and.binary) then
+    if (f%binary) then
       open(f%unit, file=f%file, action='READ', status='OLD', form='UNFORMATTED', iostat=f%ioerr, iomsg=iomsg)
     else
       open(f%unit, file=f%file, action='READ', STATUS='OLD', iostat=f%ioerr, iomsg=iomsg)
@@ -151,11 +154,12 @@ module m_file_io
     logical, intent(in), optional :: binary
 
     allocate(f)
-
+    f%binary = .false.
+    if (present(binary)) f%binary = binary
     f%unit = get_next_iunit()
     f%file = trim(file)
 
-    if (present(binary).and.binary) then
+    if (f%binary) then
       open(f%unit, file=f%file, action='WRITE', STATUS='REPLACE', form='UNFORMATTED', iostat=f%ioerr, iomsg=iomsg)
     else
       open(f%unit, file=f%file, action='WRITE', STATUS='REPLACE', iostat=f%ioerr, iomsg=iomsg)

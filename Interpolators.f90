@@ -128,12 +128,13 @@ module m_interpolator
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine calc_weights(this, obs_data, obs_idx, to_grid, weights, catlist, to_cats, opt)
+  subroutine calc_weights(this, obs_data, obs_idx, to_grid, active, weights, catlist, to_cats, opt)
     implicit none
     class(t_interpolator),intent(inout)   :: this
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
     type(t_grid),intent(in)               :: to_grid
+    logical,intent(in)                    :: active(:)    !1:to_grid%n
     real                                  :: weights(:,:) !(output_points, input_points)
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
@@ -152,6 +153,7 @@ module m_interpolator
       if (count_cat>1) then ! more than one obs point
         call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
         do j=1, to_grid%n
+          if (.not.active(j)) cycle
           ! Interpolate for each point
           if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(:,j), obs_data, cat, weights(j,:))
         end do
@@ -164,7 +166,7 @@ module m_interpolator
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine calc(this, obs_data, obs_idx, val_idx, to_grid, results, catlist, to_cats, opt, layer)
+  subroutine calc(this, obs_data, obs_idx, val_idx, to_grid, active, results, catlist, to_cats, opt, layer)
     use m_weights, only: t_sosa_weights
     implicit none
     class(t_interpolator),intent(inout)   :: this
@@ -172,6 +174,7 @@ module m_interpolator
     integer,intent(in)                    :: obs_idx(:), val_idx(:)
     type(t_grid),intent(in)               :: to_grid
     real                                  :: results(:)
+    logical,intent(in)                    :: active(:)    !1:to_grid%n
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
     integer,intent(in)                    :: layer
@@ -188,11 +191,12 @@ module m_interpolator
     
     ! Open weights file if using (call does nothing if options are false)
     write(wtfile, '(A,I0,A,I0,A)') 't2p_grdweights_arr', layer, '_obs', obs_idx(1), '.wts'
-    call weights%open_file(trim(wtfile), opt%WRITE_GRID_WEIGHTS, opt%READ_GRID_WEIGHTS)
+    call weights%open_file(trim(wtfile), opt%WRITE_GRID_WEIGHTS, opt%READ_GRID_WEIGHTS, opt%GRID_WEIGHTS_TEXT)
     
     if (opt%READ_GRID_WEIGHTS) then
       ! Read in weights by grid point
       do i=1, to_grid%n  ! tracks progress through file, may not match grid id! Use j, as below!
+        if (.not.active(j)) cycle ! makes sure it only reads for the # of active cells
         ! Read in one grid point of data
         call weights%load_from_file(j)
         ! Apply weight
@@ -218,6 +222,7 @@ module m_interpolator
 
         ! Calculate weights
         do j=1, to_grid%n
+          if (.not.active(j)) cycle  ! does not predict or write weights for inactive cells
           ! Interpolate for each point
           if (to_cats(j)==cat) then
             call this%predict_point(j, to_grid%coords(:,j), obs_data, cat, weights%values, weights%idx, weights%ppd)

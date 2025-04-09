@@ -45,10 +45,13 @@ module m_options
     logical                  :: INFER_LAST_CLASS      ! For classic T2P, where the data is only percent coarse
     logical                  :: CORRECT_WEIGHTS       ! Zero negative (kriging) weights and rebalance if true, see Deutsch (1996) (only for OK, COK)
     logical                  :: USE_MODEL_GSE         ! Use model cell ground surface elevation (GSE) rather than dataset GSEs for depth->elevation calcs
+    logical                  :: PREDICT_INACTIVE      ! Predict texture/parameters for inactive cells (MODFLOW, IBOUND=0)
 
     ! Internal Options (to be set by t2p%process_options)
     logical                  :: INTERP_SECOND_OK      ! Can the interpolator handle covariates?
     logical                  :: ASYMMETRIC_COV        ! Whether relationships between covariates can be asymmetric
+    logical                  :: PP_WEIGHTS_TEXT       ! Write pp weight file as text file
+    logical                  :: GRID_WEIGHTS_TEXT     ! Write grid weight file as text file
 
     contains
       procedure, public :: initialize
@@ -101,8 +104,11 @@ module m_options
     this%INFER_LAST_CLASS     = .false.
     this%CORRECT_WEIGHTS      = .false.
     this%USE_MODEL_GSE        = .false.
+    this%PREDICT_INACTIVE     = .false.
     this%INTERP_SECOND_OK     = .false.
     this%ASYMMETRIC_COV       = .false.
+    this%PP_WEIGHTS_TEXT       = .false.
+    this%GRID_WEIGHTS_TEXT     = .false.
   end subroutine initialize
 
 !-------------------------------------------------------------------------------------------------!
@@ -173,12 +179,28 @@ subroutine read_options(this, reader)
         this%WRITE_MATRIX         = .true.
       case("WRITE_PP_WEIGHTS")
         this%WRITE_PP_WEIGHTS     = .true.
+        if (length>1) then
+          call item2char(strings, 2, temp,toupper=.true.)
+          if (trim(temp)=="TEXT") this%PP_WEIGHTS_TEXT = .true.
+        end if
       case("WRITE_GRID_WEIGHTS")
         this%WRITE_GRID_WEIGHTS   = .true.
+        if (length>1) then
+          call item2char(strings, 2, temp,toupper=.true.)
+          if (trim(temp)=="TEXT") this%GRID_WEIGHTS_TEXT = .true.
+        end if
       case("READ_PP_WEIGHTS")
         this%READ_PP_WEIGHTS      = .true.
+        if (length>1) then
+          call item2char(strings, 2, temp,toupper=.true.)
+          if (trim(temp)=="TEXT") this%PP_WEIGHTS_TEXT = .true.
+        end if
       case("READ_GRID_WEIGHTS")
         this%READ_GRID_WEIGHTS    = .true.
+        if (length>1) then
+          call item2char(strings, 2, temp,toupper=.true.)
+          if (trim(temp)=="TEXT") this%GRID_WEIGHTS_TEXT = .true.
+        end if
       case("WRITE_NONE")
         this%WRITE_NONE           = .true.
       case("WRITE_NODE_FILES","WRITE_CELL_FILES")
@@ -197,6 +219,8 @@ subroutine read_options(this, reader)
         this%CORRECT_WEIGHTS      = .true.
       case("USE_MODEL_GSE")
         this%USE_MODEL_GSE        = .true.
+      case("PREDICT_INACTIVE")
+        this%PREDICT_INACTIVE     = .true.
       case DEFAULT
         call error_handler(1,reader%file,"Unknown Option Name: " // trim(id))
     end select
@@ -266,6 +290,7 @@ subroutine write_input_summary(this)
     if (this%INFER_LAST_CLASS   ) logic_true = trim(logic_true) // "INFER_LAST_CLASS"    // ","
     if (this%CORRECT_WEIGHTS    ) logic_true = trim(logic_true) // "CORRECT_WEIGHTS"     // ","
     if (this%USE_MODEL_GSE      ) logic_true = trim(logic_true) // "USE_MODEL_GSE"       // ","
+    if (this%PREDICT_INACTIVE   ) logic_true = trim(logic_true) // "PREDICT_INACTIVE"    // ","
 
     if (len(trim(logic_true)) > no_true_len) then
       !call log%write_line(logic_true)

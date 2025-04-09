@@ -3,6 +3,7 @@ module m_flow_model
   use m_grid, only: t_grid, create_grid_object
   use m_error_handler, only: error_handler
   use m_categories, only: t_category
+  use m_options, only: t_options
   !use kdtree2_module, only: kdtree2, kdtree2_create
 !-------------------------------------------------------------------------------------------------!
 ! ADDING A NEW FLOW MODEL OR GRID TYPE
@@ -28,31 +29,33 @@ module m_flow_model
   ! The alternative was to write a lot of get/set-type methods that would have to be overwritten
   ! by each derived class.
 
-    integer                       :: model_type      ! 1 - grid, 2 - IWFM, 3 - MODFLOW 2000
-    real                          :: xoff,yoff,rot   ! Conversion from/to global coordinates
-    integer                       :: nlayers         ! Number of model layers
-    integer                       :: ngrids          ! Number of unique model grid (xy) layers
-    integer                       :: ncol=0          ! Number of columns for structured grid
-    integer,allocatable           :: nnodes(:)       ! Number of nodes (points at which flow is solved) by layer
-    integer,pointer               :: lay2grid(:)     ! Which grid each layer uses (e.g., same xy between layers)
-    character(30)                 :: name            ! For printing nicely to log/screen
-    character(100)                :: preproc_file    ! IWFM main discretization file (empty for others)
-    character(100)                :: sim_file        ! Simulation File or MODFLOW name file
-    character(100)                :: ppzone_file     ! File of pilot point zones defined for each node
-    character(100)                :: hsu_file        ! File of Hydrostratigraphic Units (HSUs) defined for each node
-    character(100)                :: template_file   ! File copied for output_file
-    character(3)                  :: grd_file_type   ! Character string of grid file type (GSF, ...)
-    character(100)                :: grd_file        ! Grid specification file for grid type or MODFLOW-USG
-    character(100)                :: output_file     ! File where aquifer parameters are written
-    character(60)                 :: projectname     ! project name from T2P, used as output prefix
-    real    , allocatable         :: elev(:,:)       ! Bottom Elevations for each layer (node, layer) (indexed from zero = model top)
-    type(t_grid_arr),allocatable  :: grid(:)         ! xy grids for layers
-    type(t_category)              :: ppzones         ! Pilot point zone fmodel grid arrays & tracking
-    type(t_category)              :: hsus            ! HSU fmodel grid arrays & tracking
-    logical                       :: has_aquitards   ! For now, only in IWFM - but helps T2P w/ aquitard pilot points
-    logical                       :: structured      ! T/F Structured (row/col) model
-    logical,allocatable           :: lay_aqtard(:)   ! Tracks whether layer is an aquitard
-    logical,allocatable           :: pparr_aqtard(:) ! Tracks if a *pilot_point* array is an aquitard
+    integer                       :: model_type              ! 1 - grid, 2 - IWFM, 3 - MODFLOW 2000
+    real                          :: xoff,yoff,rot           ! Conversion from/to global coordinates
+    integer                       :: nlayers                 ! Number of model layers
+    integer                       :: ngrids                  ! Number of unique model grid (xy) layers
+    integer                       :: ncol=0                  ! Number of columns for structured grid
+    integer,allocatable           :: nnodes(:)               ! Number of nodes (points at which flow is solved) by layer
+    integer,pointer               :: lay2grid(:)             ! Which grid each layer uses (e.g., same xy between layers)
+    character(30)                 :: name                    ! For printing nicely to log/screen
+    character(100)                :: preproc_file            ! IWFM main discretization file (empty for others)
+    character(100)                :: sim_file                ! Simulation File or MODFLOW name file
+    character(100)                :: ppzone_file             ! File of pilot point zones defined for each node
+    character(100)                :: hsu_file                ! File of Hydrostratigraphic Units (HSUs) defined for each node
+    character(100)                :: template_file           ! File copied for output_file
+    character(3)                  :: grd_file_type           ! Character string of grid file type (GSF, ...)
+    character(100)                :: grd_file                ! Grid specification file for grid type or MODFLOW-USG
+    character(100)                :: output_file             ! File where aquifer parameters are written
+    character(60)                 :: projectname             ! project name from T2P, used as output prefix
+    real    , allocatable         :: elev(:,:)               ! Bottom Elevations for each layer (node, layer) (indexed from zero = model top)
+    type(t_grid_arr),allocatable  :: grid(:)                 ! xy grids for layers
+    type(t_category)              :: ppzones                 ! Pilot point zone fmodel grid arrays & tracking
+    type(t_category)              :: hsus                    ! HSU fmodel grid arrays & tracking
+    logical                       :: has_aquitards           ! For now, only in IWFM - but helps T2P w/ aquitard pilot points
+    logical                       :: structured              ! T/F Structured (row/col) model
+    logical,allocatable           :: lay_aqtard(:)           ! Tracks whether layer is an aquitard
+    logical,allocatable           :: pparr_aqtard(:)         ! Tracks if a *pilot_point* array is an aquitard
+    logical,allocatable           :: active_nodes_bylay(:,:) ! T/F for each node if it is active in the flow model (primarily for MODFLOW) (node,layer)
+    logical,allocatable           :: active_nodes_flat(:)    ! Same as above, but flat (T if active in *any* layer)
 
     contains
       procedure,public            :: initialize
@@ -255,11 +258,12 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine read_model(this)
+  subroutine read_model(this, opt)
     ! Base class method for reading in [nonexistant] model input file(s)
     ! Should not be run
     implicit none
-    class(t_flow_model)       :: this
+    class(t_flow_model)         :: this
+    class(t_options),intent(in) :: opt
 
   end subroutine read_model
 
@@ -300,12 +304,19 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
 
   subroutine alloc_nodes(this)
+    ! Called by subclasses as well
     implicit none
     class(t_flow_model)       :: this
     integer                   :: i
 
-    allocate(this%elev(maxval(this%nnodes(:)), 0:this%nlayers))
+    allocate(              this%elev(maxval(this%nnodes(:)), 0:this%nlayers), &
+             this%active_nodes_bylay(maxval(this%nnodes(:)),   this%nlayers), &
+              this%active_nodes_flat(maxval(this%nnodes(:))))
 
+    ! Initialize to active
+    this%active_nodes_bylay = .true.
+    this%active_nodes_flat  = .true.
+    
     ! Loop over layers creating grid object
     do i=1, this%ngrids
       this%grid(i)%ptrgrid => create_grid_object(2, this%nnodes(this%lay2grid(i)))
@@ -556,20 +567,21 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine read_gsf(this)
+  subroutine read_gsf(this, opt)
     implicit none
-    class(t_flow_fdmodel)     :: this
-    type(t_vstring)           :: strtemp
-    integer                   :: i, j, total_nodes, ngrids, nvert, node, lay, grid, itemp, &
-                                 gridcount, nodevert
-    integer,allocatable       :: nnodes(:), grid_count(:), lay2grid(:),temp_node_vert(:)
-    real                      :: rtemp(3)
-    character(200)            :: ctemp
-    logical                   :: found
+    class(t_flow_fdmodel)       :: this
+    class(t_options),intent(in) :: opt
+    type(t_vstring)             :: strtemp
+    integer                     :: i, j, total_nodes, ngrids, nvert, node, lay, grid, itemp, &
+                                   gridcount, nodevert
+    integer,allocatable         :: nnodes(:), grid_count(:), lay2grid(:),temp_node_vert(:)
+    real                        :: rtemp(3)
+    character(200)              :: ctemp
+    logical                     :: found
 
     ! Standard file reader variables
-    integer                    :: eof
-    type(t_vstringlist)        :: strings
+    integer                     :: eof
+    type(t_vstringlist)         :: strings
 
     reader => open_file_reader(this%grd_file)
 
@@ -707,14 +719,15 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine read_mgrid(this)
+  subroutine read_mgrid(this, opt)
     implicit none
-    class(t_mgrid)       :: this
+    class(t_mgrid)              :: this
+    class(t_options),intent(in) :: opt
 
     ! Potentially multiple types of grid files (although unimplemented so far)
     select case (this%grd_file_type)
       case('gsf')
-        call this%read_gsf()
+        call this%read_gsf(opt)
       case DEFAULT
         call error_handler(2,opt_msg='Unknown Grid Type for file: ' // this%grd_file)
     end select
@@ -776,11 +789,12 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine read_simpgrid(this)
+  subroutine read_simpgrid(this, opt)
     implicit none
-    class(t_simpgrid)       :: this
-    integer                 :: i, id, grid_nodes
-    integer,allocatable     :: lay2grid(:)
+    class(t_simpgrid)           :: this
+    class(t_options),intent(in) :: opt
+    integer                     :: i, id, grid_nodes
+    integer,allocatable         :: lay2grid(:)
 
     ! Standard file reader variables
     integer                    :: eof
@@ -1087,12 +1101,13 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine read_iwfm(this)
+  subroutine read_iwfm(this, opt)
     use fpath
     use m_vstringlist, only: t_vstringlist
     implicit none
     type(t_file_reader), pointer :: reader2
     class(t_iwfm_model)          :: this
+    class(t_options),intent(in)  :: opt
     character(200)               :: path, ctemp
     real                         :: factor, rtemp1, rtemp2
     real    ,allocatable         :: rarray(:)
@@ -1424,7 +1439,7 @@ module m_flow_model
     integer                 :: cell, i
 
     cell = 0
-    call this%grid(this%lay2grid(1))%ptrgrid%get_nnear(coords, 4, cellids, celldist)  ! do we need more than 4 for USG?
+    call this%grid(this%lay2grid(1))%ptrgrid%get_nnear(coords, 4, cellids, celldist, mask=this%active_nodes_flat)  ! do we need more than 4 for USG?
 
     if (this%structured) then
       ! Check each cell center to see if well belongs
@@ -1493,14 +1508,15 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine read_modflow2000(this)
+  subroutine read_modflow2000(this, opt)
     use m_file_io, only: log_unit
     ! MODFLOW globals to import
-    use GLOBAL, ONLY : IUNSTR,NLAY,NROW,NCOL,DELR,DELC,TOP,BOT,LAYCBD,IUNIT,NODLAY
+    use GLOBAL, ONLY : IUNSTR,NLAY,NROW,NCOL,DELR,DELC,TOP,BOT,LAYCBD,IUNIT,NODLAY,IBOUND
     use PARAMMODULE, ONLY: NMLTAR, NZONAR
     use GWFBCFMODULE, ONLY: VKA, SC1, SC2
     implicit none
     class(t_modflow_model)       :: this
+    class(t_options),intent(in)  :: opt
     integer                      :: ierr, ngrids, i, j, k, n, mfmaxunit
     integer,allocatable          :: grid_count(:), lay2grid(:)
     character(256)               :: iomsg
@@ -1564,8 +1580,21 @@ module m_flow_model
     call this%alloc_layers(lay2grid)
 
     ! Count nodes
-    this%nnodes = (/ (nodlay(i) - nodlay(i-1), i=1, nlay) /)
+    this%nnodes = (/ (nodlay(k) - nodlay(k-1), k=1, nlay) /)
     call this%alloc_nodes()
+    
+    ! Handle inactive cells
+    if (.not.opt%PREDICT_INACTIVE) then
+      do k = 1, nlay
+        do i = 1, this%nnodes(k)
+          this%active_nodes_bylay(i,k) = ibound(nodlay(k-1) + i) /= 0
+        end do
+      end do
+      ! Flatten
+      do i = 1, this%nnodes(1)
+        this%active_nodes_flat(i) = any(this%active_nodes_bylay(i,1:nlay))
+      end do
+    end if
 
     ! Move elevation arrays
     this%elev(:,0) = top(1:this%nnodes(1))

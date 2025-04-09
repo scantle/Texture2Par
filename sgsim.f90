@@ -344,7 +344,7 @@ module m_sgsim
 
   !-------------------------------------------------------------------------------------------------!
   
-  subroutine calc_sgsim(this, obs_data, obs_idx, val_idx, to_grid, results, catlist, to_cats, opt, layer)
+  subroutine calc_sgsim(this, obs_data, obs_idx, val_idx, to_grid, active, results, catlist, to_cats, opt, layer)
     use m_weights, only: t_sosa_weights
     use kdtree2_module
     implicit none
@@ -352,6 +352,7 @@ module m_sgsim
     class(t_layerdata)                    :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:), val_idx(:)
     type(t_grid),intent(in)               :: to_grid
+    logical,intent(in)                    :: active(:)    !1:to_grid%n
     real                                  :: results(:)
     integer,intent(in)                    :: catlist(:), to_cats(:), layer
     type(t_options),intent(in)            :: opt
@@ -375,6 +376,7 @@ module m_sgsim
         call this%setup_sgsim(obs_data, obs_idx, val_idx, to_grid, cat, to_cats, weights, opt, obsxy, gridxy)
         ! Step 2: estimate values
         do j=1, gridxy%n
+          if (.not.active(j)) cycle
           ! Interpolate for each point
           obsxy(1)%values(j) = this%predict_point_sgsim(j, obsxy, gridxy, opt%NSIM)
         end do
