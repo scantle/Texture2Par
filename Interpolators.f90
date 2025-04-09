@@ -196,7 +196,7 @@ module m_interpolator
     if (opt%READ_GRID_WEIGHTS) then
       ! Read in weights by grid point
       do i=1, to_grid%n  ! tracks progress through file, may not match grid id! Use j, as below!
-        if (.not.active(j)) cycle ! makes sure it only reads for the # of active cells
+        if (.not.active(i)) cycle ! makes sure it only reads for the # of active cells
         ! Read in one grid point of data
         call weights%load_from_file(j)
         ! Apply weight
