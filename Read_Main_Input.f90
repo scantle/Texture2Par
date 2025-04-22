@@ -335,6 +335,7 @@ end subroutine read_dataset_block
 subroutine read_variogram_block(t2p, reader)
   use m_vario, only: t_vgm, get_vgm_from_line
   use m_kriging, only: t_krige
+  use tools, only: expand_int_array
   implicit none
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
@@ -345,11 +346,11 @@ subroutine read_variogram_block(t2p, reader)
   type(t_vstringlist)        :: strings
 
   ! Sub variables
-  type(t_vgm),pointer        :: vgms(:,:)
+  type(t_vgm),pointer        :: vgms(:,:), tmp(:,:)
   integer,pointer            :: nnear(:), nstruct(:)
-  integer                    :: prime_id, prime_vidx, cross_id, vario_id, struct_id, vcount, maxread
-  logical                    :: iscross, ispp
-  type(t_vstring)            :: class_name, cross_name
+  integer                    :: prime_id, prime_vidx, cross_id, vario_id, struct_id, vcount, maxread, hsu_id
+  logical                    :: iscross, ispp, ishsu
+  type(t_vstring)            :: class_name, cross_name, hsu_name
   type(t_vstringlist)        :: class_temp
   character(100)             :: msg
 
@@ -370,6 +371,7 @@ subroutine read_variogram_block(t2p, reader)
       case("CLASS")
         ! Now we need to figure out what variogram we have, and read all the structures for it
         iscross = .false.
+        ishsu   = .false.
         ispp    = .false.
         class_name = vstrlist_index(strings , 2)
 
@@ -386,7 +388,11 @@ subroutine read_variogram_block(t2p, reader)
           cross_name = vstrlist_index(class_temp, 2)
           ! TODO if the cross name doesn't exist
           iscross = .true.
-        !else if (vstring_match(class_name  ! WHAT ABOUT PPs?
+        else if (vstring_match(class_name,"*%*")) then
+          class_temp = vstrlist_split(class_name, "%")
+          class_name = vstrlist_index(class_temp, 1)
+          hsu_name = vstrlist_index(class_temp, 2)
+          ishsu = .true.
         end if
 
         ! Get variogram ids
@@ -423,7 +429,18 @@ subroutine read_variogram_block(t2p, reader)
               else
                 cross_id = prime_vidx
               end if
-              vario_id = p%global_vario_idx(prime_vidx, cross_id)
+              if (ishsu) then
+                hsu_id = p%add_zonal_variogram(hsu_name, prime_vidx, cross_id, t2p%opt, t2p%nvario)
+                ! Resize nstruct & vgm from nvario update...
+                call expand_int_array(nstruct,t2p%nvario, init=0)
+                allocate(tmp(t2p%opt%max_vstruct,t2p%nvario))
+                tmp(:, 1:size(vgms)) = vgms
+                deallocate(vgms); nullify(vgms)
+                vgms => tmp
+              else
+                hsu_id = 0
+              end if
+              vario_id = p%global_vario_idx(hsu_id, prime_vidx, cross_id)
               if (vario_id==0) then
                 call error_handler(1,reader%file,"Invalid (Cross) Variogram Assignment - Check Covariates Block.")
               end if
@@ -456,7 +473,7 @@ subroutine read_variogram_block(t2p, reader)
           call get_vgm_from_line(vgms(struct_id,vario_id), strings, struct_id, t2p%OPT%INTERP_DIM, maxread)
           ! NNear on first struct read, if not cross, advance vcount
           if (struct_id == 1) then
-            if (iscross) then
+            if (iscross.or.ishsu) then
               ! Can't get n cross points...
             else
               nnear(prime_vidx) = item2int(strings, maxread+1)

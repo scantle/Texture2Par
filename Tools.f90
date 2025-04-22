@@ -30,6 +30,24 @@ module tools
 !-----------------------------------------------------------------------------!
   
 !-----------------------------------------------------------------------------!
+subroutine expand_int_array(array, new_len, init)
+    implicit none
+    integer, pointer, intent(inout) :: array(:)
+    integer, intent(in)             :: new_len
+    integer, intent(in), optional   :: init
+    integer, pointer                :: temp(:)
+
+    allocate(temp(new_len))
+    if (present(init)) temp = init
+    temp(1:size(array)) = array
+    deallocate(array)
+    nullify(array)
+    array => temp
+end subroutine expand_int_array
+  
+!-----------------------------------------------------------------------------!
+  
+!-----------------------------------------------------------------------------!
   subroutine random_seed_initialize (key)
     !*****************************************************************************
     !

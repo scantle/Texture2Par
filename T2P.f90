@@ -82,6 +82,7 @@ module m_T2P
     procedure,public   :: setup_variograms
     procedure,public   :: setup_pplocs
     procedure,public   :: setup_dataset_ppzones
+    procedure,public   :: setup_categories   ! AKA HSUs & PPZones
     procedure,public   :: check_major_inputs
     !procedure,private  :: check_pp_zone_layertype_assignments
     procedure,private  :: nvario_estimator
@@ -392,8 +393,8 @@ module m_T2P
       vidx = vidx + 1
       select type(p => this%interp_pp)
         class is(t_krige)
-          if (.not. allocated(p%global_vario_idx)) allocate(p%global_vario_idx(1, 1))
-          p%global_vario_idx(1, 1) = 1  ! Assign to pilot point interpolator
+          if (.not. allocated(p%global_vario_idx)) allocate(p%global_vario_idx(1, 1, 1))
+          p%global_vario_idx(1, 1, 1) = 1  ! Assign to pilot point interpolator
       end select
     end if
 
@@ -404,8 +405,10 @@ module m_T2P
     select type(p => this%interp_data)
       class is(t_krige)
         if (allocated(p%global_vario_idx)) deallocate(p%global_vario_idx)
-        allocate(p%global_vario_idx(size(vario_map, 1), size(vario_map, 2)))
-        p%global_vario_idx = vario_map
+        allocate(p%global_vario_idx(0:1, size(vario_map, 1), size(vario_map, 2)))
+        do i=0, 1
+          p%global_vario_idx(i,:,:) = vario_map
+        end do
       class default
         call error_handler(4, opt_msg="Unexpected non-kriging interpolator detected.")
     end select
@@ -446,9 +449,10 @@ module m_T2P
     integer, pointer              :: nnear(:), nstruct(:)
     type(t_vgm),pointer           :: variograms(:,:)
     class(*),pointer              :: p
-    integer                       :: nsets
+    integer                       :: nsets, nactive
 
     nsets = this%nprimary+this%nsecondary
+    nactive = this%get_active_texture_classes()
 
     ! Place directly in the kriging interpolator objects
     select type(p => this%interp_data)
@@ -458,7 +462,7 @@ module m_T2P
         if (.not. this%opt%ONLY_TEXTURE) p%nvario = this%nvario -1
         p%nstruct    => nstruct(1:p%nvario)
         p%variograms => variograms(:,1:p%nvario)
-        p%nnear      => nnear(1:p%nvario)
+        p%nnear      => nnear(1:nactive)
     end select
     ! PP is the last one
     if (.not. this%opt%ONLY_TEXTURE) then
@@ -467,7 +471,7 @@ module m_T2P
           p%nvario     = 1
           p%nstruct    => nstruct(this%nvario:this%nvario)
           p%variograms => variograms(:,this%nvario:this%nvario)
-          p%nnear      => nnear(this%nvario:this%nvario)
+          p%nnear      => nnear(nactive+1:nactive+1)
       end select
     end if
 
@@ -505,6 +509,35 @@ module m_T2P
 
   end subroutine setup_pplocs
 
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine setup_categories(this)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    
+    ! Read in category files
+    call this%fmodel%read_category_files()
+    this%nhsus = this%fmodel%HSUS%ncat
+    
+    ! Setup HSU variograms
+    select type(p => this%interp_data)
+      class is(t_krige)
+        allocate(p%cat2zone(this%fmodel%hsus%ncat))
+        p%cat2zone = 0
+        call p%init_zones(this%fmodel%hsus%strlist)
+    end select
+      
+    ! Setup PP zone variograms - don't have different variograms (yet)
+    if (.not. this%opt%ONLY_TEXTURE) then
+      select type(p => this%interp_pp)
+        class is(t_krige)
+          allocate(p%cat2zone(this%pilot_points%nppzones))
+          p%cat2zone = 1
+      end select
+    end if
+    
+  end subroutine setup_categories
+  
 !-------------------------------------------------------------------------------------------------!
 
   subroutine check_major_inputs(this)

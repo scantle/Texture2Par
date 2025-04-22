@@ -64,7 +64,7 @@ end type t_vgm
       vgm%ang1   = item2dp(strings, 7)
       maxread = 7
       ! Sanitize unused variables
-      vgm%a_vert = vgm%a_hmin
+      vgm%a_vert = vgm%a_hmax
       vgm%ang2   = 0.0
       vgm%ang3   = 0.0
       !nnear read outside of routine

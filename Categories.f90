@@ -173,6 +173,7 @@ module m_categories
     if (len(trim(file))>0) then
       this%from_file = .true.
       reader => open_file_reader(file)
+      call reader%read_to_next_line(eof)
       !call reader%next_item(eof, strings)
       
       !if (vstrlist_length(strings) < nlayers) then

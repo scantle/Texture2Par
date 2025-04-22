@@ -43,8 +43,7 @@ program Texture2Par
   ! Read Main Input
   call read_main_input(t2p, main_input_file)
   call t2p%fmodel%read_model(t2p%opt)
-  !call t2p%fmodel%build_tree()
-  call t2p%fmodel%read_category_files()
+  call t2p%setup_categories()
   ! Check major inputs
   call t2p%check_major_inputs()
   ! Read datasets
