@@ -356,7 +356,7 @@ subroutine read_variogram_block(t2p, reader)
 
   ! Allocate variograms
   ! nvario is currently set during the class block read, max structures in settings
-  allocate(vgms(t2p%opt%max_vstruct,t2p%nvario), nnear(t2p%nvario), nstruct(t2p%nvario))
+  allocate(vgms(t2p%opt%max_vstruct,t2p%nvario), nnear(t2p%nclasses+1), nstruct(t2p%nvario))
   vcount = 0
   nnear = 0
   nstruct = 0

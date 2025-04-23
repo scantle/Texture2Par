@@ -1,5 +1,5 @@
 module m_categories
-  use m_vstring, only: t_vstring
+  use m_vstring, only: t_vstring, vstring_toupper, vstring_new
   use m_vstringlist
   implicit none
   
@@ -104,11 +104,13 @@ module m_categories
     class(t_category), intent(inout) :: this
     type(t_vstring), intent(in)      :: value
     integer, intent(in)              :: arr
+    type(t_vstring)                  :: valupp
     integer, intent(out)             :: index
 
-    index = vstrlist_search(this%strlist, value)
+    valupp = vstring_toupper(value)
+    index = vstrlist_search(this%strlist, valupp)
     if (index == 0) then
-      call vstrlist_append(this%strlist, value)
+      call vstrlist_append(this%strlist, valupp)
       this%ncat = this%ncat + 1
       index = this%ncat
       this%arrncat(arr) = this%arrncat(arr) + 1
@@ -122,11 +124,14 @@ module m_categories
     class(t_category), intent(inout) :: this
     character(*), intent(in)         :: value
     integer, intent(in)              :: arr
+    type(t_vstring)                  :: valupp
     integer, intent(out)             :: index
 
-    index = vstrlist_search(this%strlist, trim(value))
+    call vstring_new (valupp, trim(value))
+    valupp = vstring_toupper(valupp)
+    index = vstrlist_search(this%strlist, valupp)
     if (index == 0) then
-      call vstrlist_append(this%strlist, trim(value))
+      call vstrlist_append(this%strlist, valupp)
       this%ncat = this%ncat + 1
       index = this%ncat
       this%arrncat(arr) = this%arrncat(arr) + 1
@@ -274,8 +279,12 @@ module m_categories
     implicit none
     class(t_category), intent(inout) :: this
     character(*),intent(in)          :: value
+    type(t_vstring)                  :: valupp
     integer                          :: index
-    
+
+    call vstring_new (valupp, trim(value))
+    valupp = vstring_toupper(valupp)
+    index = vstrlist_search(this%strlist, valupp)
     index = vstrlist_search(this%strlist, trim(value))
   
   end function get_id_char
