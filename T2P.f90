@@ -449,10 +449,9 @@ module m_T2P
     integer, pointer              :: nnear(:), nstruct(:)
     type(t_vgm),pointer           :: variograms(:,:)
     class(*),pointer              :: p
-    integer                       :: nsets, nactive
+    integer                       :: nsets, nclasses
 
     nsets = this%nprimary+this%nsecondary
-    nactive = this%get_active_texture_classes()
 
     ! Place directly in the kriging interpolator objects
     select type(p => this%interp_data)
@@ -462,7 +461,7 @@ module m_T2P
         if (.not. this%opt%ONLY_TEXTURE) p%nvario = this%nvario -1
         p%nstruct    => nstruct(1:p%nvario)
         p%variograms => variograms(:,1:p%nvario)
-        p%nnear      => nnear(1:nactive)
+        p%nnear      => nnear(1:this%nclasses)
     end select
     ! PP is the last one
     if (.not. this%opt%ONLY_TEXTURE) then
@@ -471,7 +470,7 @@ module m_T2P
           p%nvario     = 1
           p%nstruct    => nstruct(this%nvario:this%nvario)
           p%variograms => variograms(:,this%nvario:this%nvario)
-          p%nnear      => nnear(nactive+1:nactive+1)
+          p%nnear      => nnear(this%nclasses+1:this%nclasses+1)
       end select
     end if
 
