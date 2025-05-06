@@ -241,6 +241,7 @@ module m_T2P
     end if
     if (len_trim(this%fmodel%hsu_file)>0   )  this%has_hsus = .true.
     if (len_trim(this%fmodel%ppzone_file)>0)  this%has_ppzones = .true.
+    if (this%fmodel%name=="GRID") this%opt%WRITE_NODE_FILES = .true.
 
   end subroutine setup_flow_model
 

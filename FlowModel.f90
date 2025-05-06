@@ -171,7 +171,23 @@ module m_flow_model
 
   end type
 !-------------------------------------------------------------------------------------------------!
+  
+  type, extends(t_modflow_model) :: t_flow_fdgrid
+  ! Basically a MODFLOW model defined by a simplied DIS file
+  
+  integer                     :: nx, ny      ! ncol, nrow
+  real                        :: dx, dy, dz  ! delr, delc, delz
 
+  contains
+    procedure,public          :: initialize => init_fdgrid
+    procedure,public          :: read_model => read_fdgrid
+    procedure,public          :: write_fmodel_input => write_fdgrid_out
+    procedure,private         :: get_cell_local => get_cell_local_fd
+    procedure,private         :: calc_fdcell_centers
+  end type
+
+!-------------------------------------------------------------------------------------------------!
+  
   contains
 
 !-------------------------------------------------------------------------------------------------!
@@ -190,6 +206,8 @@ module m_flow_model
         allocate(t_iwfm_model::object)
       case ("MODFLOW")
         allocate(t_modflow_model::object)
+      case ("GRID")
+        allocate(t_flow_fdgrid::object)
       case ("GSF_GRID")
         allocate(t_mgrid::object)
       case("SIMPLE_GRID")
@@ -1345,6 +1363,227 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
 
 !-------------------------------------------------------------------------------------------------!
+! FINITE-DIFFERENCE GENERIC GRID (FDGRID)
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine init_fdgrid(this)
+    implicit none
+    class(t_flow_fdgrid)       :: this
+
+    call initialize(this)
+    this%model_type  = 3
+    this%structured  = .true.
+    this%name = "GRID"
+    this%grd_file_type = 'grd'
+    this%nlayers = 0
+    this%nx = 0
+    this%ny = 0
+    this%dx = 0.0
+    this%dy = 0.0
+    this%dz = 0.0
+
+  end subroutine init_fdgrid
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine get_cell_local_fd(this, cell, xmin, xmax, ymin, ymax)
+    ! Could consolidate by making generic along with MF version (get_cell_local)
+    implicit none
+    class(t_flow_fdgrid)   :: this
+    integer,intent(in)     :: cell
+    real    ,intent(out)   :: xmin,xmax,ymin,ymax
+    integer                :: row, col
+
+    call this%cell2rowcol(cell, row, col)
+    xmin = this%loc_grid(this%lay2grid(1))%ptrgrid%coords(1,cell) - 0.5 * this%dx
+    xmax = this%loc_grid(this%lay2grid(1))%ptrgrid%coords(1,cell) + 0.5 * this%dx
+    ymin = this%loc_grid(this%lay2grid(1))%ptrgrid%coords(2,cell) - 0.5 * this%dy
+    ymax = this%loc_grid(this%lay2grid(1))%ptrgrid%coords(2,cell) + 0.5 * this%dy
+
+  end subroutine get_cell_local_fd
+  
+!-------------------------------------------------------------------------------------------------!
+  subroutine calc_fdcell_centers(this)
+    ! Both local and global (formerly was just global, causing some issues in get_cell_local!)
+    use tools, only: loc2glo
+    implicit none
+    ! Calculates cell centers in global coordinates
+    class(t_flow_fdgrid)   :: this
+    integer                :: i, j, n
+    real                   :: xbase, ybase
+
+    ybase = this%dy * this%ny
+    do i=1, this%ny
+      xbase = 0.0
+      do j=1, this%nx
+        n = (i-1)*this%nx+j                            ! node number
+        this%loc_grid(1)%ptrgrid%coords(1,n) = xbase + 0.5 * this%dx  ! x local
+        this%loc_grid(1)%ptrgrid%coords(2,n) = ybase - 0.5 * this%dy  ! y loca
+        ! get global
+        call loc2glo(                           &
+          this%loc_grid(1)%ptrgrid%coords(1,n), &
+          this%loc_grid(1)%ptrgrid%coords(2,n), &
+          this%xoff,                            &
+          this%yoff,                            &
+          this%rot,                             &
+          this%grid(1)%ptrgrid%coords(1,n),             &
+          this%grid(1)%ptrgrid%coords(2,n))
+        xbase = xbase + this%dx
+      end do
+      ybase = ybase - this%dy
+    end do
+
+  end subroutine calc_fdcell_centers
+!-------------------------------------------------------------------------------------------------!
+  
+
+  subroutine read_fdgrid(this, opt)
+    use m_file_io, only: log_unit
+    implicit none
+    class(t_flow_fdgrid)         :: this
+    class(t_options),intent(in)  :: opt
+    integer                      :: ierr, ngrids, i, j, k, n, mfmaxunit
+    integer,allocatable          :: lay2grid(:)
+    real,allocatable             :: top(:), bot(:), thick(:)
+    character(256)               :: iomsg, topfile, botfile
+    logical                      :: found
+    type(t_file_reader), pointer :: reader2
+
+    ! Standard file reader variables
+    integer                    :: status, length, eof
+    character(200)             :: id, value
+    type(t_vstringlist)        :: strings
+    
+    topfile = ''
+    botfile = ''
+    
+    reader => open_file_reader(this%grd_file)
+    
+    ! Pretend we're in a block...
+    do
+      call reader%next_block_item(status, id, strings, length)
+      if (status /= 0) exit  ! exit if end of block or end of file
+      select case(trim(id))
+        case("DX")
+          this%dx = item2dp(strings, 2)
+        case("DY")
+          this%dy = item2dp(strings, 2)
+        case("DZ")
+          this%dz = item2dp(strings, 2)
+        case("NX")
+          this%nx = item2int(strings, 2)
+        case("NY")
+          this%ny = item2int(strings, 2)
+        case("NZ")
+          this%nlayers = item2int(strings, 2)
+        case("TOP")
+          if (this%nx==0.or.this%ny==0) then
+            call error_handler(1,reader%file,"Must set NX & NY before TOP/BOT arrays")
+          else ! allocate
+            allocate(top(this%nx*this%ny))
+            top = 0.0
+          end if
+          if (length > 2) then
+            if (vstring_equals ( vstrlist_index(strings, 2), "constant", nocase=.true.)) then
+              top = item2dp(strings, 3)
+            else if (vstring_equals ( vstrlist_index(strings, 2), "external", nocase=.true.)) then
+              call item2char(strings, 3, topfile)
+            end if
+          else ! Read in array
+            read(reader%unit, *) top
+          end if
+        case("BOT")
+          if (this%nx==0.or.this%ny==0) then
+            call error_handler(1,reader%file,"Must set NX & NY before TOP/BOT arrays")
+          else ! allocate
+            allocate(bot(this%nx*this%ny))
+          end if
+          if (length > 2) then
+            if (vstring_equals ( vstrlist_index(strings, 2), "constant", nocase=.true.)) then
+              bot = item2dp(strings, 3)
+            else if (vstring_equals ( vstrlist_index(strings, 2), "external", nocase=.true.)) then
+              call item2char(strings, 3, botfile)
+            end if
+          else ! Read in array
+            read(reader%unit, *) bot
+          end if
+        case DEFAULT
+          call error_handler(1,reader%file,"Unknown Grid option: " // trim(id))
+      end select
+    end do
+    call reader%close_file()
+    
+    ! Handle other input cases
+    if (trim(topfile)/='') then
+      reader => open_file_reader(trim(topfile))
+      read(reader%unit, *) top
+    else if (.not.allocated(top)) then
+      allocate(top(this%nx*this%ny))
+      top = 0.0      
+    end if
+    
+    if (trim(botfile)/='') then
+      reader => open_file_reader(trim(botfile))
+      read(reader%unit, *) bot
+    else if (.not.allocated(bot)) then
+      if (this%dz==0) call error_handler(1,reader%file,"Must set DZ if not passing BOT array")
+      allocate(bot(this%nx*this%ny))
+      bot = top - this%dz * this%nlayers
+    end if
+
+    ! Setup Layers
+    allocate(lay2grid(this%nlayers))
+    lay2grid = 1
+    this%ngrids = 1
+    call this%alloc_layers(lay2grid)
+
+    ! Setup Nodes
+    this%ncol = this%nx  ! for cell2rowcol
+    this%nnodes = (/ (this%nx * this%ny, k=1, this%nlayers) /)
+    call this%alloc_nodes()
+
+    ! Move elevation arrays
+    allocate(thick(this%nx*this%ny))
+    if (allocated(top).and.allocated(bot)) then
+      thick = (top - bot) / this%nlayers
+    else if (this%dz>0) then
+      thick = this%dz
+    else
+      ! Error caught above
+    end if
+    this%elev(:,0) = top
+    do k=1, this%nlayers
+      this%elev(1:this%nnodes(k),k) = this%elev(1:this%nnodes(k),k-1) - thick
+    end do
+
+    ! Get cell/node centers
+    call this%calc_fdcell_centers()
+
+    ! Clean up
+    if (allocated(top)) deallocate(top)
+    if (allocated(bot)) deallocate(bot)
+    if (allocated(thick)) deallocate(thick)
+
+  end subroutine read_fdgrid
+
+!-------------------------------------------------------------------------------------------------!
+  
+ subroutine write_fdgrid_out(this, par)
+    use m_datasets, only: t_layerdata
+    use m_file_io, only: t_file_reader, t_file_writer, open_file_reader, open_file_writer
+    use m_write_fmodel
+    implicit none
+    class(t_flow_fdgrid)         :: this
+    type(t_layerdata),pointer    :: par(:)
+    type(t_file_writer),pointer  :: fwrite
+    integer                      :: ierr
+    character(500)               :: fname
+    
+    ! Nothing, for now
+
+  end subroutine write_fdgrid_out
+  
+!-------------------------------------------------------------------------------------------------!
 ! MODFLOW 2000 CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
@@ -1376,7 +1615,6 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
 
   subroutine alloc_nodes_mf(this)
-    ! Additional arrays required for IWFM due to Finite-element
     implicit none
     class(t_modflow_model)       :: this
 

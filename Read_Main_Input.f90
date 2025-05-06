@@ -140,6 +140,9 @@ module m_read_main_input
           call check_id_validity(id, t2p%fmodel)    ! Grid or MFUSG
           call item2char(strings, 2, t2p%fmodel%grd_file)
           t2p%fmodel%grd_file_type = 'gsf'
+        case("GRID_FILE")
+          call check_id_validity(id, t2p%fmodel)    ! Only Grid
+          call item2char(strings, 2, t2p%fmodel%grd_file)
         case("TEMPLATE_FILE")
           call check_id_validity(id, t2p%fmodel)
           call item2char(strings, 2, t2p%fmodel%template_file)

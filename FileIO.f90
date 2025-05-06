@@ -310,9 +310,12 @@ module m_file_io
     implicit none
     class(t_file_reader)              :: this
     type(t_file_reader),pointer       :: next_file
-    integer                           :: i, ierr
+    integer                           :: i, ierr, ext_idx
     integer,intent(out)               :: eof
     integer,intent(inout),optional    :: skipped
+    type(t_vstring)                   :: line_string
+    type(t_vstringlist)               :: strings
+    character(len=500)                :: ext_file
 
     ! For line splitting
     integer             :: left(2), right(2)
@@ -331,10 +334,17 @@ module m_file_io
         cycle
       else if (index(line, 'EXTERNAL')>0) then
         ! External command, continue reading in new file
-        call multisplit(ierr,2,left,right,line)
-        call this%jump_to_external(line(left(2):right(2)))
-        i = 0  ! No lines skipped if it's a new file
-        !call this%read_to_next_line(eof)
+        call vstring_new(line_string, trim(adjustl(line)))
+        strings = vstrlist_split(line_string)
+        ext_idx = vstrlist_search(strings, 'EXTERNAL')
+        ! For now, only handle if it's the first item
+        ! Second item means first item was a ID, and that's trickier
+        if (ext_idx>1) then
+          backspace(this%unit)
+          exit
+        end if
+        call item2char(strings, ext_idx+1, ext_file)
+        call this%jump_to_external(ext_file)
       else
         ! Data
         backspace(this%unit)
@@ -456,6 +466,7 @@ end subroutine
       temp = vstrlist_split(line_string)
       ! Add all strings of non-zero length to strings object
       ! TODO: fix whatever causes vstringlist_split not to catch tabs followed by spaces
+      ! COULDN"T WE JUST CALL TABREM(CLINE) BEFORE?
       call vstrlist_new ( strings )
       do i=1, vstrlist_length(temp)
         if (vstring_length(vstrlist_index(temp, i))>0) call vstrlist_append(strings, vstrlist_index(temp, i))
