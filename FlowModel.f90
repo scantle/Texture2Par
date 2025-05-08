@@ -1443,9 +1443,9 @@ module m_flow_model
     class(t_flow_fdgrid)         :: this
     class(t_options),intent(in)  :: opt
     integer                      :: ierr, ngrids, i, j, k, n, mfmaxunit
-    integer,allocatable          :: lay2grid(:)
+    integer,allocatable          :: lay2grid(:), ibound(:)
     real,allocatable             :: top(:), bot(:), thick(:)
-    character(256)               :: iomsg, topfile, botfile
+    character(256)               :: iomsg, topfile, botfile, iboundfile
     logical                      :: found
     type(t_file_reader), pointer :: reader2
 
@@ -1507,6 +1507,21 @@ module m_flow_model
           else ! Read in array
             read(reader%unit, *) bot
           end if
+        case("IBOUND","ACTIVE")
+          if (this%nx==0.or.this%ny==0) then
+            call error_handler(1,reader%file,"Must set NX & NY before IBOUND array")
+          else ! allocate
+            allocate(ibound(this%nx*this%ny))
+          end if
+          if (length > 2) then
+            if (vstring_equals ( vstrlist_index(strings, 2), "constant", nocase=.true.)) then
+              ibound = item2dp(strings, 3)
+            else if (vstring_equals ( vstrlist_index(strings, 2), "external", nocase=.true.)) then
+              call item2char(strings, 3, iboundfile)
+            end if
+          else ! Read in array
+            read(reader%unit, *) ibound
+          end if
         case DEFAULT
           call error_handler(1,reader%file,"Unknown Grid option: " // trim(id))
       end select
@@ -1530,6 +1545,14 @@ module m_flow_model
       allocate(bot(this%nx*this%ny))
       bot = top - this%dz * this%nlayers
     end if
+    
+    if (trim(iboundfile)/='') then
+      reader => open_file_reader(trim(iboundfile))
+      read(reader%unit, *) ibound
+    else if (.not.allocated(ibound)) then
+      allocate(ibound(this%nx*this%ny))
+      ibound = 1
+    end if
 
     ! Setup Layers
     allocate(lay2grid(this%nlayers))
@@ -1541,6 +1564,20 @@ module m_flow_model
     this%ncol = this%nx  ! for cell2rowcol
     this%nnodes = (/ (this%nx * this%ny, k=1, this%nlayers) /)
     call this%alloc_nodes()
+    
+    ! Handle inactive cells
+    if (.not.opt%PREDICT_INACTIVE) then
+      do k = 1, this%nlayers
+        do i = 1, this%nnodes(k)
+          this%active_nodes_bylay(i,k) = ibound(i) /= 0
+          this%active_nodes_flat(i) = ibound(i) /= 0
+        end do
+      end do
+     ! ! Flatten
+     ! do i = 1, this%nnodes(1)
+     !   this%active_nodes_flat(i) = any(this%active_nodes_bylay(i,1:this%nlayers))
+     ! end do
+    end if
 
     ! Move elevation arrays
     allocate(thick(this%nx*this%ny))
