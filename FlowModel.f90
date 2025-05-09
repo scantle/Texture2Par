@@ -55,7 +55,7 @@ module m_flow_model
     logical,allocatable           :: lay_aqtard(:)           ! Tracks whether layer is an aquitard
     logical,allocatable           :: pparr_aqtard(:)         ! Tracks if a *pilot_point* array is an aquitard
     logical,allocatable           :: active_nodes_bylay(:,:) ! T/F for each node if it is active in the flow model (primarily for MODFLOW) (node,layer)
-    logical,allocatable           :: active_nodes_flat(:)    ! Same as above, but flat (T if active in *any* layer)
+    logical,allocatable           :: active_nodes_flat(:)    ! Same as above, but flat (T if active in *any* layer) (used for PP interp)
 
     contains
       procedure,public            :: initialize
@@ -1436,17 +1436,16 @@ module m_flow_model
   end subroutine calc_fdcell_centers
 !-------------------------------------------------------------------------------------------------!
   
-
   subroutine read_fdgrid(this, opt)
     use m_file_io, only: log_unit
     implicit none
     class(t_flow_fdgrid)         :: this
     class(t_options),intent(in)  :: opt
-    integer                      :: ierr, ngrids, i, j, k, n, mfmaxunit
+    integer                      :: ierr, i, j, k, n, offset
     integer,allocatable          :: lay2grid(:), ibound(:)
     real,allocatable             :: top(:), bot(:), thick(:)
-    character(256)               :: iomsg, topfile, botfile, iboundfile
-    logical                      :: found
+    character(256)               :: topfile, botfile, iboundfile
+    logical                      :: uniform_ibound
     type(t_file_reader), pointer :: reader2
 
     ! Standard file reader variables
@@ -1456,6 +1455,7 @@ module m_flow_model
     
     topfile = ''
     botfile = ''
+    uniform_ibound = .false.
     
     reader => open_file_reader(this%grd_file)
     
@@ -1508,20 +1508,27 @@ module m_flow_model
             read(reader%unit, *) bot
           end if
         case("IBOUND","ACTIVE")
-          if (this%nx==0.or.this%ny==0) then
-            call error_handler(1,reader%file,"Must set NX & NY before IBOUND array")
-          else ! allocate
-            allocate(ibound(this%nx*this%ny))
+          if (this%nx==0.or.this%ny==0.or.this%nlayers==0) then
+            call error_handler(1,reader%file,"Must set NX, NY, NZ before IBOUND array")
           end if
           if (length > 2) then
             if (vstring_equals ( vstrlist_index(strings, 2), "constant", nocase=.true.)) then
+              allocate(ibound(this%nx*this%ny))
+              uniform_ibound = .true.
               ibound = item2dp(strings, 3)
             else if (vstring_equals ( vstrlist_index(strings, 2), "external", nocase=.true.)) then
               call item2char(strings, 3, iboundfile)
             end if
           else ! Read in array
+            if (uniform_ibound) then
+              allocate(ibound(this%nx*this%ny))
+            else
+              allocate(ibound(this%nx*this%ny*this%nlayers))
+            end if
             read(reader%unit, *) ibound
           end if
+        case("USE_UNIFORM_IBOUND","USE_UNIFORM_ACTIVE")
+          uniform_ibound = .true.
         case DEFAULT
           call error_handler(1,reader%file,"Unknown Grid option: " // trim(id))
       end select
@@ -1529,28 +1536,34 @@ module m_flow_model
     call reader%close_file()
     
     ! Handle other input cases
-    if (trim(topfile)/='') then
+    if (trim(topfile)/='') then             ! top as external file
       reader => open_file_reader(trim(topfile))
       read(reader%unit, *) top
-    else if (.not.allocated(top)) then
+    else if (.not.allocated(top)) then      ! no top entered, default 0
       allocate(top(this%nx*this%ny))
       top = 0.0      
     end if
     
-    if (trim(botfile)/='') then
+    if (trim(botfile)/='') then             ! bot as external file
       reader => open_file_reader(trim(botfile))
       read(reader%unit, *) bot
-    else if (.not.allocated(bot)) then
+    else if (.not.allocated(bot)) then      ! no bot entered, calc from dz
       if (this%dz==0) call error_handler(1,reader%file,"Must set DZ if not passing BOT array")
       allocate(bot(this%nx*this%ny))
       bot = top - this%dz * this%nlayers
     end if
     
-    if (trim(iboundfile)/='') then
+    if (trim(iboundfile)/='') then          ! ibound as external file
+      if (uniform_ibound) then
+        allocate(ibound(this%nx*this%ny))
+      else
+        allocate(ibound(this%nx*this%ny*this%nlayers))
+      end if
       reader => open_file_reader(trim(iboundfile))
       read(reader%unit, *) ibound
-    else if (.not.allocated(ibound)) then
+    else if (.not.allocated(ibound)) then   ! no ibound entered, default 1
       allocate(ibound(this%nx*this%ny))
+      uniform_ibound = .true.
       ibound = 1
     end if
 
@@ -1566,17 +1579,21 @@ module m_flow_model
     call this%alloc_nodes()
     
     ! Handle inactive cells
+    offset = 0
     if (.not.opt%PREDICT_INACTIVE) then
+      this%active_nodes_flat = .false.
       do k = 1, this%nlayers
+        if (k>1) offset = sum(this%nnodes(1:k-1))
         do i = 1, this%nnodes(k)
-          this%active_nodes_bylay(i,k) = ibound(i) /= 0
-          this%active_nodes_flat(i) = ibound(i) /= 0
+          if (uniform_ibound) then
+            this%active_nodes_bylay(i,k) = ibound(i) /= 0
+            this%active_nodes_flat(i) = ibound(i) /= 0
+          else
+            this%active_nodes_bylay(i,k) = ibound(offset+i) /= 0
+            if (.not.this%active_nodes_flat(i).and.ibound(offset+i)==1) this%active_nodes_flat(i) = .true.
+          end if
         end do
       end do
-     ! ! Flatten
-     ! do i = 1, this%nnodes(1)
-     !   this%active_nodes_flat(i) = any(this%active_nodes_bylay(i,1:this%nlayers))
-     ! end do
     end if
 
     ! Move elevation arrays

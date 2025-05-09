@@ -775,7 +775,7 @@ module m_T2P
                                             class_idx,  &
                                             dataval_idx,&
                                             modelgrid,  &
-                                            this%fmodel%active_nodes_flat(1:), &
+                                            this%fmodel%active_nodes_bylay(1:,k), &
                                             dout(k)%values(i,1:), &
                                             this%fmodel%hsus%catlist(1:this%fmodel%hsus%arrncat(x),x), &
                                             this%fmodel%hsus%array(1:,x),&
@@ -786,7 +786,7 @@ module m_T2P
         ! If we're kriging texture - must be below 1.0
         if (this%opt%INTERP_ORDER=="BEFORE") where(dout(k)%values(i,1:) > 1.0) dout(k)%values(i,1:) = 1.0
         ! Inactive cells should be NODATA
-        where(.not.this%fmodel%active_nodes_flat(1:)) dout(k)%values(i,1:) = NODATA
+        where(.not.this%fmodel%active_nodes_bylay(1:,k)) dout(k)%values(i,1:) = NODATA
       end do
       ! If we need to, infer the last class
       if (this%opt%INFER_LAST_CLASS) dout(k)%values(this%nprimary+1,1:) = 1.0 - sum(dout(k)%values(1:this%nprimary,1:), dim=1)
@@ -853,8 +853,8 @@ module m_T2P
       do i=1, this%fmodel%nnodes(k)
         ! Skip if any texture class value is missing/invalid
         if (any(tex_obs(k)%values(:,i) < 0.0)) cycle
-        ! Skip if cell is inactive (would the above cycle catch that?
-        if (.not.this%fmodel%active_nodes_flat(i)) cycle
+        ! Skip if cell is inactive (would the above cycle catch that?)
+        if (.not.this%fmodel%active_nodes_bylay(i,k)) cycle
         ! Ensure classes add to one
         tex_obs(k)%values(:,i) = tex_obs(k)%values(:,i) / sum(tex_obs(k)%values(:,i))
         ! Kh - Depth adjusted
