@@ -378,23 +378,41 @@ subroutine read_variogram_block(t2p, reader)
         ispp    = .false.
         class_name = vstrlist_index(strings , 2)
 
-        ! Is this a single class covariogram or is this a cross covariogram?
-        if (length > 3 .and. vstrlist_search(strings,":")/=VSTRINGLIST_INDEX_UNKNOWN) then
-          !Covar case 1 class_name : cross_name
-          cross_name = vstrlist_index(strings,4)
-          ! TODO if the cross name doesn't exist
+        ! Handle "CLASS a:b%HSU" or "CLASS a : b % HSU"
+        ! Step 1: Detect cross variogram (:)
+        if (length > 3 .and. vstrlist_search(strings, ":") /= VSTRINGLIST_INDEX_UNKNOWN) then
+          ! CLASS a : b syntax
+          class_name = vstrlist_index(strings, 2)
+          cross_name = vstrlist_index(strings, 4)
           iscross = .true.
-        else if (vstring_match(class_name,"*:*")) then
-          !Covar case 2 No space class_name:cross_name
-          class_temp = vstrlist_split(class_name, ":")
+        else if (vstring_match(vstrlist_index(strings,2), "*:*")) then
+          ! CLASS a:b%HSU or a:b
+          class_temp = vstrlist_split(vstrlist_index(strings,2), ":")
           class_name = vstrlist_index(class_temp, 1)
           cross_name = vstrlist_index(class_temp, 2)
-          ! TODO if the cross name doesn't exist
           iscross = .true.
-        else if (vstring_match(class_name,"*%*")) then
+        else
+          ! Single class
+          class_name = vstrlist_index(strings,2)
+          cross_name = class_name
+        end if
+
+        ! Step 2: Detect HSU (%), from either side
+        if (length > 3 .and. vstrlist_search(strings, "%") /= VSTRINGLIST_INDEX_UNKNOWN) then
+          ! CLASS a : b % HSU
+          hsu_name = vstrlist_index(strings,6)
+          ishsu = .true.
+        else if (vstring_match(cross_name, "*%*")) then
+          ! CLASS a:b%HSU
+          class_temp = vstrlist_split(cross_name, "%")
+          cross_name = vstrlist_index(class_temp, 1)
+          hsu_name   = vstrlist_index(class_temp, 2)
+          ishsu = .true.
+        else if (vstring_match(class_name, "*%*")) then
+          ! CLASS a%HSU
           class_temp = vstrlist_split(class_name, "%")
           class_name = vstrlist_index(class_temp, 1)
-          hsu_name = vstrlist_index(class_temp, 2)
+          hsu_name   = vstrlist_index(class_temp, 2)
           ishsu = .true.
         end if
 
