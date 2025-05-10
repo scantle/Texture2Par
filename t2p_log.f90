@@ -97,6 +97,19 @@ module m_log
 
     ! Options
     call t2p%opt%write_input_summary() ! Move here?
+    
+    ! Connections Array
+    call t2p%write_connections()
+    
+    ! Variograms
+    
+    ! Global Pilot Points
+    
+    ! Aquifer Class Pilot Points
+    
+    ! Aquitard Global Pilot Points
+    
+    ! Aquitard Class Pilot Points
 
   end subroutine write_input_summary
 

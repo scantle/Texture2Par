@@ -100,6 +100,7 @@ module m_T2P
     procedure,public   :: write_dataset_files
     procedure,public   :: write_dataset_file
     procedure,public   :: write_dataset_file_aqtard
+    procedure,public   :: write_connections
     procedure,public,nopass   :: write_status
     procedure,public,nopass   :: write_minor_status
 
@@ -1034,6 +1035,49 @@ module m_T2P
   end subroutine write_dataset_file_aqtard
 
 !-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_connections(this)
+    use m_global, only: log
+    use m_vstringlist
+    use m_vstring, only: vstring_cast
+    implicit none
+    class(t_T2P), intent(inout)  :: this
+    integer                      :: i,j
+    character(128)               :: line, temp, id
+    
+    if (this%has_covar) then
+      call log%write_line('-- INTERPOLATION SETUP: [Primary] : [Secondary]', blank_start=1)
+      do i=1, this%nprimary
+        write(id, '(i)') i
+        call vstring_cast(vstrlist_index(this%class_names, i), temp)
+        line = '  ' // trim(adjustl(id)) // '. ' // trim(temp) // ' :'
+        if (this%nsecondary_by_id(i)==0) then
+          line = line // ' [NONE]'
+          cycle
+        end if
+        do j=1, this%nsecondary_by_id(i)
+          call vstring_cast(vstrlist_index(this%class_names, this%connections(j+1,i)), temp)
+          if (j==1) then
+            line = trim(line) // ' ' // trim(temp)
+          else
+            line = trim(line) // ', ' // trim(temp)
+          end if
+        end do
+        call log%write_line(line)
+      end do
+    else
+      call log%write_line('-- INTERPOLATION SETUP: (no covariates)', blank_start=1)
+      do i=1, this%nprimary
+        write(id, '(2x,i)') i
+        call vstring_cast(vstrlist_index(this%class_names, i), temp)
+        line = trim(id) // '. ' // trim(temp)
+        call log%write_line(line)
+      end do
+    end if
+    
+  end subroutine write_connections
+  
+!-------------------------------------------------------------------------------------------------!
 
   subroutine write_status(line, blank_start, blank_end)
     use m_global, only: log
@@ -1090,6 +1134,8 @@ module m_T2P
 #endif
 
   end subroutine write_minor_status
+
+!-------------------------------------------------------------------------------------------------!
 
 !-------------------------------------------------------------------------------------------------!
 ! ACCESS PROCEDURES

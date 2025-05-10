@@ -231,7 +231,6 @@ module m_file_io
     integer, intent(in)               :: i
     logical, optional                 :: toupper
     character(*),intent(out)          :: out_char
-    ! TODO - how to do error handling on this one?
     if (present(toupper)) then
       if (toupper) then
         call vstring_cast(vstring_toupper(vstrlist_index(strings, i)), out_char)
