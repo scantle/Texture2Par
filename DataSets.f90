@@ -82,8 +82,6 @@ module m_datasets
     nodecol        & ! optional; column name of the node number
     
   )
-    !
-    ! Base class method, should not be run
     implicit none
     character(*)               :: fname
     type(t_layerdata),pointer  :: layerdata(:)  ! (nlayers)

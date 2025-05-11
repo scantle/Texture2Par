@@ -70,6 +70,7 @@ module m_interpolator
     procedure              :: setup
     procedure              :: predict_point
     procedure              :: wsize_estimate
+    procedure              :: write_summary
     procedure              :: finalize
   end type t_interpolator
 !-------------------------------------------------------------------------------------------------!
@@ -353,7 +354,19 @@ end subroutine single_point_full_weight
   end function wsize_estimate
 
 !-------------------------------------------------------------------------------------------------!
+!> Writes any parameter data necessary to the log file
+!! (Generally for kriging routines to write out variograms)
+!!
+!! @param this The interpolator object.
+  subroutine write_summary(this)
+    ! To be overwritten where necessary
+    implicit none
+    class(t_interpolator),intent(inout)  :: this
+  
+  end subroutine write_summary
 
+!-------------------------------------------------------------------------------------------------!
+  
   subroutine finalize(this)
     implicit none
     class(t_interpolator),intent(inout)  :: this

@@ -70,6 +70,7 @@ module m_log
     implicit none
     type(t_file_writer),pointer  :: log
     type(t_t2p)                  :: t2p
+    character(128)               :: line
 
     call log%write_line('--- INPUT SUMMARY ---', blank_start=1)
 
@@ -102,6 +103,20 @@ module m_log
     call t2p%write_connections()
     
     ! Variograms
+    if (t2p%opt%INTERP_METHOD=='OK'.or.t2p%opt%INTERP_METHOD=='SK') then
+      if (t2p%opt%INTERP_ORDER=="BEFORE") write(line,'(a)') '-- CLASS VARIOGRAMS --'
+      if (t2p%opt%INTERP_ORDER=="AFTER") write(line,'(a)')  '-- PARAM VARIOGRAMS --'
+      if (t2p%opt%INTERP_DIM==2) then
+        call log%write_line(trim(line) //'                  struct type  nugget    sill    min_range    max_range  azimuth', blank_start=1)
+      else if (t2p%opt%INTERP_DIM==3) then
+        ! this%nugget, this%sill, this%a_hmin, this%a_hmax, this%a_vert, this%ang1, this%ang2, this%ang3
+        call log%write_line(trim(line) //'                  struct type  nugget    sill    min_range    max_range   vert_range  azimuth      dip     roll', blank_start=1)
+      end if
+      call t2p%interp_data%write_summary()
+       write(line,'(a)') '-- PILOT POINT VARIOGRAM --'
+       call log%write_line(trim(line) //'             struct type  nugget    sill    min_range    max_range  azimuth', blank_start=1)
+      call t2p%interp_pp%write_summary()
+    end if
     
     ! Global Pilot Points
     

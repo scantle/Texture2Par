@@ -45,6 +45,7 @@ module m_kriging
     procedure               :: pset_cok
     procedure               :: filter_near_points
     procedure               :: write_amat, write_rhs_array, write_inear
+    procedure               :: write_summary => write_summary_krige
     procedure               :: finalize => finalize_krige
   end type t_krige
 !-------------------------------------------------------------------------------------------------!
@@ -364,7 +365,32 @@ end subroutine doolittle
     end subroutine write_inear
 
 !-------------------------------------------------------------------------------------------------!
+    
+subroutine write_summary_krige(this)
+  implicit none
+  class(t_krige),intent(inout)  :: this
+  integer                       :: i,j
+  character(len=256)            :: line, struct
+  integer, dimension(3)         :: idx
 
+  do i=1, this%nvario
+    idx = findloc(this%global_vario_idx, i)
+
+    write(line, '(A9,I2,A6,I2,A13,I2,A1,I2,A1)') " * Vario ", i, ": HSU=", idx(1), " Class Pair=(", idx(2), ",", idx(3), ")"
+    do j=1, this%nstruct(i)
+      if (j==1) then
+        write(struct, '(i5,2x,a)') j, trim(adjustl(this%variograms(j,i)%write_variogram()))
+        call log%write_line(trim(line) // ' - ' // trim(struct))
+      else
+        write(struct, '(38x,i5,2x,a)') j, this%variograms(j,i)%write_variogram()
+        call log%write_line(trim(struct))
+      end if
+    end do
+  end do
+end subroutine write_summary_krige
+
+!-------------------------------------------------------------------------------------------------!
+  
   subroutine finalize_krige(this)
     implicit none
     class(t_krige),intent(inout)  :: this

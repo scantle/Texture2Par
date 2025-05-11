@@ -7,6 +7,7 @@ module m_vario
 type :: t_vgm
 ! Variogram or cross variogram structure
   integer                 :: itype       ! Variogram model (0-linear, 1-spherical, 2-exponential)
+  integer                 :: ndim        ! Number of dimensions
   real                    :: sill        ! Contribution of each structure, when summed (with nugget) the sill
   real                    :: a_hmax      ! Range: distance where data are no longer correlated
   real                    :: a_hmin      ! Range min (equal to amax when anis1/anis2 ==1)
@@ -26,6 +27,7 @@ type :: t_vgm
     procedure,public        :: sqdist_vec
     procedure,public        :: cov
     procedure,public        :: cov_vec
+    procedure,public        :: write_variogram
 end type t_vgm
 
 !-------------------------------------------------------------------------------------------------!
@@ -81,6 +83,7 @@ end type t_vgm
       !nnear read outside of routine
     end if
 
+    vgm%ndim = interp_dim
     ! TODO - more parameters for search ellipsoid? Read elsewhere?
 
     ! initialize
@@ -213,17 +216,17 @@ end type t_vgm
 
 !-------------------------------------------------------------------------------------------------!
 
-  function sqdist_vec(this, dim, p, points, n)
+  function sqdist_vec(this, p, points, n)
     implicit none
     class(t_vgm)            :: this
-    integer, intent(in)     :: dim, n
-    real    , intent(in)    :: p(dim)
+    integer, intent(in)     :: n
+    real    , intent(in)    :: p(this%ndim)
     real                    :: sqdist_vec(n)
-    real    , intent(in)    :: points(dim, n)
-    real                    :: dd(dim, n)
+    real    , intent(in)    :: points(this%ndim, n)
+    real                    :: dd(this%ndim, n)
 
     dd = points - spread(p, 2, n)
-    sqdist_vec = sum(matmul(this%rotmat(1:dim, 1:dim), dd)**2, dim=1)
+    sqdist_vec = sum(matmul(this%rotmat(1:this%ndim, 1:this%ndim), dd)**2, dim=1)
 
   end function sqdist_vec
 
@@ -323,6 +326,36 @@ end type t_vgm
     end if
 
   end function cov_vec
+!-------------------------------------------------------------------------------------------------!
+  
+  function write_variogram(this) result(line)
+    implicit none
+    class(t_vgm), intent(in) :: this
+    character(len=256)       :: line
+
+    character(len=3), dimension(7) :: model_names
+    character(len=3) :: model
+    integer :: id
+
+    ! Model name lookup
+    model_names = ["SPH", "EXP", "HOL", "GAU", "POW", "CIR", "LIN"]
+    id = this%itype
+
+    if (id >= 1 .and. id <= size(model_names)) then
+      model = model_names(id)
+    else
+      model = "UNK"
+    end if
+
+    if (this%ndim == 2) then
+      write(line, '(A,1X,F7.4,1X,F7.4,1X,ES12.4,1X,ES12.4,1X,F8.2)') &
+          trim(model), this%nugget, this%sill, this%a_hmin, this%a_hmax, this%ang1
+    else if (this%ndim == 3) then
+      write(line, '(A,1X,F7.4,1X,F7.4,1X,ES12.4,1X,ES12.4,1X,ES12.4,1X,F8.2,1X,F5.2,1X,F5.2)') &
+          trim(model), this%nugget, this%sill, this%a_hmin, this%a_hmax, this%a_vert, this%ang1, this%ang2, this%ang3
+    end if
+  end function write_variogram
+
 !-------------------------------------------------------------------------------------------------!
 
   !function cov(this, x1, y1, z1, x2, y2, z2) result(value)
