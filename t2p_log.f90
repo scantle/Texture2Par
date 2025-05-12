@@ -118,13 +118,15 @@ module m_log
       call t2p%interp_pp%write_summary()
     end if
     
-    ! Global Pilot Points
-    
     ! Aquifer Class Pilot Points
-    
-    ! Aquitard Global Pilot Points
+    call log%write_line('--- AQUIFER PILOT POINTS ---', blank_start=1)
+    call t2p%pilot_points%write_pp_table(is_aquitard=.false.)
     
     ! Aquitard Class Pilot Points
+    if (t2p%fmodel%has_aquitards) then
+      call log%write_line('--- AQUITARD PILOT POINTS ---', blank_start=1)
+      call t2p%pilot_points%write_pp_table(is_aquitard=.true.)
+    end if
 
   end subroutine write_input_summary
 

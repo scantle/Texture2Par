@@ -31,6 +31,7 @@ module m_pilotpoints
       procedure,public             :: init_pilotpoints
       generic                      :: initialize => init_pilotpoints
       procedure,public             :: read_pp_line
+      procedure,public             :: write_pp_table
       procedure,public             :: finalize => finalize_pilotpoints
   
   end type t_pilotpoints
@@ -168,6 +169,54 @@ module m_pilotpoints
     end select
   
   end subroutine read_pp_line
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine write_pp_table(this, is_aquitard)
+    use m_global, only: log
+    use m_file_io, only: t_file_writer
+    implicit none
+    class(t_pilotpoints), intent(in)     :: this
+    logical, intent(in)                  :: is_aquitard
+
+    integer, allocatable :: props(:)
+    character(len=6), allocatable :: prop_names(:)
+    character(len=256) :: header, line
+    integer :: i, j, k, nprops
+    real :: val
+
+    ! Set up properties and names
+    if (is_aquitard) then
+      props = aquitard_props
+      allocate(prop_names(naquitard_props))
+      prop_names = ["Kmin", "Kmax", "Aniso", "Kd", "KHp", "KVp", "STp"]
+    else
+      props = [(k, k=1,nproperties)]
+      allocate(prop_names(nproperties))
+      prop_names = ["Kmin", "Kmax", "Ss", "Sy", "Aniso", "Kd", "KHp", "KVp", "STp"]
+    end if
+
+    nprops = size(props)
+
+    ! Header line
+    header = "   ID  Class             X            Y  Zone "
+    do k = 1, nprops
+      write(header(len_trim(header)+1:), '(A13)') trim(prop_names(k))
+    end do
+    call log%write_line(trim(header))
+
+    ! Loop over classes, then pilot points
+    do j = 1, size(this%values, 3)  ! class_id
+      do i = 1, this%npp
+        write(line, '(I5,2X,I5,2X,F12.2,1X,F12.2,1X,I5)') this%pp_id(i), j, this%grid%coords(1,i), this%grid%coords(2,i), this%category(i)
+        do k = 1, nprops
+          write(line(len_trim(line)+2:), '(ES12.4)') this%values(i, props(k), j)
+        end do
+        call log%write_line(trim(line))
+      end do
+    end do
+
+  end subroutine write_pp_table
 
 !-------------------------------------------------------------------------------------------------!  
   
