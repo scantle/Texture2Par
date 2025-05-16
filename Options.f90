@@ -71,7 +71,7 @@ module m_options
     implicit none
     class(t_options),intent(inout)         :: this
 
-    this%MAX_VSTRUCT          = -1
+    this%MAX_VSTRUCT          = 1
     !this%DATA_CLASSES         = -1
     this%NO_DATA_VALUE        = NODATA
     this%IDW_POWER            = 2.0
