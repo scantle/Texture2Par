@@ -1,5 +1,5 @@
 module m_interpolator
-
+  use m_global, only: log
   use m_weights, only: t_weights
   use m_grid, only: t_grid, create_grid_object
   use m_datasets, only: t_dataset, t_layerdata
@@ -140,6 +140,7 @@ module m_interpolator
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
     integer                               :: i, j, cat, count_cat
+    logical                               :: has_data
 
     do i=1, size(catlist)
       ! Setup for each category
@@ -152,7 +153,7 @@ module m_interpolator
       end do
 
       if (count_cat>1) then ! more than one obs point
-        call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+        call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
         do j=1, to_grid%n
           if (.not.active(j)) cycle
           ! Interpolate for each point
@@ -184,6 +185,7 @@ module m_interpolator
     real                                  :: fake_weights(1,1), v_adjust
     !integer                               :: ppd(size(obs_data))  !LS moved to sosa weights
     character(100)                        :: wtfile
+    logical                               :: has_data
     
     ! TODO need to move all weight-related operations to separate routines. This is too messy.
 
@@ -219,7 +221,14 @@ module m_interpolator
       do i=1, size(catlist)
         ! Setup for each category
         cat = catlist(i)
-        call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, fake_weights, opt)
+        call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, fake_weights, opt, has_data)
+        
+        if (.not.has_data) then
+          ! TODO - setup runtime warnings through Error Handler
+          write(*,'(2(a,i0))') 'Warning - no data for layer ', layer, ' in category ', cat
+          write(log%unit,'(2(a,i0))') 'Warning - no data for layer ', layer, ' in category ', cat
+          cycle
+        end if
 
         ! Calculate weights
         do j=1, to_grid%n
@@ -291,7 +300,8 @@ end subroutine single_point_full_weight
 !! @param to_cats Categories for the target grid points.
 !! @param weights Weights to be calculated during interpolation.
 !! @param opt T2P Options object.
-  subroutine setup(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+!! @param has_data Logical, was there no data for this category/layer/data combo??
+  subroutine setup(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
     ! Abstract Base Class method - should not be called
     implicit none
     class(t_interpolator),intent(inout)   :: this
@@ -302,6 +312,7 @@ end subroutine single_point_full_weight
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
     type(t_options),intent(in)            :: opt
+    logical,intent(inout)                 :: has_data
 
   end subroutine setup
 
@@ -381,7 +392,7 @@ end subroutine single_point_full_weight
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine setup_idw(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+  subroutine setup_idw(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
     use m_global, only             : NODATA
     implicit none
     class(t_idw),intent(inout)    :: this
@@ -392,12 +403,14 @@ end subroutine single_point_full_weight
     integer,intent(in)            :: cat
     integer,intent(in)            :: to_cats(:)
     type(t_options),intent(in)    :: opt
+    logical,intent(inout)         :: has_data
     type(t_layerdata),pointer     :: p
     logical                       :: na_mask(obs_data(1)%grid%n)
 
     this%nobs = obs_data(1)%grid%n
     this%power = opt%IDW_POWER
     na_mask = .true.
+    has_data = .false.
 
     allocate(this%catmask(this%nobs))
     ! For layer dataset, ignore all NA values
@@ -406,6 +419,7 @@ end subroutine single_point_full_weight
         na_mask = .not. any(p%values(1:, :) == NODATA, dim=1)
     end select
     this%catmask = (obs_data(1)%category == cat) .and. (na_mask)
+    if (count(this%catmask)>1) has_data = .true.
   end subroutine setup_idw
 
 !-------------------------------------------------------------------------------------------------!

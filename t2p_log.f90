@@ -19,7 +19,7 @@ module m_log
     ! To avoid a circular dependency with the FileIO class
     log_unit = log%unit
 
-    call log%write_line('    _________   _______  ________   ')
+    call log%write_line('   _________   _______  ________   ')
     call log%write_line('--|\___   ___\/  ___  \|\   __  \ ----')
     call log%write_line('   \|___ \  \_/__/|_/  /\ \  \|\  \ ')
     call log%write_line('------- \ \  \|__|//  / /\ \   ____\----')

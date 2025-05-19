@@ -402,16 +402,16 @@ subroutine read_variogram_block(t2p, reader)
           ! CLASS a : b % HSU
           hsu_name = vstrlist_index(strings,6)
           ishsu = .true.
-        else if (vstring_match(cross_name, "*%*")) then
-          ! CLASS a:b%HSU
-          class_temp = vstrlist_split(cross_name, "%")
-          cross_name = vstrlist_index(class_temp, 1)
-          hsu_name   = vstrlist_index(class_temp, 2)
-          ishsu = .true.
         else if (vstring_match(class_name, "*%*")) then
           ! CLASS a%HSU
           class_temp = vstrlist_split(class_name, "%")
           class_name = vstrlist_index(class_temp, 1)
+          hsu_name   = vstrlist_index(class_temp, 2)
+          ishsu = .true.
+        else if (vstring_match(cross_name, "*%*")) then
+          ! CLASS a:b%HSU
+          class_temp = vstrlist_split(cross_name, "%")
+          cross_name = vstrlist_index(class_temp, 1)
           hsu_name   = vstrlist_index(class_temp, 2)
           ishsu = .true.
         end if

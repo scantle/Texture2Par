@@ -245,7 +245,7 @@ end subroutine doolittle
 
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+  subroutine setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
   !  ! Does everything common to all kriging
   !  ! Intended to be called by subclasses during their setup
     implicit none
@@ -257,6 +257,7 @@ end subroutine doolittle
     integer,intent(in)             :: cat
     integer,intent(in)             :: to_cats(:)
     type(t_options),intent(in)     :: opt
+    logical,intent(inout)          :: has_data
     integer                        :: i, zone_id
 
     ! Defaults
@@ -266,6 +267,7 @@ end subroutine doolittle
     this%nsets  = size(obs_data)
     this%no_negative_weights = opt%CORRECT_WEIGHTS
     this%write_matrix = opt%WRITE_MATRIX
+    has_data = .true.
 
     ! If MAX_SECONDARY_DIST is zero, will use 3x the largest structure range
     this%max_sdist = opt%MAX_SECONDARY_DIST
@@ -412,7 +414,7 @@ end subroutine write_summary_krige
 ! GLOBAL KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine setup_sk(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+  subroutine setup_sk(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
     implicit none
     class(t_globkrige),intent(inout)      :: this
     class(t_dataset)                      :: obs_data(:)
@@ -422,13 +424,14 @@ end subroutine write_summary_krige
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
     type(t_options),intent(in)            :: opt
+    logical,intent(inout)                 :: has_data
     !integer,pointer           :: npoints(i)            ! Number of points (in category) to be used for simple kriging
     !integer,allocatable       :: useidx(:,:)           ! Indices of points to use for simple kriging, within category, by (npoints, nset)
     ! Local
     integer                               :: i,ier,class_id,matsize,mat_tot
 
     ! Call super setup
-    call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+    call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
 
     ! TODO: Could these instead be local?
     if (allocated(this%npoints)) deallocate(this%npoints)
@@ -539,7 +542,7 @@ end subroutine write_summary_krige
 ! TREE-BASED KRIGING CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine setup_ok(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+  subroutine setup_ok(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
     implicit none
     class(t_treekrige),intent(inout)       :: this
     class(t_dataset)                      :: obs_data(:)
@@ -549,11 +552,12 @@ end subroutine write_summary_krige
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
     type(t_options),intent(in)            :: opt
+    logical,intent(inout)                 :: has_data
     ! Local
     integer                     :: i,class_id,matsize,vidx, mat_tot
 
     ! Call super setup
-    call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+    call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
     ! OK uses unbias
     this%unbias = 1
 
@@ -567,11 +571,12 @@ end subroutine write_summary_krige
     do i=1, this%nsets
       class_id = obs_idx(i)
       if (i>1) class_id = 1
-      call obs_data(i)%build_tree_by_category(cat,class_id) !this%variograms(1,i)%rotmat(1:this%ndim,1:this%ndim))
-      ! TODO Warn that there is so little data? Do we even have enough information to warn?
-      ! In this scope we don't if it's pp or data...
-      ! Maybe we could check before here?
-      this%usenear(i) = min(this%usenear(i), obs_data(i)%grid%tree%n)
+      call obs_data(i)%build_tree_by_category(cat,class_id, has_data=has_data)
+      if (has_data) then
+        this%usenear(i) = min(this%usenear(i), obs_data(i)%grid%tree%n)
+      else
+        this%usenear(i) = 0
+      end if
     end do
 
     this%maxnear =  maxval(this%usenear)  !this%nnear(1)

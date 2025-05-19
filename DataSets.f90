@@ -178,7 +178,7 @@ module m_datasets
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine build_tree_by_category(this, cat, class_idx, rotmat)
+  subroutine build_tree_by_category(this, cat, class_idx, rotmat, has_data)
     implicit none
     class(t_dataset),intent(inout)  :: this
     integer, intent(in)             :: cat, class_idx
@@ -186,7 +186,10 @@ module m_datasets
     logical, allocatable            :: combined_mask(:)
     real    ,optional               :: rotmat(:,:) ! Rotation Matrix
     integer                         :: i
+    logical,intent(out)             :: has_data
 
+    has_data = .true.
+    
     call this%grid%burn_tree()  ! Clear out previous tree
     !allocate(catmask(this%grid%n), na_mask(this%grid%n))
     allocate(combined_mask(this%grid%n))
@@ -194,15 +197,19 @@ module m_datasets
     ! Compute combined mask in a single loop - in category & not NA
     ! Should consider parallelization
     select type(this)
-        class is (t_layerdata)
-            do i = 1, this%grid%n
-                combined_mask(i) = (this%category(i) == cat) .and. (this%values(class_idx, i) /= NODATA)
-            end do
-        class default
-          combined_mask = (this%category == cat)
+      class is (t_layerdata)
+        do i = 1, this%grid%n
+          combined_mask(i) = (this%category(i) == cat) .and. (this%values(class_idx, i) /= NODATA)
+        end do
+      class default
+        combined_mask = (this%category == cat)
     end select
     
-    call this%grid%build_tree(combined_mask, rotmat=rotmat)
+    if (count(combined_mask) > 0) then  ! Should min_points be a setting??
+      call this%grid%build_tree(combined_mask, rotmat=rotmat)
+    else
+      has_data = .false.
+    end if
     deallocate(combined_mask)
 
   end subroutine build_tree_by_category

@@ -335,9 +335,10 @@ module m_file_io
         ! External command, continue reading in new file
         call vstring_new(line_string, trim(adjustl(line)))
         strings = vstrlist_split(line_string)
-        ext_idx = vstrlist_search(strings, 'EXTERNAL')
+        ext_idx = vstrlist_search(strings, 'EXTERNAL*')  ! technically, EXTERNAL_FILE
         ! For now, only handle if it's the first item
         ! Second item means first item was a ID, and that's trickier
+        ! Could use EXTERNAL as a keyword for when there's an ID, *_FILE for whole blocks
         if (ext_idx>1) then
           backspace(this%unit)
           exit

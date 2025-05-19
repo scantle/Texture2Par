@@ -525,7 +525,7 @@ module m_T2P
       class is(t_krige)
         allocate(p%cat2zone(this%fmodel%hsus%ncat))
         p%cat2zone = 0
-        call p%init_zones(this%fmodel%hsus%strlist)
+        call p%init_zones(this%fmodel%hsus%strlist_glo)
     end select
       
     ! Setup PP zone variograms - don't have different variograms (yet)

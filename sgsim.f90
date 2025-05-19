@@ -356,13 +356,14 @@ module m_sgsim
     real                                  :: results(:)
     integer,intent(in)                    :: catlist(:), to_cats(:), layer
     type(t_options),intent(in)            :: opt
+    logical                               :: has_data
 
     ! local
     integer                               :: i, j, iset, cat,  nobs1
     real    , allocatable                 :: weights(:,:)
 
     ! Call super setup
-    call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt)
+    call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
 
     ! OK uses unbias
     this%unbias = 1
