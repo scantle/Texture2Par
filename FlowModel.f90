@@ -1455,6 +1455,7 @@ module m_flow_model
     
     topfile = ''
     botfile = ''
+    iboundfile = ''
     uniform_ibound = .false.
     
     reader => open_file_reader(this%grd_file)

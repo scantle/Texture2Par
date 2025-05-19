@@ -113,20 +113,25 @@ module m_log
         call log%write_line(trim(line) //'                  struct type  nugget    sill    min_range    max_range   vert_range  azimuth      dip     roll', blank_start=1)
       end if
       call t2p%interp_data%write_summary()
-       write(line,'(a)') '-- PILOT POINT VARIOGRAM --'
-       call log%write_line(trim(line) //'             struct type  nugget    sill    min_range    max_range  azimuth', blank_start=1)
-      call t2p%interp_pp%write_summary()
+      if (.not. t2p%opt%ONLY_TEXTURE) then
+        write(line,'(a)') '-- PILOT POINT VARIOGRAM --'
+        call log%write_line(trim(line) //'             struct type  nugget    sill    min_range    max_range  azimuth', blank_start=1)
+        call t2p%interp_pp%write_summary()
+      end if
     end if
     
     ! Aquifer Class Pilot Points
-    call log%write_line('--- AQUIFER PILOT POINTS ---', blank_start=1)
-    call t2p%pilot_points%write_pp_table(is_aquitard=.false.)
+    if (.not. t2p%opt%ONLY_TEXTURE) then
+      call log%write_line('--- AQUIFER PILOT POINTS ---', blank_start=1)
+      call t2p%pilot_points%write_pp_table(is_aquitard=.false.)
     
-    ! Aquitard Class Pilot Points
-    if (t2p%fmodel%has_aquitards) then
-      call log%write_line('--- AQUITARD PILOT POINTS ---', blank_start=1)
-      call t2p%pilot_points%write_pp_table(is_aquitard=.true.)
+      ! Aquitard Class Pilot Points
+      if (t2p%fmodel%has_aquitards) then
+        call log%write_line('--- AQUITARD PILOT POINTS ---', blank_start=1)
+        call t2p%pilot_points_aquitard%write_pp_table(is_aquitard=.true.)
+      end if
     end if
+    call log%write_line('')
 
   end subroutine write_input_summary
 

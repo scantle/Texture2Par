@@ -8,7 +8,7 @@ module m_pilotpoints
   integer,parameter           :: nproperties = 9  ! Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, STp
   integer,parameter           :: global_props(3) = (/7,8,9/)
   integer,parameter           :: nglobal_props = size(global_props)
-  integer,parameter           :: aquitard_props(7) = (/1,2,5,6,7,8,9/)
+  integer,parameter           :: aquitard_props(6) = (/1,2,5,6,7,8/)
   integer,parameter           :: naquitard_props = size(aquitard_props)
   
 !-------------------------------------------------------------------------------------------------!
@@ -189,7 +189,7 @@ module m_pilotpoints
     if (is_aquitard) then
       props = aquitard_props
       allocate(prop_names(naquitard_props))
-      prop_names = ["Kmin", "Kmax", "Aniso", "Kd", "KHp", "KVp", "STp"]
+      prop_names = ["Kmin", "Kmax", "Aniso", "Kd", "KHp", "KVp"]
     else
       props = [(k, k=1,nproperties)]
       allocate(prop_names(nproperties))
