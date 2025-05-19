@@ -154,6 +154,12 @@ module m_interpolator
 
       if (count_cat>1) then ! more than one obs point
         call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
+        if (.not.has_data) then
+          ! TODO - setup runtime warnings through Error Handler
+          write(*,'(a,i0)') 'Warning - no data for pp in this array for category ', cat
+          write(log%unit,'(a,i0)') 'Warning - no data for pp in this array for category ', cat
+          cycle
+        end if
         do j=1, to_grid%n
           if (.not.active(j)) cycle
           ! Interpolate for each point
