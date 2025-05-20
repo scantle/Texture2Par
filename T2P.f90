@@ -790,7 +790,13 @@ module m_T2P
         where(.not.this%fmodel%active_nodes_bylay(1:,k)) dout(k)%values(i,1:) = NODATA
       end do
       ! If we need to, infer the last class
-      if (this%opt%INFER_LAST_CLASS) dout(k)%values(this%nprimary+1,1:) = 1.0 - sum(dout(k)%values(1:this%nprimary,1:), dim=1)
+      if (this%opt%INFER_LAST_CLASS) then
+        do i=1, size(dout(k)%values, dim=2)
+          if (this%fmodel%active_nodes_bylay(i,k)) then
+            dout(k)%values(this%nprimary+1,i) = 1.0 - sum(dout(k)%values(1:this%nprimary,i), dim=1)
+          end if
+        end do
+      end if
     end do
 
   end subroutine interpolate_model

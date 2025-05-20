@@ -90,7 +90,7 @@ module m_datasets
     integer,intent(in),optional:: gridncol, mdim, modelnodes(:)
     character(*),intent(in),optional :: lname, rownames(0:), nodecol
     ! local
-    integer                    :: inode, igrid, k, row, col, unit, ncol, ndim, nlayers
+    integer                    :: inode, igrid, i, k, row, col, unit, ncol, ndim, nlayers
     integer, allocatable       :: inodes(:)
     integer                    :: nnodes
     character(:),allocatable   :: header, fmt, nodename
@@ -102,7 +102,12 @@ module m_datasets
     if (present(modelnodes)) then
       inodes = modelnodes
     else
-      inodes = [(inode, inode=1,size(layerdata(1)%values, dim=2))]
+      nnodes = size(layerdata(1)%values, dim=2)
+      allocate(inodes(nnodes))
+      !inodes = [(inode, inode=1,size(layerdata(1)%values, dim=2))]
+      do i = 1, nnodes
+        inodes(i) = i
+      end do
     end if
     ndim = 2
     if (present(mdim)) ndim = mdim
