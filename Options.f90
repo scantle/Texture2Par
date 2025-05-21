@@ -46,6 +46,7 @@ module m_options
     logical                  :: CORRECT_WEIGHTS       ! Zero negative (kriging) weights and rebalance if true, see Deutsch (1996) (only for OK, COK)
     logical                  :: USE_MODEL_GSE         ! Use model cell ground surface elevation (GSE) rather than dataset GSEs for depth->elevation calcs
     logical                  :: PREDICT_INACTIVE      ! Predict texture/parameters for inactive cells (MODFLOW, IBOUND=0)
+    logical                  :: ANISOTROPIC_SEARCH    ! Use anisotropic setting for nearest neighbor search
 
     ! Internal Options (to be set by t2p%process_options)
     logical                  :: INTERP_SECOND_OK      ! Can the interpolator handle covariates?
@@ -105,10 +106,11 @@ module m_options
     this%CORRECT_WEIGHTS      = .false.
     this%USE_MODEL_GSE        = .false.
     this%PREDICT_INACTIVE     = .false.
+    this%ANISOTROPIC_SEARCH   = .false.
     this%INTERP_SECOND_OK     = .false.
     this%ASYMMETRIC_COV       = .false.
-    this%PP_WEIGHTS_TEXT       = .false.
-    this%GRID_WEIGHTS_TEXT     = .false.
+    this%PP_WEIGHTS_TEXT      = .false.
+    this%GRID_WEIGHTS_TEXT    = .false.
   end subroutine initialize
 
 !-------------------------------------------------------------------------------------------------!
@@ -221,6 +223,8 @@ subroutine read_options(this, reader)
         this%USE_MODEL_GSE        = .true.
       case("PREDICT_INACTIVE")
         this%PREDICT_INACTIVE     = .true.
+      case("ANISOTROPIC_SEARCH")
+        this%ANISOTROPIC_SEARCH   = .true.
       case DEFAULT
         call error_handler(1,reader%file,"Unknown Option Name: " // trim(id))
     end select

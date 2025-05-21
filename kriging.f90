@@ -580,7 +580,12 @@ end subroutine write_summary_krige
     do i=1, this%nsets
       class_id = obs_idx(i)
       if (i>1) class_id = 1
-      call obs_data(i)%build_tree_by_category(cat,class_id, has_data=has_data)
+      if (opt%ANISOTROPIC_SEARCH) then
+        vidx = this%vario_idx(1,i)
+        call obs_data(i)%build_tree_by_category(cat,class_id, rotmat=this%variograms(1,vidx)%rotmat(1:this%ndim,1:this%ndim), has_data=has_data)
+      else
+        call obs_data(i)%build_tree_by_category(cat,class_id, has_data=has_data)
+      end if
       if (has_data) then
         this%usenear(i) = min(this%usenear(i), obs_data(i)%grid%tree%n)
       else

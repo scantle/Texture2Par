@@ -481,7 +481,7 @@ subroutine read_variogram_block(t2p, reader)
           ! Read structure
           struct_id = item2int(strings, 1)
           nstruct(vario_id) = struct_id
-          
+
           !TODO validate struct_id
           ! Is the variogram line long enough?
           write(msg, '(2(a,i3))') 'variogram', vcount+1, ', structure', struct_id
@@ -500,6 +500,13 @@ subroutine read_variogram_block(t2p, reader)
               nnear(prime_vidx) = item2int(strings, maxread+1)
             end if
             vcount = vcount + 1
+          end if
+          if (t2p%opt%ANISOTROPIC_SEARCH .and. struct_id>1) then
+            ! check anisotropy
+            if (any(vgms(struct_id,vario_id)%rotmat /= vgms(1,vario_id)%rotmat)) then
+              call t2p%write_status("Different anisotropy are used while anisotropic search is on."//new_line('1')//&
+                                    "  Only the first structure anisotropy will be used.")
+            end if
           end if
         end do
         ! End of variogram structure reading, moves to next class variogram or end of block

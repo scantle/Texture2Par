@@ -60,7 +60,7 @@ module m_sgsim
     type(t_simgrid),intent(inout)         :: gridxy
 
     ! Local
-    integer                     :: i,class_id, mat_tot, success, k, addsim
+    integer                     :: i,class_id, mat_tot, success, k, addsim, vidx
     integer, allocatable        :: igrid(:)
 
     igrid = pack([(i,i=1,to_grid%n)], to_cats==cat)
@@ -119,7 +119,14 @@ module m_sgsim
           obsxy(k)%coords(:, :gridxy%n) = gridxy%coords
           obsxy(k)%mask  (   :gridxy%n) = .false.
         end if
-        obsxy(k)%tree => kdtree2_create(obsxy(k)%coords, success, dim=obsxy(k)%dim, sort=.false., rearrange=.false.)
+        if (opt%ANISOTROPIC_SEARCH) then
+          vidx = this%vario_idx(1,k)
+          obsxy(k)%tree => kdtree2_create(obsxy(k)%coords, success, dim=obsxy(k)%dim, sort=.false., rearrange=.false., &
+                                          rotmat=this%variograms(1,vidx)%rotmat(1:this%ndim,1:this%ndim))
+        else
+          obsxy(k)%tree => kdtree2_create(obsxy(k)%coords, success, dim=obsxy(k)%dim, sort=.false., rearrange=.false.)
+        end if
+
       end block
     end do
 
@@ -343,7 +350,7 @@ module m_sgsim
   end subroutine
 
   !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine calc_sgsim(this, obs_data, obs_idx, val_idx, to_grid, active, results, catlist, to_cats, opt, layer)
     use m_weights, only: t_sosa_weights
     use kdtree2_module
