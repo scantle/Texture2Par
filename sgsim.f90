@@ -234,7 +234,7 @@ module m_sgsim
     obsxy(1)%mask(idx) = .true.
 
     if (this%write_matrix) then
-      call this%write_inear(t2plog%unit, loc_usenear, inear)
+      !call this%write_inear(t2plog%unit, obsxy, loc_usenear, inear)
       call this%write_rhs_array(t2plog%unit)
       call this%write_weights(t2plog%unit)
     end if

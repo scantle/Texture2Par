@@ -33,7 +33,7 @@ module m_kriging
     integer,allocatable       :: vario_idx(:,:)          ! Variogram index given (class_id, class_id) for local classes passed to setup/point
     real   ,allocatable       :: w(:)                    ! Internally calculated weights
     integer,allocatable       :: pset_id(:)              ! ID vector used for kriging matrix
-    ! Some kriging-specific settings                     
+    ! Some kriging-specific settings
     logical                   :: no_negative_weights     ! Flag to zero negative weights and rebalance (True = zero, rebalance)
     logical                   :: write_matrix            ! Flag to write AMAT and RHS to log file
     ! Attributes for KD-tree and search parameters could be added here
@@ -159,7 +159,7 @@ end subroutine doolittle
   end subroutine initialize_kriging
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   function add_zonal_variogram(this, zone_name, class1, class2, opt, glo_nvario) result(zone_id)
     use m_vstring, only: t_vstring
     implicit none
@@ -178,7 +178,7 @@ end subroutine doolittle
       call vstrlist_new(this%zones)
       this%nzones = 0
     end if
-    
+
     ! Enforce symmetry
     i = min(class1, class2)
     j = max(class1, class2)
@@ -205,21 +205,21 @@ end subroutine doolittle
 
     ! Increment GLOBAL T2P nvario
     glo_nvario = glo_nvario + 1
-    
+
     ! Calculate new variogram index
     if (opt%ONLY_TEXTURE) then
       vgm_idx = glo_nvario
     else
       vgm_idx = glo_nvario - 1  ! Pilot Point is last
     end if
-    
+
     ! Assign variogram index symmetrically
     this%global_vario_idx(zone_id, i, j) = vgm_idx
     this%global_vario_idx(zone_id, j, i) = vgm_idx
   end function add_zonal_variogram
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine init_zones(this, glo_zone_names)
     use m_file_io, only: item2char
     use m_vstring, only: t_vstring, vstring_toupper
@@ -228,7 +228,7 @@ end subroutine doolittle
     type(t_vstringlist),intent(in) :: glo_zone_names
     integer                        :: i, cat_id
     character(32)                  :: badzone
-    
+
     ! Goal is to fill cat2zone so that the global HSUs can be mapped to the kriging object zones (HSUs)
     ! (and check that all the kriging zones passed exist!)
     do i=1, vstrlist_length(this%zones)
@@ -240,11 +240,11 @@ end subroutine doolittle
         this%cat2zone(cat_id) = i
       end if
     end do
-  
+
   end subroutine init_zones
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
   !  ! Does everything common to all kriging
   !  ! Intended to be called by subclasses during their setup
@@ -354,20 +354,28 @@ end subroutine doolittle
 
   !-------------------------------------------------------------------------------------------------!
 
-    subroutine write_inear(this, log_unit, usenear, inear)
+    subroutine write_inear(this, log_unit, obs_data, usenear, inear)
       implicit none
       class(t_krige),intent(inout)  :: this
+      type(t_dataset),intent(in)    :: obs_data(:)
       integer,intent(in)            :: log_unit, usenear(:), inear(:,:)
-      integer                       :: iset, i
+      integer                       :: iset, i, wi
+      character(len=45)             :: xyz='              x              y              z'
 
+      wi = 0
+      write(log_unit, '(A)') '   dataset     index'//xyz(1:this%ndim*15)//'         weight'
       do iset=1, this%nsets
-        write(log_unit, *) "* inear", iset
-        write(log_unit, "(20I10)") inear(:usenear(iset), iset)
+        do i=1, usenear(iset)
+          write(log_unit, "(2I10,99ES15.7)") iset, inear(i, iset), &
+            obs_data(iset)%grid%coords(1:this%ndim, inear(i, iset)), &
+            this%w(wi+i)
+        end do
+        wi = wi + usenear(iset)
       end do
     end subroutine write_inear
 
 !-------------------------------------------------------------------------------------------------!
-    
+
 subroutine write_summary_krige(this)
   implicit none
   class(t_krige),intent(inout)  :: this
@@ -392,7 +400,7 @@ subroutine write_summary_krige(this)
 end subroutine write_summary_krige
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine finalize_krige(this)
     implicit none
     class(t_krige),intent(inout)  :: this
@@ -531,6 +539,7 @@ end subroutine write_summary_krige
 
     if (this%write_matrix) then
       write(log%unit, '(/,A,i0)') 'DEBUG - POINT:',idx
+      write(log%unit, '(  A,9F12.3)') '  Coordinates:',p
       call this%write_rhs_array(log%unit)
     end if
 
@@ -628,6 +637,7 @@ end subroutine write_summary_krige
     call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, inear, loc_usenear, this%ndim)
     if (this%write_matrix) then
       write(log%unit, '(/,A,i0)') 'DEBUG - POINT:',idx
+      write(log%unit, '(  A,9F12.3)') '  Coordinates:',p
       call this%write_amat(log%unit)
     end if
     call decomp(this%matA, this%pset_id, matsize, ier)
@@ -680,7 +690,7 @@ end subroutine write_summary_krige
     end if
 
     if (this%write_matrix) then
-      call this%write_inear(log%unit, loc_usenear, inear)
+      call this%write_inear(log%unit, obs_data, loc_usenear, inear)
       call this%write_rhs_array(log%unit)
     end if
 
