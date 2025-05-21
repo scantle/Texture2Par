@@ -104,19 +104,24 @@ module m_grid
     type(kdtree2_result)         :: res(nnear)
     logical,intent(in),optional  :: mask(this%n)
     real(kdkind), target, optional  :: rotmat(:,:) ! Rotation Matrix
+    integer :: i
+    
+    if (nnear<this%n) then
+      if (.not. associated(this%tree)) call this%build_tree(mask=mask)
+      call kdtree2_n_nearest(this%tree, qpoint, nnear, res, rotmat)
 
-    if (.not. associated(this%tree)) call this%build_tree(mask=mask)
-    call kdtree2_n_nearest(this%tree, qpoint, nnear, res, rotmat)
-
-    ! Worth getting fancier than copying? Pointers?
-    if (allocated(this%true_idx)) then
-      ! Map indices back to original dataset
-      idx = this%true_idx(res(1:)%idx)
+      ! Worth getting fancier than copying? Pointers?
+      if (allocated(this%true_idx)) then
+        ! Map indices back to original dataset
+        idx = this%true_idx(res(1:)%idx)
+      else
+        idx = res(:)%idx
+      end if
+      dis = res(:)%dis
     else
-      idx = res(:)%idx
+      idx(1:this%n) = [(i, i=1,this%n)]
+      dis(1:this%n) = [(sum((qpoint(1:this%dim)-this%coords(1:this%dim, i))**2), i=1,this%n)] ! leland please confirm if this returns squared distance or distance?
     end if
-    dis = res(:)%dis
-
   end subroutine get_nnear
 
 !-------------------------------------------------------------------------------------------------!

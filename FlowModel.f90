@@ -294,7 +294,7 @@ module m_flow_model
 
     integer                   :: igrid
     do igrid = 1, size(this%grid)
-      if (.not. associated(this%grid(igrid)%ptrgrid%tree)) call this%grid(igrid)%ptrgrid%build_tree()
+      if (.not. associated(this%grid(igrid)%ptrgrid%tree) .and. this%grid(igrid)%ptrgrid%n>1) call this%grid(igrid)%ptrgrid%build_tree()
     end do
   end subroutine build_tree
 
@@ -1729,14 +1729,15 @@ module m_flow_model
     real, intent(in)        :: max_outside_dist
     integer                 :: cellids(4)
     real                    :: celldist(4),xmin,xmax,ymin,ymax,xl,yl,min_dist,dx,dy,dist
-    integer                 :: cell, i
+    integer                 :: cell, i, maxcell
 
     cell = 0
-    call this%grid(this%lay2grid(1))%ptrgrid%get_nnear(coords, 4, cellids, celldist, mask=this%active_nodes_flat)  ! do we need more than 4 for USG?
+    maxcell = min(4, this%grid(this%lay2grid(1))%ptrgrid%n)
+    call this%grid(this%lay2grid(1))%ptrgrid%get_nnear(coords, maxcell, cellids, celldist, mask=this%active_nodes_flat)  ! do we need more than 4 for USG?
 
     if (this%structured) then
       ! Check each cell center to see if well belongs
-      do i=1, 4
+      do i=1, maxcell
         call this%get_cell_local(cellids(i), xmin, xmax, ymin, ymax)
         call glo2loc(coords(1), coords(2), this%xoff, this%yoff, this%rot, xl, yl)
         if ((xl >= xmin).and.(xl < xmax).and.(yl >= ymin).and.(yl < ymax)) then
@@ -1750,7 +1751,7 @@ module m_flow_model
 
     ! If we didn't find it in a cell, was it at least within max_outside_dist of a cell edge?
     min_dist = HUGE(1.0)
-    do i=1, 4
+    do i=1, maxcell
       call this%get_cell_local(cellids(i), xmin, xmax, ymin, ymax)
       dx = max(0.0, max(xmin - xl, xl - xmax))  ! Distance to x edges
       dy = max(0.0, max(ymin - yl, yl - ymax))  ! Distance to y edges
