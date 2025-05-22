@@ -295,6 +295,7 @@ subroutine write_input_summary(this)
     if (this%CORRECT_WEIGHTS    ) logic_true = trim(logic_true) // "CORRECT_WEIGHTS"     // ","
     if (this%USE_MODEL_GSE      ) logic_true = trim(logic_true) // "USE_MODEL_GSE"       // ","
     if (this%PREDICT_INACTIVE   ) logic_true = trim(logic_true) // "PREDICT_INACTIVE"    // ","
+    if (this%ANISOTROPIC_SEARCH ) logic_true = trim(logic_true) // "ANISOTROPIC_SEARCH"  // ","
 
     if (len(trim(logic_true)) > no_true_len) then
       !call log%write_line(logic_true)

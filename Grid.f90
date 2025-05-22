@@ -120,7 +120,7 @@ module m_grid
       dis = res(:)%dis
     else
       idx(1:this%n) = [(i, i=1,this%n)]
-      dis(1:this%n) = [(sum((qpoint(1:this%dim)-this%coords(1:this%dim, i))**2), i=1,this%n)] ! leland please confirm if this returns squared distance or distance?
+      dis(1:this%n) = [(sum((qpoint(1:this%dim)-this%coords(1:this%dim, i))**2), i=1,this%n)]
     end if
   end subroutine get_nnear
 
