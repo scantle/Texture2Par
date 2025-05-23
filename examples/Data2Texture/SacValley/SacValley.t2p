@@ -1,0 +1,41 @@
+*==============================================================================
+* Texture2Par Main Input File
+*==============================================================================
+
+BEGIN OPTIONS
+  # Required Options
+  MAX_VSTRUCT         1
+  MAX_SECONDARY_DIST  5000
+  ONLY_TEXTURE
+  INFER_LAST_CLASS
+  INTERP_DIM          3
+  MAX_LOG_LENGTH      3 # meters
+  WRITE_NODE_FILES
+  WRITE_DATASET_FILES
+  MAX_OUTSIDE_DIST    5000
+  ANISOTROPIC_SEARCH
+END OPTIONS
+
+BEGIN FLOW_MODEL
+  TYPE MODFLOW
+  NAM_FILE      grid_mf/mf.nam
+  TEMPLATE_FILE grid_mf/mf.lpf1
+  XOFFSET       530500
+  YOFFSET       4195005.952
+  ROTATION      0
+END FLOW_MODEL
+
+BEGIN CLASSES
+  Coarse
+  Fine
+END CLASSES
+
+BEGIN DATASET
+  FILE     welllog_t2p2.tsv
+END DATASET
+
+BEGIN VARIOGRAMS
+  # Structure Vtype  Nugget   Sill  Range_min Range_max Range_vert ang1  ang2  ang3  nnear
+  CLASS Coarse                                              
+           1    Exp    0.00   0.1     12843    12843  106.5969  0.0  0.0  0.0  100
+END VARIOGRAMS
