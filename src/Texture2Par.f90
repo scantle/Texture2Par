@@ -29,7 +29,7 @@ program Texture2Par
   type(t_T2P)         :: t2p   ! main Texture2Par storage
 
   ! Write Flag
-  write(*,'(/,4x,a)') '             Texture2Par v2.0.0             '
+  write(*,'(/,4x,a)') '         Texture2Par v2.0.0-beta.1          '
   write(*,'(3x,a)') '----------------------------------------------'
   write(*,'(4x,a)')   'Copyright S.S. Papadopulos & Associates Inc.'
   write(*,*)  ! blank
