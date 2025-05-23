@@ -40,12 +40,12 @@
 *.suo
 
 # Generated folders
-Debug/**
-release/**
-x64/**
-Libraries/*/Release/**
-Libraries/*/x64/**
-Libraries/*/Debug/**
+build/Debug/**
+build/release/**
+build/x64/**
+src/Libraries/*/Release/**
+src/Libraries/*/x64/**
+src/Libraries/*/Debug/**
 .vs/*
 
 # Extras
@@ -54,4 +54,4 @@ Libraries/*/Debug/**
 *.lock
 
 *.vsidx
-Example*
+

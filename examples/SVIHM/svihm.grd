@@ -1,0 +1,9 @@
+# SVIHM Simple Grid File
+DX    100.0
+DY    100.0
+NX    210
+NY    440
+NZ    2
+TOP EXTERNAL top.dat
+BOT EXTERNAL bot.dat
+IBOUND EXTERNAL active_cells.dat

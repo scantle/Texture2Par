@@ -15,10 +15,10 @@ FLFLAGS =
 
 # set src dir
 VPATH =                                \
-    ../                                \
-    ../Libraries/flibs/src/strings/    \
-    ../Libraries/mfUSGLib/Jan_23_2018/ \
-    ../Libraries/mfUSGLib/             \
+    ../src/                                \
+    ../src/Libraries/flibs/src/strings/    \
+    ../src/Libraries/mfUSGLib/Jan_23_2018/ \
+    ../src/Libraries/mfUSGLib/             \
     
 # source files and objects
 flibs = \
