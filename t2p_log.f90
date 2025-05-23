@@ -26,7 +26,7 @@ module m_log
     call log%write_line('         \ \  \   /  /_/__\ \  \___|')
     call log%write_line('--------- \ \__\ |\________\ \__\ --------')
     call log%write_line('           \|__|  \|_______|\|__|   ', blank_end=1)
-    call log%write_line('             Texture2Par v2.0.0             ')
+    call log%write_line('           Texture2Par v2.0.0-beta.1           ')
     call log%write_line( '----------------------------------------------')
     call log%write_line('Copyright S.S. Papadopulos & Associates Inc.', blank_end=1)
 
