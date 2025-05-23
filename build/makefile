@@ -114,7 +114,7 @@ $(info $$objflibs = $(objflibs))
 $(info $$objother = $(objother))
 
 # program name
-PROGRAM = texture2par
+PROGRAM = ../bin/Texture2Par
 
 all: $(PROGRAM)
 
