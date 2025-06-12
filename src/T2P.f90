@@ -670,6 +670,8 @@ module m_T2P
     integer                         :: class_idx(1)
     type(t_pilotpoints)             :: obs_data(1)  ! a little trick to appease calc_weights
     character(5)                    :: temp
+    real,pointer                    :: obs_vec(:)
+    integer                         :: nrows, m
 
     class_idx(1) = 1
 
@@ -715,13 +717,17 @@ module m_T2P
       if (.not. this%fmodel%pparr_aqtard(k)) then
         do i=1, this%ntexclasses
           do j=1, nproperties
-            results(k)%values(:,j,i) = matmul(weights%values,obs_data(1)%values(:,j,i))
+            !results(k)%values(:,j,i) = matmul(weights%values,obs_data(1)%values(:,j,i))
+            ! Avoid copying
+            call dgemv('N', to_grid%n, obs_data(1)%grid%n, 1.0, weights%values, to_grid%n, obs_data(1)%values(:,j,i), 1, 0.0, results(k)%values(:,j,i), 1)
           end do
         end do
       else ! Aquitard - subset of parameters
         do i=1, this%ntexclasses
           do j=1, naquitard_props
-            results(k)%values(:,aquitard_props(j),i) = matmul(weights%values,this%pilot_points_aquitard%values(:,aquitard_props(j),i))
+            !results(k)%values(:,aquitard_props(j),i) = matmul(weights%values,this%pilot_points_aquitard%values(:,aquitard_props(j),i))
+            ! Avoid copying
+            call dgemv('N', to_grid%n, this%pilot_points_aquitard%grid%n, 1.0, weights%values, to_grid%n, this%pilot_points_aquitard%values(:,aquitard_props(j),i), 1, 0.0, results(k)%values(:,aquitard_props(j),i), 1)
           end do
         end do
       end if

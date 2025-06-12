@@ -204,6 +204,7 @@ end subroutine
       CHARACTER*200 LINE
       CHARACTER*24 ANAME(9),STOTXT
       CHARACTER*4 PTYP
+      integer :: NPLPF=0   ! Hardcoded, can't have parameters in the LPF
 
       ! Write Variables
       character(30)        :: fmt(10)
@@ -230,7 +231,7 @@ end subroutine
 
       ! Write data set 1 & options
       IF((IUNSTR == 0).and.(gwftyp=='LPF')) then
-        write(OUT,'(I4,1es13.5,I5,A)') IBCFCB, HDRY, NPLPF, trim(lpfoptions)
+        write(OUT,'(I4,es13.5,I5,A)') IBCFCB, HDRY, NPLPF, trim(lpfoptions)
       ELSE IF ((IUNSTR == 0).and.(gwftyp=='UPW')) then
         write(OUT,'(I4,1es13.5,2I5,A)') IBCFCB, HDRY, NPLPF,IPHDRY, trim(lpfoptions)
       else
