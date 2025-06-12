@@ -5,7 +5,7 @@
 		<Platform Name="x64"/>
 	</Platforms>
 	<Configurations>
-		<Configuration Name="Debug|Win32">
+		<Configuration Name="Debug|Win32" UseCompiler="ifortCompiler">
 			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\Debug\" WarnInterfaces="true" RealKIND="realKIND8" Traceback="true" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
 			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
 			<Tool Name="VFResourceCompilerTool"/>
@@ -16,7 +16,7 @@
 			<Tool Name="VFPostBuildEventTool"/>
 			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
 		</Configuration>
-		<Configuration Name="Release|Win32">
+		<Configuration Name="Release|Win32" UseCompiler="ifortCompiler">
 			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\Release\" RealKIND="realKIND8"/>
 			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" SubSystem="subSystemConsole"/>
 			<Tool Name="VFResourceCompilerTool"/>
@@ -49,7 +49,7 @@
 			<Tool Name="VFPostBuildEventTool"/>
 			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
 		</Configuration>
-		<Configuration Name="T2PTests|Win32">
+		<Configuration Name="T2PTests|Win32" UseCompiler="ifortCompiler">
 			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\Debug\" WarnInterfaces="true" RealKIND="realKIND8" Traceback="true" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
 			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
 			<Tool Name="VFResourceCompilerTool"/>
@@ -75,42 +75,49 @@
 	<Files>
 		<Filter Name="Header Files" Filter="fi;fd"/>
 		<Filter Name="Resource Files" Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe">
-		<File RelativePath=".\src\T2P.ico"/>
-		<File RelativePath=".\src\T2P.rc"/></Filter>
+			<File RelativePath=".\src\T2P.ico"/>
+			<File RelativePath=".\src\T2P.rc"/>
+		</Filter>
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
-		<Filter Name="Data Structures">
-		<File RelativePath=".\src\Grid.f90"/>
-		<File RelativePath=".\src\Lists.f90"/>
-		<File RelativePath=".\src\Sparse_Symmetric.f90"/></Filter>
-		<Filter Name="File IO">
-		<File RelativePath=".\src\FileIO.f90"/>
-		<File RelativePath=".\src\fpath.f90"/>
-		<File RelativePath=".\src\Read_Datasets.f90"/>
-		<File RelativePath=".\src\Read_Main_Input.f90"/>
-		<File RelativePath=".\src\t2p_log.f90"/>
-		<File RelativePath=".\src\write_fmodel.f90"/></Filter>
-		<Filter Name="Interpolators">
-		<File RelativePath=".\src\Interpolators.f90"/>
-		<File RelativePath=".\src\kriging.f90"/>
-		<File RelativePath=".\src\sgsim.f90"/>
-		<File RelativePath=".\src\variogram.f90"/></Filter>
-		<Filter Name="Objects">
-		<File RelativePath=".\src\Categories.f90"/>
-		<File RelativePath=".\src\DataSets.f90"/>
-		<File RelativePath=".\src\FlowModel.f90"/>
-		<File RelativePath=".\src\Options.f90"/>
-		<File RelativePath=".\src\PilotPoints.f90"/>
-		<File RelativePath=".\src\T2P.f90"/>
-		<File RelativePath=".\src\weights.f90"/></Filter>
-		<Filter Name="Tools">
-		<File RelativePath=".\src\data_transformer.f90"/>
-		<File RelativePath=".\src\ErrorHandler.f90"/>
-		<File RelativePath=".\src\kdtree2.f90"/>
-		<File RelativePath=".\src\Str_Module.f90"/>
-		<File RelativePath=".\src\time.f90"/>
-		<File RelativePath=".\src\Tools.f90"/></Filter>
-		<File RelativePath=".\src\global.f90"/>
-		<File RelativePath=".\src\Texture2Par.f90"/></Filter>
+			<Filter Name="Data Structures">
+				<File RelativePath=".\src\Grid.f90"/>
+				<File RelativePath=".\src\Lists.f90"/>
+				<File RelativePath=".\src\Sparse_Symmetric.f90"/>
+			</Filter>
+			<Filter Name="File IO">
+				<File RelativePath=".\src\FileIO.f90"/>
+				<File RelativePath=".\src\fpath.f90"/>
+				<File RelativePath=".\src\Read_Datasets.f90"/>
+				<File RelativePath=".\src\Read_Main_Input.f90"/>
+				<File RelativePath=".\src\t2p_log.f90"/>
+				<File RelativePath=".\src\write_fmodel.f90"/>
+			</Filter>
+			<Filter Name="Interpolators">
+				<File RelativePath=".\src\Interpolators.f90"/>
+				<File RelativePath=".\src\kriging.f90"/>
+				<File RelativePath=".\src\sgsim.f90"/>
+				<File RelativePath=".\src\variogram.f90"/>
+			</Filter>
+			<Filter Name="Objects">
+				<File RelativePath=".\src\Categories.f90"/>
+				<File RelativePath=".\src\DataSets.f90"/>
+				<File RelativePath=".\src\FlowModel.f90"/>
+				<File RelativePath=".\src\Options.f90"/>
+				<File RelativePath=".\src\PilotPoints.f90"/>
+				<File RelativePath=".\src\T2P.f90"/>
+				<File RelativePath=".\src\weights.f90"/>
+			</Filter>
+			<Filter Name="Tools">
+				<File RelativePath=".\src\data_transformer.f90"/>
+				<File RelativePath=".\src\ErrorHandler.f90"/>
+				<File RelativePath=".\src\kdtree2.f90"/>
+				<File RelativePath=".\src\Str_Module.f90"/>
+				<File RelativePath=".\src\time.f90"/>
+				<File RelativePath=".\src\Tools.f90"/>
+			</Filter>
+			<File RelativePath=".\src\global.f90"/>
+			<File RelativePath=".\src\Texture2Par.f90"/>
+		</Filter>
 	</Files>
 	<Globals/>
 </VisualStudioProject>

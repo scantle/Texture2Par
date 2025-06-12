@@ -9,7 +9,7 @@ module m_sgsim
   use m_options, only: t_options
   use m_sparse_symmetric, only: t_sparse_sym
   use m_kriging, only: t_treekrige, decomp, doolittle, setup_krige
-  use kdtree2_module, only               : kdtree2_create, kdtree2, kdtree2_result, kdtree2_n_nearest
+  use kdtree2_module, only: kdtree2_create, kdtree2, kdtree2_result, kdtree2_n_nearest
   implicit none
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_grid)     :: t_simgrid
