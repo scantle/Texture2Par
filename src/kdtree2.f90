@@ -752,6 +752,10 @@ contains
       integer :: i, c, m, dimen
       logical :: recompute
       real(kdkind)    :: average
+      
+      ! DEBUG
+      !integer :: j
+      !real(kdkind) :: vals(20)
 
 !!$      If (.False.) Then
 !!$         If ((l .Lt. 1) .Or. (l .Gt. tp%n)) Then
@@ -767,6 +771,11 @@ contains
 !!$
       ! first compute min and max
       dimen = tp%dimen
+      
+      ! DEBUG
+      !write(*,*) "build_tree_for_range: l=",l,"  u=",u
+
+      
       allocate (res)
       allocate(res%box(dimen))
 
@@ -821,6 +830,13 @@ contains
          ! c is the identity of which coordinate has the greatest spread.
          !
 
+         ! DEBUG
+         !if (l==15466.AND.(u==15485.OR.u==15465)) then
+         !  do j = l, u
+         !    vals(j-l+1) = tp%the_data(c, tp%ind(j))
+         !  end do
+         !end if
+         
          if (.false.) then
             ! select exact median to have fully balanced tree.
             m = (l+u)/2

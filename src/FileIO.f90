@@ -442,11 +442,10 @@ end subroutine
 
 !-------------------------------------------------------------------------------------------------!
 
-    subroutine next_item(this, eof, strings, comma)
+    subroutine next_item(this, eof, strings)
     implicit none
     class(t_file_reader)              :: this
     integer,intent(out)               :: eof
-    logical,intent(in),optional       :: comma
     type(t_vstringlist)               :: temp
     type(t_vstringlist), intent(out)  :: strings
     type(t_vstring)                   :: line_string
@@ -458,20 +457,10 @@ end subroutine
 
       ! Read string
       read(this%unit, '(a500)', iostat=ierr) line
-      if (present(comma)) then
-        if (comma) line = replace_line(line)
-      end if
-      ! TODO Error handling
+      call TABREM(trim(adjustl(line)))
+      line = replace_line(line)
       call vstring_new(line_string, trim(adjustl(line)))
-      temp = vstrlist_split(line_string)
-      ! Add all strings of non-zero length to strings object
-      ! TODO: fix whatever causes vstringlist_split not to catch tabs followed by spaces
-      ! COULDN"T WE JUST CALL TABREM(CLINE) BEFORE?
-      call vstrlist_new ( strings )
-      do i=1, vstrlist_length(temp)
-        if (vstring_length(vstrlist_index(temp, i))>0) call vstrlist_append(strings, vstrlist_index(temp, i))
-      end do
-      call vstrlist_free(temp)
+      strings = vstrlist_split(line_string)
     else
       ! End of file - just return
     end if
@@ -493,7 +482,6 @@ end subroutine
       do i=1, nlines
         ! Read empty
         read(this%unit, '(a500)', iostat=ierr)
-        ! TODO Error handling
       end do
     else
       ! End of file - just return
@@ -530,17 +518,16 @@ end subroutine
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine next_block_item(this, status, id, strings, length, comma)
+  subroutine next_block_item(this, status, id, strings, length)
     implicit none
     class(t_file_reader)      :: this
     integer,intent(out)       :: status   ! 0 = Fine. -1 = EOF. +1 = End of Block
     integer,intent(out)       :: length
-    logical,optional          :: comma
     character(*),intent(out)  :: id
     type(t_vstringlist)       :: strings
 
     ! Get next item in file
-    call next_item(this, status, strings, comma=comma)
+    call next_item(this, status, strings)
     if (status == 0) then
 
       !! Check for end
@@ -815,7 +802,7 @@ end subroutine
     if (present(charset)) then
       real_charset = charset
     else
-      real_charset = [","]
+      real_charset = [",",achar(9)]
     end if
     if (present(target_char)) then
       real_target_char = target_char

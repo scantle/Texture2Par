@@ -556,7 +556,7 @@ subroutine read_pploc_block(t2p, reader, p)
 
   ! Now read the pilot point locations
   do i=1, npp
-    call reader%next_block_item(status, id, strings, length, comma=.true.)
+    call reader%next_block_item(status, id, strings, length)
     if (status /= 0) exit  ! exit if end of block or end of file
     ! Should this be read with it's own function?
     pp_id(i)            = item2int(strings, 1)
@@ -622,7 +622,7 @@ subroutine read_ppparm_block(t2p, reader)
         call item2char(strings, 2, value, toupper=.true.)  ! Get type
         ! Internal Loop over pilot points, whatever type they are (global or class)
         do
-          call reader%next_block_item(status, id, strings, length, comma=.true.)
+          call reader%next_block_item(status, id, strings, length)
           if (status /= 0) exit  ! exit if end of block or end of file
           if (trim(id)=="TYPE") then ! move back one line & exit if it's the next class
             call reader%back(1)

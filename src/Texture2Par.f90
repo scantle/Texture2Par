@@ -1,5 +1,6 @@
 program Texture2Par
   use m_global, only: log
+  use m_version, only: VERSION
   use m_T2P, only: t_t2p
   use m_file_io, only: io_initialize, get_command_args
   use m_read_main_input, only: read_main_input
@@ -11,7 +12,6 @@ program Texture2Par
 !-----------------------------------------------------------------------------!
 !                             Texture2Par
 !                         ********************
-!                               V 2.0.0
 !
 ! Converts well percent course with depth data to aquifer parameters
 ! at specified nodes. Intended to work with input/output files of the
@@ -22,14 +22,14 @@ program Texture2Par
 !
 ! Requires Input File: Texture2Par.in or alternate named passed as an argument
 !
-! Copyright 2024 S.S. Papadopulos & Associates. All rights reserved.
+! Copyright 2025 S.S. Papadopulos & Associates. All rights reserved.
 !-----------------------------------------------------------------------------!
 
   character(100)      :: main_input_file = 'Texture2Par.in'
   type(t_T2P)         :: t2p   ! main Texture2Par storage
 
   ! Write Flag
-  write(*,'(/,4x,a)') '         Texture2Par v2.0.0-beta.1          '
+  write(*,'(/,4x,a)') '         Texture2Par v'//VERSION
   write(*,'(3x,a)') '----------------------------------------------'
   write(*,'(4x,a)')   'Copyright S.S. Papadopulos & Associates Inc.'
   write(*,*)  ! blank
