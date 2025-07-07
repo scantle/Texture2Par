@@ -40,13 +40,20 @@
 *.suo
 
 # Generated folders
-Debug/**
-release/**
-x64/**
-mfUSGLib/Release/**
-mfUSGLib/x64/**
-mfUSGLib/Debug/**
+build/Debug/**
+build/release/**
+build/x64/**
+src/Libraries/*/Release/**
+src/Libraries/*/x64/**
+src/Libraries/*/Debug/**
+.vs/*
 
 # Extras
 *.vfproj.*
 *.7z
+*.lock
+
+*.vsidx
+
+Example*
+x64/*
