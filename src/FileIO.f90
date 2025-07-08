@@ -757,7 +757,11 @@ end subroutine
     integer                             :: line_length, spaces
 
     fmt_use = 'f8.2'
-    if (present(fmt)) fmt_use = trim(fmt)
+    if (present(fmt)) then
+      fmt_use = trim(fmt)
+    else
+      if (abs(value)>=1e5) fmt_use = 'es8.2'
+    end if
 
     line_length = len_trim(line)
     spaces = log_width - line_length

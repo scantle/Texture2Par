@@ -508,7 +508,7 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine write_node_files(this, datasets, dat_names)
+  subroutine write_node_files(this, datasets, dat_names, write_variance)
     use m_vstringlist, only: t_vstringlist, vstrlist_length
     ! Calls methods overloaded by subclasses
     use m_datasets, only: t_layerdata
@@ -516,26 +516,27 @@ module m_flow_model
     class(t_flow_model)        :: this
     type(t_layerdata),pointer  :: datasets(:)  ! (nlayers)
     type(t_vstringlist)        :: dat_names
+    logical                    :: write_variance
     character(100)             :: fname, temp
     integer                    :: i
 
     do i=1, vstrlist_length(dat_names)  ! ndat, hopefully
       call item2char(dat_names, i, temp)
       write(fname,'(3a)') trim(this%projectname)//'_', trim(temp), '.csv'
-      call this%write_node_file(fname, datasets, i)
+      call this%write_node_file(fname, datasets, i, write_variance)
     end do
 
     if (this%has_aquitards) then
       call item2char(dat_names, 2, temp)
       write(fname,'(3a)') trim(this%projectname)//'_', trim(temp), '_aqtard.csv'
-      call this%write_node_file_aqtard(fname, datasets, 2)  ! Only implemented for IWFM
+      call this%write_node_file_aqtard(fname, datasets, 2, write_variance)  ! Only implemented for IWFM
     end if
 
   end subroutine write_node_files
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine write_node_file(this, fname, par, par_id)
+  subroutine write_node_file(this, fname, par, par_id, write_variance)
     ! Base class method, should not be run
     use m_datasets, only: t_layerdata
     implicit none
@@ -543,12 +544,13 @@ module m_flow_model
     character(*)               :: fname
     type(t_layerdata),pointer  :: par(:)
     integer,intent(in)         :: par_id
+    logical                    :: write_variance
 
   end subroutine write_node_file
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine write_node_file_aqtard(this, fname, par, par_id)
+  subroutine write_node_file_aqtard(this, fname, par, par_id, write_variance)
     ! Base class method, should not be run
     use m_datasets, only: t_layerdata
     implicit none
@@ -556,6 +558,7 @@ module m_flow_model
     character(*)               :: fname
     type(t_layerdata),pointer  :: par(:)
     integer,intent(in)         :: par_id
+    logical                    :: write_variance
 
   end subroutine write_node_file_aqtard
 
@@ -866,18 +869,19 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine write_node_file_simpgrid(this, fname, par, par_id)
+  subroutine write_node_file_simpgrid(this, fname, par, par_id, write_variance)
     use m_datasets, only: t_layerdata, write_layerdata
     implicit none
     class(t_simpgrid)        :: this
     character(*)               :: fname
     type(t_layerdata),pointer  :: par(:)
     integer,intent(in)         :: par_id
+    logical                    :: write_variance
     integer                    :: i, k, unit
     character(60)              :: fmt(2)
     type(t_file_writer),pointer:: fwrite
 
-    call write_layerdata(fname, par, this%grid(1)%ptrgrid%coords, 1, 1, par_id)
+    call write_layerdata(fname, par, this%grid(1)%ptrgrid%coords, 1, 1, par_id, write_variance)
 
   end subroutine write_node_file_simpgrid
 
@@ -1322,35 +1326,37 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine write_node_file_iwfm(this, fname, par, par_id)
+  subroutine write_node_file_iwfm(this, fname, par, par_id, write_variance)
     use m_datasets, only: t_layerdata, write_layerdata
     implicit none
     class(t_iwfm_model)        :: this
     character(*)               :: fname
     type(t_layerdata),pointer  :: par(:)
     integer,intent(in)         :: par_id
+    logical                    :: write_variance
     integer                    :: i, k, unit
     character(60)              :: fmt(2)
     type(t_file_writer),pointer:: fwrite
 
-    call write_layerdata(fname, par, this%grid(1)%ptrgrid%coords, 2, 2, par_id)
+    call write_layerdata(fname, par, this%grid(1)%ptrgrid%coords, 2, 2, par_id, write_variance)
 
   end subroutine write_node_file_iwfm
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine write_node_file_aqtard_iwfm(this, fname, par, par_id)
+  subroutine write_node_file_aqtard_iwfm(this, fname, par, par_id, write_variance)
     use m_datasets, only: t_layerdata, write_layerdata
     implicit none
     class(t_iwfm_model)        :: this
     character(*)               :: fname
     type(t_layerdata),pointer  :: par(:)
     integer,intent(in)         :: par_id
+    logical                    :: write_variance
     integer                    :: i, k, unit
     character(60)              :: fmt(2)
     type(t_file_writer),pointer:: fwrite
 
-    call write_layerdata(fname, par, this%grid(1)%ptrgrid%coords, 1, 2, par_id, lname="Aquitard")
+    call write_layerdata(fname, par, this%grid(1)%ptrgrid%coords, 1, 2, par_id, write_variance, lname="Aquitard")
 
   end subroutine write_node_file_aqtard_iwfm
 
@@ -1910,19 +1916,19 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine write_node_file_mf(this, fname, par, par_id)
-    ! Base class method, should not be run
+  subroutine write_node_file_mf(this, fname, par, par_id, write_variance)
     use m_datasets, only: t_layerdata, write_layerdata
     implicit none
     class(t_modflow_model)     :: this
     character(*)               :: fname
     type(t_layerdata),pointer  :: par(:)
     integer,intent(in)         :: par_id
+    logical                    :: write_variance
     integer                    :: i, k, row, col, unit
     character(60)              :: fmt(2)
     type(t_file_writer),pointer:: fwrite
 
-    call write_layerdata(fname, par, this%grid(1)%ptrgrid%coords, 1, 1, par_id, gridncol=this%ncol)
+    call write_layerdata(fname, par, this%grid(1)%ptrgrid%coords, 1, 1, par_id, write_variance, gridncol=this%ncol)
 
   end subroutine write_node_file_mf
 !-------------------------------------------------------------------------------------------------!

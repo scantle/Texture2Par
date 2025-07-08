@@ -2,7 +2,7 @@ module m_T2P
   use m_global, only: NODATA
   use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_append, vstrlist_range
   use m_vstring, only: t_vstring, vstring_toupper
-  use m_error_handler, only: error_handler,warnings
+  use m_error_handler, only: error_handler,warning_handler,warnings
   use m_options, only: t_options
   use m_datasets, only: t_layerdata, t_dataset, write_layerdata
   use m_flow_model, only: t_flow_model, t_iwfm_model
@@ -227,6 +227,15 @@ module m_T2P
     if (this%opt%nsim > 1) then
       if (this%opt%WRITE_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot WRITE_GRID_WEIGHTS while using SGSIM (NSIM>1)')
       if (this%opt%READ_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot READ_GRID_WEIGHTS while using SGSIM (NSIM>1)')
+    end if
+    
+    if (this%opt%READ_GRID_WEIGHTS.and.this%opt%WRITE_VARIANCE) then
+      call error_handler(1,opt_msg='Cannot WRITE_VARIANCE while reusing weights from READ_GRID_WEIGHTS')
+    end if
+    
+    ! Some warnings
+    if (this%opt%WRITE_VARIANCE.and.this%opt%CORRECT_WEIGHTS) then
+      call warning_handler("Variance calculated with corrected weights is an approximation and may be biased low - use with caution.")
     end if
 
   end subroutine process_options
@@ -784,6 +793,7 @@ module m_T2P
                                             modelgrid,  &
                                             this%fmodel%active_nodes_bylay(1:,k), &
                                             dout(k)%values(i,1:), &
+                                            dout(k)%variance(i,1:), &
                                             this%fmodel%hsus%catlist(1:this%fmodel%hsus%arrncat(x),x), &
                                             this%fmodel%hsus%array(1:,x),&
                                             this%opt,&
@@ -911,12 +921,12 @@ module m_T2P
     ! Write parameters by node/cell, and if texture was kriged, textures by node/cell
     if (.not. (this%opt%WRITE_NODE_FILES.and.this%opt%ONLY_TEXTURE)) then
       call this%write_minor_status('Writing Parameter Node Files')
-      call this%fmodel%write_node_files(this%par, this%parnames)
+      call this%fmodel%write_node_files(this%par, this%parnames, .false.)
     end if
     if (this%opt%WRITE_NODE_FILES.and.this%opt%INTERP_ORDER=="BEFORE") then
       call this%write_minor_status('Writing Class Node Files')
       p=>this%dset_intermediate(1,:)
-      call this%fmodel%write_node_files(p, vstrlist_range(this%class_names, 1, this%ntexclasses))
+      call this%fmodel%write_node_files(p, vstrlist_range(this%class_names, 1, this%ntexclasses), this%opt%write_variance)
     end if
 
     ! Write the observed datasets that were averaged by layer
@@ -1021,6 +1031,7 @@ module m_T2P
       kstart,                           &
       kintrvl,                          &
       idx,                              &
+      .false.,                          &
       gridncol=this%fmodel%ncol,        &
       rownames=rownames,                &
       modelnodes=dataset(1)%fmodel_loc, &

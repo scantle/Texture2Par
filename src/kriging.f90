@@ -484,29 +484,32 @@ end subroutine write_summary_krige
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine predict_point_sk(this, idx, p, obs_data, cat, weights, widx, ppd)
+  subroutine predict_point_sk(this, idx, p, obs_data, cat, variance, weights, widx, ppd)
     implicit none
     class(t_globkrige),intent(inout)  :: this
     integer,intent(in)                :: idx, cat
     real    ,intent(in)               :: p(:)
     class(t_dataset)                  :: obs_data(:)
+    real                              :: variance
     real                              :: weights(:)
     integer, optional                 :: widx(:)              ! idx associated with weights
     integer, optional                 :: ppd(size(obs_data))  ! points per dataset
     ! Local
-    integer                           :: i, j, d, rcount, start_idx, end_idx
-    real                              :: value
-    character(20)                     :: cidx
+    integer                           :: i, j, d, rcount, vidx, osize, matsize
+    real                              :: value, c0
 
     this%rhsB = 0.0
     weights = 0.0
-    if (this%unbias==1) this%rhsB(size(this%rhsB)) = 1.0d0
+    osize   = sum(this%npoints(:))
+    matsize = osize+this%unbias+this%ndrift
+    if (this%unbias==1) this%rhsB(matsize) = 1.0
 
     rcount = 1
     do d = 1, this%nsets
       do i = 1, this%npoints(d)
-        do j = 1, this%nstruct(this%vario_idx(1, d))
-          value = this%variograms(j, this%vario_idx(1, d))%cov(p, obs_data(d)%grid%coords(:, this%useidx(i,d)))
+        vidx = this%vario_idx(1, d)
+        do j = 1, this%nstruct(vidx)
+          value = this%variograms(j, vidx)%cov(p, obs_data(d)%grid%coords(:, this%useidx(i,d)))
           this%rhsB(rcount) = this%rhsB(rcount) + value
         end do
         rcount = rcount + 1
@@ -514,13 +517,23 @@ end subroutine write_summary_krige
     end do
 
     ! Solve weights using the precomputed A matrix
-    call doolittle(this%rhsB, this%matA, this%pset_id, weights, size(this%rhsB))
+    call doolittle(this%rhsB, this%matA, this%pset_id, weights, matsize)
 
     ! If CORRECT_WEIGHTS, zero negative weights and rebalance
     if (this%no_negative_weights .and. minval(weights) < 0.0) then
       where (weights < 0.0) weights = 0.0
       weights = weights / sum(weights)
     end if
+    
+    ! Variance
+    vidx  = this%vario_idx(1,1)
+    c0 = 0.0
+    do i = 1, this%nstruct(vidx)
+      c0 = c0 + this%variograms(i,vidx)%cov(p,p)  ! Max covariance
+    end do
+    variance = c0 - dot_product(weights(1:osize), this%rhsB(1:osize))
+    if (this%unbias==1) variance = variance - weights(matsize)
+    variance = max(0.0, variance)
 
     ! Optional: Return observation indices
     if (present(widx)) then
@@ -608,19 +621,20 @@ end subroutine write_summary_krige
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine predict_point_ok(this, idx, p, obs_data, cat, weights, widx, ppd)
+  subroutine predict_point_ok(this, idx, p, obs_data, cat, variance, weights, widx, ppd)
     implicit none
     class(t_treekrige),intent(inout)  :: this
     integer,intent(in)               :: idx, cat
     real    ,intent(in)              :: p(:)
     class(t_dataset)                 :: obs_data(:)
+    real                             :: variance
     real                             :: weights(:)
     integer, optional                :: widx(:)              ! idx associated with weights
     integer, optional                :: ppd(size(obs_data))  ! points per dataset
     ! local
     integer                          :: i, j, d, vidx, wi, osize, matsize, mat_tot, ier, rcount, woffset
     integer                          :: inear(this%maxnear,this%nsets), loc_usenear(this%nsets)
-    real                             :: value
+    real                             :: value, c0
     real                             :: dist(this%maxnear,this%nsets)
 
     ! Get nearest for each obs dataset
@@ -650,9 +664,10 @@ end subroutine write_summary_krige
     if (ier == 1) call error_handler(4,opt_msg="Kriging Matrix Decomposition Failure. This is often caused by co-located wells")
 
     ! Create RHS
-    this%rhsB = 0.d0
+    this%rhsB = 0.0
     this%w = 0
-    if (this%unbias==1) this%rhsB(matsize) = 1.0d0
+    
+    if (this%unbias==1) this%rhsB(matsize) = 1.0
     rcount = 1
     ! Loop over datasets
     do d = 1, this%nsets
@@ -675,6 +690,16 @@ end subroutine write_summary_krige
       where (this%w(1:osize) < 0.0) this%w(1:osize) = 0.0
       this%w(1:osize) = this%w(1:osize)/sum(this%w(1:osize))
     end if
+    
+    ! Variance
+    vidx  = this%vario_idx(1,1)
+    c0 = 0.0
+    do i = 1, this%nstruct(vidx)
+      c0 = c0 + this%variograms(i,vidx)%cov(p,p)  ! Max covariance
+    end do
+    variance = c0 - dot_product(this%w(1:osize), this%rhsB(1:osize))
+    if (this%unbias==1) variance = variance - this%w(matsize)
+    variance = max(0.0, variance)
 
     wi = 0
     woffset = 0
@@ -700,7 +725,6 @@ end subroutine write_summary_krige
     end if
 
   end subroutine predict_point_ok
-
 
 !-------------------------------------------------------------------------------------------------!
 
@@ -755,7 +779,7 @@ end subroutine write_summary_krige
           if (i/=j) ii=1
           do while (ii <= nnear(i))
             coordi=obs_data(i)%grid%coords(1:,inear(ii,i))
-            value_sum=0.0d0
+            value_sum=0.0
             do n=1, this%nstruct(ind)
               value = this%variograms(n,ind)%cov(coordi,coordj)
               value_sum = value_sum + value

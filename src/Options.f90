@@ -32,10 +32,11 @@ module m_options
     logical                  :: DEBUG_MODE            ! UNIMPLMENTED
     logical                  :: ONLY_TEXTURE          ! Stops after calculating texture
     logical                  :: WRITE_MATRIX          ! Writes kriging matrices to log
-    logical                  :: WRITE_PP_WEIGHTS      !
-    logical                  :: WRITE_GRID_WEIGHTS    !
-    logical                  :: READ_PP_WEIGHTS       !
-    logical                  :: READ_GRID_WEIGHTS     !
+    logical                  :: WRITE_VARIANCE        ! Write kriging variance
+    logical                  :: WRITE_PP_WEIGHTS      ! Write pilot point weights for reuse
+    logical                  :: WRITE_GRID_WEIGHTS    ! Write grid (texture) weights for reuse
+    logical                  :: READ_PP_WEIGHTS       ! Reuse pilot point weights
+    logical                  :: READ_GRID_WEIGHTS     ! Reuse grid (texture) weights
     logical                  :: WRITE_NONE            ! Skips model output files (as implemented...)
     logical                  :: WRITE_NODE_FILES      ! Writes parameters by node/cell
     logical                  :: WRITE_DATASET_FILES   ! Writes out datasets averaged by layer
@@ -93,6 +94,7 @@ module m_options
     this%DEBUG_MODE           = .false.
     this%ONLY_TEXTURE         = .false.
     this%WRITE_MATRIX         = .false.
+    this%WRITE_VARIANCE       = .false.
     this%WRITE_PP_WEIGHTS     = .false.
     this%WRITE_GRID_WEIGHTS   = .false.
     this%READ_PP_WEIGHTS      = .false.
@@ -180,6 +182,8 @@ subroutine read_options(this, reader)
         this%ONLY_TEXTURE         = .true.
       case("WRITE_MATRIX")
         this%WRITE_MATRIX         = .true.
+      case("WRITE_VARIANCE")
+        this%WRITE_VARIANCE       = .true.
       case("WRITE_PP_WEIGHTS")
         this%WRITE_PP_WEIGHTS     = .true.
         if (length>1) then
@@ -284,6 +288,7 @@ subroutine write_input_summary(this)
     if (this%DEBUG_MODE         ) logic_true = trim(logic_true) // "DEBUG_MODE"          // ","
     if (this%ONLY_TEXTURE       ) logic_true = trim(logic_true) // "ONLY_TEXTURE"        // ","
     if (this%WRITE_MATRIX       ) logic_true = trim(logic_true) // "WRITE_MATRIX"        // ","
+    if (this%WRITE_VARIANCE     ) logic_true = trim(logic_true) // "WRITE_VARIANCE"      // ","
     if (this%WRITE_PP_WEIGHTS   ) logic_true = trim(logic_true) // "WRITE_PP_WEIGHTS"    // ","
     if (this%WRITE_GRID_WEIGHTS ) logic_true = trim(logic_true) // "WRITE_GRID_WEIGHTS"  // ","
     if (this%READ_PP_WEIGHTS    ) logic_true = trim(logic_true) // "READ_PP_WEIGHTS"     // ","

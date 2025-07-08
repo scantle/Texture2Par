@@ -351,7 +351,7 @@ module m_sgsim
 
   !-------------------------------------------------------------------------------------------------!
 
-  subroutine calc_sgsim(this, obs_data, obs_idx, val_idx, to_grid, active, results, catlist, to_cats, opt, layer)
+  subroutine calc_sgsim(this, obs_data, obs_idx, val_idx, to_grid, active, results, variance, catlist, to_cats, opt, layer)
     use m_weights, only: t_sosa_weights
     use kdtree2_module
     implicit none
@@ -360,7 +360,7 @@ module m_sgsim
     integer,intent(in)                    :: obs_idx(:), val_idx(:)
     type(t_grid),intent(in)               :: to_grid
     logical,intent(in)                    :: active(:)    !1:to_grid%n
-    real                                  :: results(:)
+    real                                  :: results(:), variance(:)
     integer,intent(in)                    :: catlist(:), to_cats(:), layer
     type(t_options),intent(in)            :: opt
     logical                               :: has_data

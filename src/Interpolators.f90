@@ -137,6 +137,7 @@ module m_interpolator
     type(t_grid),intent(in)               :: to_grid
     logical,intent(in)                    :: active(:)    !1:to_grid%n
     real                                  :: weights(:,:) !(output_points, input_points)
+    real                                  :: variance
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
     integer                               :: i, j, cat, count_cat
@@ -163,7 +164,7 @@ module m_interpolator
         do j=1, to_grid%n
           if (.not.active(j)) cycle
           ! Interpolate for each point
-          if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(:,j), obs_data, cat, weights(j,:))
+          if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(:,j), obs_data, cat, variance, weights(j,:))
         end do
       else  ! only one point!
         call this%single_point_full_weight(obs_data, cat, to_cats, weights)
@@ -174,14 +175,14 @@ module m_interpolator
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine calc(this, obs_data, obs_idx, val_idx, to_grid, active, results, catlist, to_cats, opt, layer)
+  subroutine calc(this, obs_data, obs_idx, val_idx, to_grid, active, results, variance, catlist, to_cats, opt, layer)
     use m_weights, only: t_sosa_weights
     implicit none
     class(t_interpolator),intent(inout)   :: this
     class(t_layerdata)                    :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:), val_idx(:)
     type(t_grid),intent(in)               :: to_grid
-    real                                  :: results(:)
+    real                                  :: results(:), variance(:)
     logical,intent(in)                    :: active(:)    !1:to_grid%n
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
@@ -196,6 +197,7 @@ module m_interpolator
     ! TODO need to move all weight-related operations to separate routines. This is too messy.
 
     results = 0.0  ! necessary?
+    variance = 0.0
     call weights%initialize(this%wsize_estimate(obs_data, obs_idx, opt), size(obs_data))
     
     ! Open weights file if using (call does nothing if options are false)
@@ -241,7 +243,7 @@ module m_interpolator
           if (.not.active(j)) cycle  ! does not predict or write weights for inactive cells
           ! Interpolate for each point
           if (to_cats(j)==cat) then
-            call this%predict_point(j, to_grid%coords(:,j), obs_data, cat, weights%values, weights%idx, weights%ppd)
+            call this%predict_point(j, to_grid%coords(:,j), obs_data, cat, variance(j), weights%values, weights%idx, weights%ppd)
             if (opt%WRITE_GRID_WEIGHTS) then
               call weights%save_to_file(j)
             end if
@@ -331,16 +333,18 @@ end subroutine single_point_full_weight
 !! @param p Coordinates of the point to predict.
 !! @param obs_data Observed data used for prediction.
 !! @param cat Category data.
+!! @param variance Variance of the prediction (where applicable)
 !! @param weights Weights for the prediction.
 !! @param widx Indices of the weights (optional).
 !! @param ppd Number of observations (optional).
-  subroutine predict_point(this, idx, p, obs_data, cat, weights, widx, ppd)
+  subroutine predict_point(this, idx, p, obs_data, cat, variance, weights, widx, ppd)
     ! Abstract Base Class method - should not be called
     implicit none
     class(t_interpolator),intent(inout)  :: this
     integer,intent(in)                   :: idx, cat
     real    ,intent(in)                  :: p(:)
     class(t_dataset)                     :: obs_data(:)
+    real                                 :: variance
     real                                 :: weights(:)
     integer, optional                    :: widx(:)              ! idx associated with weights
     integer, optional                    :: ppd(size(obs_data))  ! points per dataset
@@ -430,12 +434,13 @@ end subroutine single_point_full_weight
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine predict_point_idw(this, idx, p, obs_data, cat, weights, widx, ppd)
+  subroutine predict_point_idw(this, idx, p, obs_data, cat, variance, weights, widx, ppd)
     implicit none
     class(t_idw),intent(inout)    :: this
     integer,intent(in)            :: idx, cat
     real    ,intent(in)           :: p(:)
     class(t_dataset)              :: obs_data(:)
+    real                          :: variance
     real                          :: weights(:)
     real                          :: distances(this%nobs)
     real                          :: total_weight
