@@ -28,8 +28,8 @@ module m_options
     character(60)            :: PROJECT_NAME          ! project name, used as prefix for output file names
     !character(100)           :: OUTPUT_DIR            ! Directory where output gets written
     !character(100)           :: INPUT_DIR             ! Direction where input gets read
-    logical                  :: SILENT_MODE           !
-    logical                  :: DEBUG_MODE            !
+    logical                  :: SILENT_MODE           ! UNIMPLMENTED
+    logical                  :: DEBUG_MODE            ! UNIMPLMENTED
     logical                  :: ONLY_TEXTURE          ! Stops after calculating texture
     logical                  :: WRITE_MATRIX          ! Writes kriging matrices to log
     logical                  :: WRITE_PP_WEIGHTS      !
@@ -39,14 +39,15 @@ module m_options
     logical                  :: WRITE_NONE            ! Skips model output files (as implemented...)
     logical                  :: WRITE_NODE_FILES      ! Writes parameters by node/cell
     logical                  :: WRITE_DATASET_FILES   ! Writes out datasets averaged by layer
-    logical                  :: OUTPUT_GRID           !
-    logical                  :: OUTPUT_ARRAY          !
-    logical                  :: LOG_KRIGE_K           !
+    logical                  :: OUTPUT_GRID           ! UNIMPLMENTED
+    logical                  :: OUTPUT_ARRAY          ! UNIMPLMENTED
+    logical                  :: LOG_KRIGE_K           ! UNIMPLMENTED
     logical                  :: INFER_LAST_CLASS      ! For classic T2P, where the data is only percent coarse
     logical                  :: CORRECT_WEIGHTS       ! Zero negative (kriging) weights and rebalance if true, see Deutsch (1996) (only for OK, COK)
     logical                  :: USE_MODEL_GSE         ! Use model cell ground surface elevation (GSE) rather than dataset GSEs for depth->elevation calcs
     logical                  :: PREDICT_INACTIVE      ! Predict texture/parameters for inactive cells (MODFLOW, IBOUND=0)
     logical                  :: ANISOTROPIC_SEARCH    ! Use anisotropic setting for nearest neighbor search
+    logical                  :: NO_TEX_BOUNDS         ! Allow interpolated texture to exceed expected 0-1 values
 
     ! Internal Options (to be set by t2p%process_options)
     logical                  :: INTERP_SECOND_OK      ! Can the interpolator handle covariates?
@@ -225,6 +226,8 @@ subroutine read_options(this, reader)
         this%PREDICT_INACTIVE     = .true.
       case("ANISOTROPIC_SEARCH")
         this%ANISOTROPIC_SEARCH   = .true.
+      case("NO_TEX_BOUNDS")
+        this%NO_TEX_BOUNDS  = .true.
       case DEFAULT
         call error_handler(1,reader%file,"Unknown Option Name: " // trim(id))
     end select
@@ -296,6 +299,7 @@ subroutine write_input_summary(this)
     if (this%USE_MODEL_GSE      ) logic_true = trim(logic_true) // "USE_MODEL_GSE"       // ","
     if (this%PREDICT_INACTIVE   ) logic_true = trim(logic_true) // "PREDICT_INACTIVE"    // ","
     if (this%ANISOTROPIC_SEARCH ) logic_true = trim(logic_true) // "ANISOTROPIC_SEARCH"  // ","
+    if (this%NO_TEX_BOUNDS      ) logic_true = trim(logic_true) // "NO_TEX_BOUNDS"       // ","
 
     if (len(trim(logic_true)) > no_true_len) then
       !call log%write_line(logic_true)

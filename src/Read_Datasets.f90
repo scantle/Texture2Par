@@ -205,7 +205,7 @@ module m_read_datasets
 
         ! Start of accumulator
         ! Transform values
-        if (minval(wvalues)>=0) call data_transformer%apply(wvalues)  !TODO Should this be > -999/NODATA?
+        if (minval(wvalues)>NODATA) call data_transformer%apply(wvalues)
         if (t2p%opt%USE_MODEL_GSE) then
           intv_bot = fmodel_z - depth
         else
@@ -217,7 +217,7 @@ module m_read_datasets
             ! Find min top/bot values
             frac_thick = min(local_elevs(k-1), intv_top)-max(local_elevs(k), intv_bot)
             do l=1, nsets
-              if (wvalues(l)>=0) then     !TODO Should this be > -999/NODATA?
+              if (wvalues(l)>NODATA) then
                 wv_accumulator(l,k) = wv_accumulator(l,k) + wvalues(l) * frac_thick
                 total_thick(l,k) = total_thick(l,k) + frac_thick
               end if

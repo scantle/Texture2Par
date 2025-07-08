@@ -789,9 +789,11 @@ module m_T2P
                                             this%opt,&
                                             k)
         ! Enforce values must be greater than zero
-        where(dout(k)%values(i,1:) < 0.0) dout(k)%values(i,1:) = 0.0
-        ! If we're kriging texture - must be below 1.0
-        if (this%opt%INTERP_ORDER=="BEFORE") where(dout(k)%values(i,1:) > 1.0) dout(k)%values(i,1:) = 1.0
+        if (.not. this%opt%NO_TEX_BOUNDS) then 
+          where(dout(k)%values(i,1:) < 0.0) dout(k)%values(i,1:) = 0.0
+          ! If we're kriging texture - must be below 1.0
+          if (this%opt%INTERP_ORDER=="BEFORE") where(dout(k)%values(i,1:) > 1.0) dout(k)%values(i,1:) = 1.0
+        end if
         ! Inactive cells should be NODATA
         where(.not.this%fmodel%active_nodes_bylay(1:,k)) dout(k)%values(i,1:) = NODATA
       end do

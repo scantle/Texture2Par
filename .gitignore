@@ -38,6 +38,7 @@
 # VS junk
 *.u2d
 *.suo
+*.pdb
 
 # Generated folders
 build/Debug/**
