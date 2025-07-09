@@ -50,11 +50,12 @@ module m_options
     logical                  :: ANISOTROPIC_SEARCH    ! Use anisotropic setting for nearest neighbor search
     logical                  :: NO_TEX_BOUNDS         ! Allow interpolated texture to exceed expected 0-1 values
 
-    ! Internal Options (to be set by t2p%process_options)
+    ! Internal Options (generally set by t2p%process_options)
     logical                  :: INTERP_SECOND_OK      ! Can the interpolator handle covariates?
     logical                  :: ASYMMETRIC_COV        ! Whether relationships between covariates can be asymmetric
     logical                  :: PP_WEIGHTS_TEXT       ! Write pp weight file as text file
     logical                  :: GRID_WEIGHTS_TEXT     ! Write grid weight file as text file
+    integer                  :: BLOCK_KRIGE           ! Block kriging active (>1) type (1- gaus. quad. 2- custom points,weights) (set by fmodel read)
 
     contains
       procedure, public :: initialize
@@ -114,6 +115,7 @@ module m_options
     this%ASYMMETRIC_COV       = .false.
     this%PP_WEIGHTS_TEXT      = .false.
     this%GRID_WEIGHTS_TEXT    = .false.
+    this%BLOCK_KRIGE          = 0
   end subroutine initialize
 
 !-------------------------------------------------------------------------------------------------!
@@ -270,6 +272,7 @@ subroutine write_input_summary(this)
       case DEFAULT  ! Shouldn't be able to get here
         interp_text = this%INTERP_METHOD
     end select
+    if (this%block_krige>0) interp_text = trim(interp_text) // ' - Block Kriging Active'
     call log%write_valueline('Interpolation Method:',trim(interp_text))
     call log%write_valueline('Interpolation Order:',this%INTERP_ORDER)
     if (this%NSIM > 1) then

@@ -315,7 +315,7 @@ end subroutine single_point_full_weight
     class(t_interpolator),intent(inout)   :: this
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
-    type(t_grid),intent(in)               :: to_grid
+    type(t_grid),intent(in),target        :: to_grid
     real                                  :: weights(:,:)
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
@@ -405,17 +405,17 @@ end subroutine single_point_full_weight
   subroutine setup_idw(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
     use m_global, only             : NODATA
     implicit none
-    class(t_idw),intent(inout)    :: this
-    class(t_dataset)              :: obs_data(:)
-    integer,intent(in)            :: obs_idx(:)
-    type(t_grid),intent(in)       :: to_grid
-    real                          :: weights(:,:)
-    integer,intent(in)            :: cat
-    integer,intent(in)            :: to_cats(:)
-    type(t_options),intent(in)    :: opt
-    logical,intent(inout)         :: has_data
-    type(t_layerdata),pointer     :: p
-    logical                       :: na_mask(obs_data(1)%grid%n)
+    class(t_idw),intent(inout)     :: this
+    class(t_dataset)               :: obs_data(:)
+    integer,intent(in)             :: obs_idx(:)
+    type(t_grid),intent(in),target :: to_grid
+    real                           :: weights(:,:)
+    integer,intent(in)             :: cat
+    integer,intent(in)             :: to_cats(:)
+    type(t_options),intent(in)     :: opt
+    logical,intent(inout)          :: has_data
+    type(t_layerdata),pointer      :: p
+    logical                        :: na_mask(obs_data(1)%grid%n)
 
     this%nobs = obs_data(1)%grid%n
     this%power = opt%IDW_POWER

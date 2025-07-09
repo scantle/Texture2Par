@@ -161,6 +161,9 @@ module m_read_main_input
         case("ROT","ROTATION")
           call check_id_validity(id, t2p%fmodel, 3) ! only MODFLOW2000
           t2p%fmodel%rot= item2dp(strings, 2)
+        case('BLOCK_MODE')
+          t2p%opt%BLOCK_KRIGE = 1
+          ! TODO custom point/weight file
         case DEFAULT
           call error_handler(1,reader%file,"Unknown Flow Model option: " // trim(id))
       end select

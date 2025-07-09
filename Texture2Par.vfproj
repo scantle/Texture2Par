@@ -85,45 +85,44 @@
 				<File RelativePath=".\src\Sparse_Symmetric.f90"/>
 			</Filter>
 			<Filter Name="File IO">
-				<File RelativePath=".\src\FileIO.f90">
-				</File>
+				<File RelativePath=".\src\FileIO.f90"/>
 				<File RelativePath=".\src\fpath.f90"/>
-				<File RelativePath=".\src\Read_Datasets.f90">
-				</File>
+				<File RelativePath=".\src\Read_Datasets.f90"/>
 				<File RelativePath=".\src\Read_Main_Input.f90"/>
 				<File RelativePath=".\src\t2p_log.f90"/>
 				<File RelativePath=".\src\write_fmodel.f90"/>
 			</Filter>
 			<Filter Name="Interpolators">
-				<File RelativePath=".\src\Interpolators.f90"/>
+				<File RelativePath=".\src\Interpolators.f90">
+				</File>
 				<File RelativePath=".\src\kriging.f90"/>
-				<File RelativePath=".\src\sgsim.f90"/>
+				<File RelativePath=".\src\sgsim.f90">
+				</File>
 				<File RelativePath=".\src\variogram.f90"/>
 			</Filter>
 			<Filter Name="Objects">
 				<File RelativePath=".\src\Categories.f90"/>
 				<File RelativePath=".\src\DataSets.f90"/>
 				<File RelativePath=".\src\FlowModel.f90"/>
-				<File RelativePath=".\src\Options.f90">
-				</File>
+				<File RelativePath=".\src\Options.f90"/>
 				<File RelativePath=".\src\PilotPoints.f90"/>
 				<File RelativePath=".\src\T2P.f90"/>
 				<File RelativePath=".\src\weights.f90"/>
 			</Filter>
 			<Filter Name="Tools">
 				<File RelativePath=".\src\data_transformer.f90"/>
-				<File RelativePath=".\src\ErrorHandler.f90"/>
-				<File RelativePath=".\src\kdtree2.f90"/>
-				<File RelativePath=".\src\Str_Module.f90">
+				<File RelativePath=".\src\ErrorHandler.f90">
 				</File>
+				<File RelativePath=".\src\kdtree2.f90"/>
+				<File RelativePath=".\src\Str_Module.f90"/>
 				<File RelativePath=".\src\time.f90"/>
-				<File RelativePath=".\src\Tools.f90"/>
+				<File RelativePath=".\src\Tools.f90">
+				</File>
 			</Filter>
-			<File RelativePath=".\src\global.f90"/>
-			<File RelativePath=".\src\Texture2Par.f90">
+			<File RelativePath=".\src\global.f90">
 			</File>
-			<File RelativePath=".\version.f90">
-			</File>
+			<File RelativePath=".\src\Texture2Par.f90"/>
+			<File RelativePath=".\version.f90"/>
 		</Filter>
 	</Files>
 	<Globals/>

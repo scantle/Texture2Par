@@ -11,10 +11,16 @@ module m_grid
     real    , allocatable     :: masked_coords(:,:)  ! xy[z] by n points, subject to a mask (for kdtree)
     type(kdtree2),pointer     :: tree => null()      ! Tree for locating model nodes
     integer, allocatable      :: true_idx(:)         ! Mapping of indices from masked to full dataset
+    
+    ! Block Kriging Support
+    integer, allocatable      :: nblockpts(:)            ! number of quadrature pts per node
+    real   , allocatable      :: block_coords(:,:,:)  ! (dim x max_block_pts x n) quad point coords
+    real   , allocatable      :: block_wts(:,:)      ! (max_block_pts x n) quad weights
 
     contains
       procedure,private        :: initialize
       procedure,private        :: finalize
+      procedure,public         :: alloc_block_arrays
       procedure,public         :: build_tree
       procedure,public         :: get_nnear
       procedure,public         :: get_r2near
@@ -57,6 +63,24 @@ module m_grid
     this%coords = 0.0
 
   end subroutine initialize
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine alloc_block_arrays(this, max_block_pts)
+    ! Allocate block-kriging arrays; data must be filled by caller
+    class(t_Grid), intent(inout) :: this
+    integer, intent(in)           :: max_block_pts
+
+    ! allocate per-node count
+    if (allocated(this%nblockpts)) deallocate(this%nblockpts)
+    allocate(this%nblockpts(this%n))
+
+    ! allocate block coords and weights
+    if (allocated(this%block_coords)) deallocate(this%block_coords)
+    if (allocated(this%block_wts))   deallocate(this%block_wts)
+    allocate(this%block_coords(this%dim, max_block_pts, this%n))
+    allocate(this%block_wts(max_block_pts, this%n))
+  end subroutine alloc_block_arrays
 
 !-------------------------------------------------------------------------------------------------!
 
@@ -175,6 +199,9 @@ module m_grid
     if (allocated(this%masked_coords)) deallocate(this%masked_coords)
     if (allocated(this%true_idx))      deallocate(this%true_idx)
     if (associated(this%tree))         deallocate(this%tree)
+    if (allocated(this%nblockpts))     deallocate(this%nblockpts)
+    if (allocated(this%block_coords))  deallocate(this%block_coords)
+    if (allocated(this%block_wts))     deallocate(this%block_wts)
 
     ! Include any other cleanup tasks here
   end subroutine finalize

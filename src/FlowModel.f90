@@ -61,6 +61,7 @@ module m_flow_model
       procedure,public            :: initialize
       procedure,public            :: read_model
       procedure,public            :: build_tree
+      procedure,public            :: build_blocks
       procedure,public            :: read_category_files
       procedure,public            :: write_input_summary
       procedure,public            :: find_in_grid
@@ -160,6 +161,7 @@ module m_flow_model
 
   contains
     procedure,public          :: initialize => init_modflow2000
+    procedure,public          :: build_blocks => build_blocks_mf
     procedure,private         :: alloc_layers => alloc_layers_mf
     procedure,private         :: alloc_nodes  => alloc_nodes_mf
     procedure,public          :: read_model => read_modflow2000
@@ -298,6 +300,18 @@ module m_flow_model
     end do
   end subroutine build_tree
 
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine build_blocks(this, opt)
+    ! Base class method for building trees - should not be run
+    implicit none
+    class(t_flow_model)         :: this
+    class(t_options),intent(in) :: opt
+    
+    call error_handler(9,opt_msg='Block Kriging unimplemented for model type. Please contact the developers.')
+    
+  end subroutine build_blocks
+  
 !-------------------------------------------------------------------------------------------------!
 
   subroutine alloc_layers(this, lay2grid)
@@ -1660,6 +1674,49 @@ module m_flow_model
   end subroutine init_modflow2000
 
 !-------------------------------------------------------------------------------------------------!
+  
+  subroutine build_blocks_mf(this, opt)
+    use GLOBAL, ONLY : NROW, NCOL, DELR, DELC
+    use tools, only: gaussian_quadrature
+    implicit none
+    class(t_modflow_model)      :: this
+    class(t_options),intent(in) :: opt
+    integer                     :: dim, ngq, iqp,i,k,row,col
+    real                        :: blocksize(3)
+    real, allocatable           :: gqdelxyz(:,:)
+    type(t_Grid), pointer :: grid
+    
+    ! Build blocks if set by user
+    if (opt%BLOCK_KRIGE==1) then                    ! Gaussian Quadrature
+      dim = opt%INTERP_DIM
+      ngq = 4**dim
+      allocate(gqdelxyz(dim, ngq))
+      do k=1, this%nlayers
+        grid => this%grid(k)%ptrgrid
+        call grid%alloc_block_arrays(ngq)
+        do i = 1, this%nnodes(k)
+          row = int((i-1)/NCOL) + 1
+          col = mod(i-1, NCOL) + 1
+          blocksize = 0.0
+          blocksize(1) = DELR(col)/2.0
+          blocksize(2) = DELC(row)/2.0
+          if (dim == 3) blocksize(3) = (this%elev(i, k-1) - this%elev(i, k)) / 2.0
+          call gaussian_quadrature(ngq, dim, blocksize, gqdelxyz, grid%block_wts(:,i))
+          ! Setup coord
+          do iqp=1, ngq
+            grid%block_coords(:,iqp,i) = grid%coords(:,i) + gqdelxyz(:,iqp)
+          end do
+        end do
+        grid%nblockpts(:) = ngq
+      end do
+      deallocate(gqdelxyz)
+    else if (opt%BLOCK_KRIGE==2) then
+      ! TODO
+    end if
+    
+  end subroutine build_blocks_mf
+
+!-------------------------------------------------------------------------------------------------!
 
   subroutine alloc_layers_mf(this, lay2grid)
     implicit none
@@ -1720,8 +1777,9 @@ module m_flow_model
     end do
 
   end subroutine calc_mfcell_centers
+  
 !-------------------------------------------------------------------------------------------------!
-
+  
   function find_in_grid_cell(this, coords, max_outside_dist) result(cell)
     use tools, only: glo2loc
     ! Assumes coords is in GLOBAL coordinates
@@ -1907,6 +1965,7 @@ module m_flow_model
       ! TODO
     else
       call this%calc_mfcell_centers()
+      call this%build_blocks(opt)
     end if
 
     ! Clean up

@@ -33,9 +33,11 @@ module m_kriging
     integer,allocatable       :: vario_idx(:,:)          ! Variogram index given (class_id, class_id) for local classes passed to setup/point
     real   ,allocatable       :: w(:)                    ! Internally calculated weights
     integer,allocatable       :: pset_id(:)              ! ID vector used for kriging matrix
+    type(t_grid),pointer      :: grid                    ! Pointer to result grid
     ! Some kriging-specific settings
     logical                   :: no_negative_weights     ! Flag to zero negative weights and rebalance (True = zero, rebalance)
     logical                   :: write_matrix            ! Flag to write AMAT and RHS to log file
+    logical                   :: block_krige
     ! Attributes for KD-tree and search parameters could be added here
   contains
     procedure               :: intialize => initialize_kriging
@@ -44,6 +46,8 @@ module m_kriging
     procedure               :: setup => setup_krige
     procedure               :: pset_cok
     procedure               :: filter_near_points
+    procedure               :: block_cov_rhs
+    procedure               :: block_sill
     procedure               :: write_amat, write_rhs_array, write_inear
     procedure               :: write_summary => write_summary_krige
     procedure               :: finalize => finalize_krige
@@ -252,7 +256,7 @@ end subroutine doolittle
     class(t_krige),intent(inout)   :: this
     class(t_dataset)               :: obs_data(:)
     integer,intent(in)             :: obs_idx(:)
-    type(t_grid),intent(in)        :: to_grid
+    type(t_grid),intent(in),target :: to_grid
     real                           :: weights(:,:)
     integer,intent(in)             :: cat
     integer,intent(in)             :: to_cats(:)
@@ -267,7 +271,9 @@ end subroutine doolittle
     this%nsets  = size(obs_data)
     this%no_negative_weights = opt%CORRECT_WEIGHTS
     this%write_matrix = opt%WRITE_MATRIX
+    this%block_krige = opt%BLOCK_KRIGE > 0
     has_data = .true.
+    this%grid => to_grid
 
     ! If MAX_SECONDARY_DIST is zero, will use 3x the largest structure range
     this%max_sdist = opt%MAX_SECONDARY_DIST
@@ -311,6 +317,45 @@ end subroutine doolittle
     usenear = count
   end subroutine filter_near_points
 
+!-------------------------------------------------------------------------------------------------!
+  
+  function block_cov_rhs(this,inode,obs_coord,vidx) result(sum)
+    implicit none
+    class(t_krige), intent(in) :: this
+    integer, intent(in)        :: inode, vidx
+    real   , intent(in)        :: obs_coord(:)
+    real                        :: sum
+    integer                     :: q, j, npts
+
+    npts = this%grid%nblockpts(inode)
+    sum  = 0.0
+    do j = 1, this%nstruct(vidx)
+      do q = 1, npts
+        sum = sum + this%grid%block_wts(q,inode)*this%variograms(j,vidx)%cov(this%grid%block_coords(:,q,inode),obs_coord)
+      end do
+    end do
+  end function block_cov_rhs
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  function block_sill(this,inode,vidx) result(sill)
+    implicit none
+    class(t_krige), intent(in) :: this
+    integer, intent(in)        :: inode, vidx
+    real                        :: sill
+    integer                     :: q, r, j, npts
+
+    npts = this%grid%nblockpts(inode)
+    sill = 0.0
+    do j = 1, this%nstruct(vidx)
+      do q = 1, npts
+        do r = 1, npts
+          sill = sill + this%grid%block_wts(q,inode) * this%grid%block_wts(r,inode) * this%variograms(j,vidx)%cov(this%grid%block_coords(:,q,inode),this%grid%block_coords(:,r,inode))
+        end do
+      end do
+    end do
+  end function block_sill
+  
 !-------------------------------------------------------------------------------------------------!
 
   subroutine write_amat(this, log_unit)
@@ -427,7 +472,7 @@ end subroutine write_summary_krige
     class(t_globkrige),intent(inout)      :: this
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
-    type(t_grid),intent(in)               :: to_grid
+    type(t_grid),intent(in),target        :: to_grid
     real                                  :: weights(:,:)
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
@@ -450,7 +495,7 @@ end subroutine write_summary_krige
     end do
     allocate(this%useidx(maxval(this%npoints),this%nsets))
 
-    ! Build search trees in observed grid objects
+    ! Get observed data in category
     ! Also, figure out number of datasets in each category
     do i=1, this%nsets
       class_id = obs_idx(i)
@@ -508,10 +553,15 @@ end subroutine write_summary_krige
     do d = 1, this%nsets
       do i = 1, this%npoints(d)
         vidx = this%vario_idx(1, d)
-        do j = 1, this%nstruct(vidx)
-          value = this%variograms(j, vidx)%cov(p, obs_data(d)%grid%coords(:, this%useidx(i,d)))
-          this%rhsB(rcount) = this%rhsB(rcount) + value
-        end do
+        if (.not. this%block_krige) then    ! Point kriging
+          do j = 1, this%nstruct(vidx)
+            value = this%variograms(j, vidx)%cov(p, obs_data(d)%grid%coords(:, this%useidx(i,d)))
+            this%rhsB(rcount) = this%rhsB(rcount) + value
+          end do
+        else                                ! Block kriging
+          value = this%block_cov_rhs(idx, obs_data(d)%grid%coords(:, this%useidx(i,d)), vidx)
+          this%rhsB(rcount) = value
+        end if
         rcount = rcount + 1
       end do
     end do
@@ -528,22 +578,26 @@ end subroutine write_summary_krige
     ! Variance
     vidx  = this%vario_idx(1,1)
     c0 = 0.0
-    do i = 1, this%nstruct(vidx)
-      c0 = c0 + this%variograms(i,vidx)%cov(p,p)  ! Max covariance
-    end do
+    if (.not. this%block_krige) then    ! Point kriging
+      do i = 1, this%nstruct(vidx)
+        c0 = c0 + this%variograms(i,vidx)%cov(p,p)  ! Max covariance
+      end do
+    else  ! Block kriging
+      c0 = this%block_sill(idx, vidx)
+    end if
     variance = c0 - dot_product(weights(1:osize), this%rhsB(1:osize))
     if (this%unbias==1) variance = variance - weights(matsize)
     variance = max(0.0, variance)
 
     ! Optional: Return observation indices
     if (present(widx)) then
-        rcount = 1
-        do d = 1, this%nsets
-            do i = 1, this%npoints(d)
-                widx(rcount) = this%useidx(i, d)
-                rcount = rcount + 1
-            end do
+      rcount = 1
+      do d = 1, this%nsets
+        do i = 1, this%npoints(d)
+          widx(rcount) = this%useidx(i, d)
+          rcount = rcount + 1
         end do
+      end do
     end if
 
     if (present(ppd)) then
@@ -566,10 +620,10 @@ end subroutine write_summary_krige
 
   subroutine setup_ok(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
     implicit none
-    class(t_treekrige),intent(inout)       :: this
+    class(t_treekrige),intent(inout)      :: this
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
-    type(t_grid),intent(in)               :: to_grid
+    type(t_grid),intent(in),target        :: to_grid
     real                                  :: weights(:,:)
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
@@ -674,10 +728,15 @@ end subroutine write_summary_krige
       vidx = this%vario_idx(1,d)
       ! loop over data points
       do i=1, loc_usenear(d)
-        do j=1, this%nstruct(vidx)
-          value = this%variograms(j,vidx)%cov(p,obs_data(d)%grid%coords(1:,inear(i,d)))
-          this%rhsB(rcount) = this%rhsB(rcount) + value
-        end do
+        if (.not. this%block_krige) then    ! Point kriging
+          do j=1, this%nstruct(vidx)
+            value = this%variograms(j,vidx)%cov(p,obs_data(d)%grid%coords(1:,inear(i,d)))
+            this%rhsB(rcount) = this%rhsB(rcount) + value
+          end do
+        else  ! Block kriging
+          value = this%block_cov_rhs(idx, obs_data(d)%grid%coords(:, inear(i,d)), vidx)
+          this%rhsB(rcount) = value
+        end if
         rcount = rcount + 1
       end do
     end do
@@ -694,9 +753,13 @@ end subroutine write_summary_krige
     ! Variance
     vidx  = this%vario_idx(1,1)
     c0 = 0.0
-    do i = 1, this%nstruct(vidx)
-      c0 = c0 + this%variograms(i,vidx)%cov(p,p)  ! Max covariance
-    end do
+    if (.not. this%block_krige) then    ! Point kriging
+      do i = 1, this%nstruct(vidx)
+        c0 = c0 + this%variograms(i,vidx)%cov(p,p)  ! Max covariance
+      end do
+    else  ! Block kriging
+      c0 = this%block_sill(idx, vidx)
+    end if
     variance = c0 - dot_product(this%w(1:osize), this%rhsB(1:osize))
     if (this%unbias==1) variance = variance - this%w(matsize)
     variance = max(0.0, variance)
