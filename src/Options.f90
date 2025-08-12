@@ -49,6 +49,7 @@ module m_options
     logical                  :: PREDICT_INACTIVE      ! Predict texture/parameters for inactive cells (MODFLOW, IBOUND=0)
     logical                  :: ANISOTROPIC_SEARCH    ! Use anisotropic setting for nearest neighbor search
     logical                  :: NO_TEX_BOUNDS         ! Allow interpolated texture to exceed expected 0-1 values
+    logical                  :: KVME                  ! Kriging with variance of measurement error (inexact interp, expects new cols in data files)
 
     ! Internal Options (generally set by t2p%process_options)
     logical                  :: INTERP_SECOND_OK      ! Can the interpolator handle covariates?
@@ -111,6 +112,8 @@ module m_options
     this%USE_MODEL_GSE        = .false.
     this%PREDICT_INACTIVE     = .false.
     this%ANISOTROPIC_SEARCH   = .false.
+    this%NO_TEX_BOUNDS        = .false.
+    this%KVME                 = .false.
     this%INTERP_SECOND_OK     = .false.
     this%ASYMMETRIC_COV       = .false.
     this%PP_WEIGHTS_TEXT      = .false.
@@ -234,6 +237,8 @@ subroutine read_options(this, reader)
         this%ANISOTROPIC_SEARCH   = .true.
       case("NO_TEX_BOUNDS")
         this%NO_TEX_BOUNDS  = .true.
+      case("KVME","USE_KVME")
+        this%KVME = .true.
       case DEFAULT
         call error_handler(1,reader%file,"Unknown Option Name: " // trim(id))
     end select
@@ -308,6 +313,7 @@ subroutine write_input_summary(this)
     if (this%PREDICT_INACTIVE   ) logic_true = trim(logic_true) // "PREDICT_INACTIVE"    // ","
     if (this%ANISOTROPIC_SEARCH ) logic_true = trim(logic_true) // "ANISOTROPIC_SEARCH"  // ","
     if (this%NO_TEX_BOUNDS      ) logic_true = trim(logic_true) // "NO_TEX_BOUNDS"       // ","
+    if (this%KVME               ) logic_true = trim(logic_true) // "KVME"                // ","
 
     if (len(trim(logic_true)) > no_true_len) then
       !call log%write_line(logic_true)

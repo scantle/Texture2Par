@@ -2,7 +2,7 @@ module m_read_datasets
   use m_global ,only: NODATA, log
 !  use m_datasets
   use m_T2P, only: t_t2p
-  use m_vstring, only: t_vstring, vstring_is
+  use m_vstring, only: t_vstring, vstring_is, vstring_match
   use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_length,vstrlist_index
   use m_file_io, only: t_file_reader, open_file_reader, item2int, item2char
   use m_error_handler, only: error_handler, warning_handler
@@ -44,7 +44,7 @@ module m_read_datasets
     integer                       :: idx, idx_offset, iint, prev_idx, prev_iint, fmodel_loc, didx
     integer,allocatable           :: cids(:), all_count(:)
     real                          :: x, y, z, fmodel_z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
-    real    ,allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:)
+    real    ,allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:), wvariance(:), var_accumulator(:,:)
     real    ,allocatable          :: all_sum(:), all_depth(:)
     type(t_grid),pointer          :: grid
     type(t_data_transformer)      :: data_transformer
@@ -74,12 +74,16 @@ module m_read_datasets
 
       ! Allocate for reading
       allocate(wvalues      (nsets))
+      allocate(wvariance    (nsets))
       allocate(all_count    (nsets))
       allocate(all_sum      (nsets))
       allocate(all_depth    (nsets))
-      allocate(total_thick   (nsets,t2p%fmodel%nlayers))
-      allocate(wv_accumulator(nsets,t2p%fmodel%nlayers))
+      allocate(total_thick    (nsets,t2p%fmodel%nlayers))
+      allocate(wv_accumulator (nsets,t2p%fmodel%nlayers))
+      allocate(var_accumulator(nsets,t2p%fmodel%nlayers))
       allocate(hsus(ncats))
+      var_accumulator = 0.0
+      wvariance = 0.0
       if (.not. allocated(local_elevs)) allocate(local_elevs(0:t2p%fmodel%nlayers))
       all_count = 0
       all_sum = 0
@@ -121,7 +125,11 @@ module m_read_datasets
       do j=1, nlines
         write(tmp, '(i)') j+1
         read(reader%unit, "(A)", iostat=reader%ioerr, iomsg=iomsg) line
-        read(line, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
+        if (t2p%opt%KVME) then
+          read(line, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), wvariance(1:nsets), hsus(1:ncats)
+        else
+          read(line, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
+        end if
 	      call reader%iomsg_handler(iomsg)
         if (didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
         all_depth = all_depth + depth
@@ -143,6 +151,7 @@ module m_read_datasets
               do l=1, nsets
                 if (total_thick(l,k)>0.0) then
                   t2p%datasets(didx,k)%values(cids(l), prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
+                  if (t2p%opt%KVME) t2p%datasets(didx,k)%variance(cids(l), prev_idx) = var_accumulator(l,k) / total_thick(l,k)**2
                   all_sum(l) = all_sum(l) + wv_accumulator(l,k) / total_thick(l,k)
                   all_count(l) = all_count(l) + 1
                 end if
@@ -151,6 +160,7 @@ module m_read_datasets
           end if
           ! And reset for new log
           wv_accumulator = 0.0
+          var_accumulator = 0.0
           total_thick = 0.0
           intv_top = z
           thick = depth
@@ -219,6 +229,7 @@ module m_read_datasets
             do l=1, nsets
               if (wvalues(l)>NODATA) then
                 wv_accumulator(l,k) = wv_accumulator(l,k) + wvalues(l) * frac_thick
+                var_accumulator(l,k) = var_accumulator(l,k) + wvariance(l) * frac_thick**2
                 total_thick(l,k) = total_thick(l,k) + frac_thick
               end if
             end do
@@ -233,6 +244,7 @@ module m_read_datasets
         do l=1, nsets
           if (total_thick(l,k)>0.0) then
             t2p%datasets(didx,k)%values(cids(l),prev_idx) = wv_accumulator(l,k) / total_thick(l,k)
+            if (t2p%opt%KVME) t2p%datasets(didx,k)%variance(cids(l), prev_idx) = var_accumulator(l,k) / total_thick(l,k)**2
             all_sum(l) = all_sum(l) + wv_accumulator(l,k) / total_thick(l,k)
             all_count(l) = all_count(l) + 1
           end if
@@ -247,7 +259,7 @@ module m_read_datasets
       end do
 
       ! Cleanup loop variables
-      deallocate(wvalues, all_count, all_sum, all_depth, total_thick, wv_accumulator, hsus)
+      deallocate(wvalues, wvariance, all_count, all_sum, all_depth, total_thick, wv_accumulator, var_accumulator, hsus)
     end do
   end subroutine read_datasets_2D
 
@@ -266,7 +278,7 @@ module m_read_datasets
     integer                       :: all_count
     integer,allocatable           :: cids(:)
     real                          :: x, y, z, prev_depth, depth, re_depth, thick, fmodel_z
-    real    ,allocatable          :: wvalues(:), local_elevs(:), all_thick(:), all_sum(:)
+    real    ,allocatable          :: wvalues(:), local_elevs(:), all_thick(:), all_sum(:), wvariance(:)
     type(t_grid),pointer          :: grid
     type(t_data_transformer)      :: data_transformer
 
@@ -295,9 +307,11 @@ module m_read_datasets
 
       ! Allocate for reading
       allocate(wvalues      (nsets))
+      allocate(wvariance    (nsets))
       allocate(all_sum      (nsets))
       allocate(all_thick    (nsets))
       allocate(hsus(ncats))
+      wvariance = 0.0
       if (.not. allocated(local_elevs)) allocate(local_elevs(0:t2p%fmodel%nlayers))
       nlines = 0
       all_count = 0
@@ -342,7 +356,11 @@ module m_read_datasets
       do j=1, nlines
         write(tmp, '(i)') j+1
         !write(*,*) tmp // " / ", nlines
-        read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
+        if (t2p%opt%KVME) then
+          read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), wvariance(1:nsets), hsus(1:ncats)
+        else
+          read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
+        end if
 	      call reader%iomsg_handler(iomsg)
         if (didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
         if (iint <= prev_iint) call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
@@ -368,9 +386,7 @@ module m_read_datasets
         resized_intervals = ceiling(thick / t2p%opt%MAX_LOG_LENGTH)
 
         ! Transform values
-        if (minval(wvalues)>=0) then !TODO Should this be > -999/NODATA?
-          call data_transformer%apply(wvalues)
-        end if
+        if (minval(wvalues)>=NODATA) call data_transformer%apply(wvalues)
 
         do k=1, nsets
           if (wvalues(k) > NODATA) then
@@ -389,6 +405,7 @@ module m_read_datasets
             grid%coords(3, ipoint) = z - re_depth
           end if
           t2p%datasets(didx,1)%values(:, ipoint) = wvalues(1:nsets)
+          if (t2p%opt%KVME) t2p%datasets(didx,1)%variance(:, ipoint) = wvariance(1:nsets) * resized_intervals
           ! Store location
           t2p%datasets(didx,1)%fmodel_loc(ipoint) = fmodel_loc
           ipoint = ipoint + 1
@@ -406,7 +423,7 @@ module m_read_datasets
       end do
 
       ! Cleanup loop variables
-      deallocate(wvalues, all_sum, all_thick, hsus)
+      deallocate(wvalues, all_sum, all_thick, hsus, wvariance)
     end do
   end subroutine read_datasets_3D
 
@@ -428,6 +445,7 @@ module m_read_datasets
     !                             1        2  3 4 5 6     7
     nsets = vstrlist_length(header) - 7
     if (t2p%has_hsus) nsets = nsets - t2p%fmodel%nlayers
+    if (t2p%opt%KVME) nsets = nsets - t2p%get_active_texture_classes()  ! one per texture class
     if (nsets < 1) then
        call error_handler(1,file,"Invalid number of entries in dataset header")
     end if
@@ -438,7 +456,10 @@ module m_read_datasets
     do i=1, nsets
       temp(i) = t2p%get_class_id(vstrlist_index(header,7+i))
       if (temp(i)==0) then
-        if (vstring_is(vstrlist_index(header,7+i),'integer')) then
+        if (t2p%opt%KVME) then
+          ! If KVME, then the end of classes will start with var_
+          if (vstring_match(vstrlist_index(header,7+i), "var_*", nocase=.TRUE.)>1) exit
+        else if (vstring_is(vstrlist_index(header,7+i),'integer')) then
           ! Assumption - an integer indicates this is an (unused) HSU zone == done with classes
           write(cint,'(i5)') count
           call warning_handler("Encountered integer in header for "//trim(file)//" - assuming "//trim(adjustl(cint))//" classes in file")

@@ -307,6 +307,7 @@ module m_datasets
     this%category = 1
 
     if (present(default_value)) this%values = default_value
+    this%variance = 0.0
 
     !this%grid = create_grid_object(2, npoints)  ! X,Y,Z coords by n
 

@@ -25,7 +25,7 @@ module m_kriging
     real   ,allocatable       :: rhsB(:)                 ! RHS grid-obs covariance array
     integer,pointer           :: nstruct(:)              ! Number of structures for each variogram
     integer,pointer           :: nnear(:)                ! Number of nearest points used for interpolation, for each dataset/class (nvario) (0 for cross)
-    integer,pointer           :: obs_idx(:)              ! Indices of datasets
+    integer,allocatable       :: obs_idx(:)              ! Indices of datasets
     type(t_vstringlist)       :: zones                   ! List of HSUs, needed to track the order of HSUs in global_vario_idx (may not match global HSU id!)
     integer,allocatable       :: cat2zone(:)             ! Map from global category id (hsu_id) to internal zone number (read at different times)
     type(t_vgm),pointer       :: variograms(:,:)         ! (stuctures, variogram)
@@ -37,7 +37,8 @@ module m_kriging
     ! Some kriging-specific settings
     logical                   :: no_negative_weights     ! Flag to zero negative weights and rebalance (True = zero, rebalance)
     logical                   :: write_matrix            ! Flag to write AMAT and RHS to log file
-    logical                   :: block_krige
+    logical                   :: block_krige             ! Flag to block krige
+    logical                   :: kvme_enabled            ! Kriging with variance of measurement error
     ! Attributes for KD-tree and search parameters could be added here
   contains
     procedure               :: intialize => initialize_kriging
@@ -272,8 +273,11 @@ end subroutine doolittle
     this%no_negative_weights = opt%CORRECT_WEIGHTS
     this%write_matrix = opt%WRITE_MATRIX
     this%block_krige = opt%BLOCK_KRIGE > 0
+    this%kvme_enabled = opt%KVME
     has_data = .true.
     this%grid => to_grid
+    if (allocated(this%obs_idx)) deallocate(this%obs_idx)
+    this%obs_idx = obs_idx
 
     ! If MAX_SECONDARY_DIST is zero, will use 3x the largest structure range
     this%max_sdist = opt%MAX_SECONDARY_DIST
@@ -453,8 +457,8 @@ end subroutine write_summary_krige
     if (associated(this%nnear)) deallocate(this%nnear)
     if (allocated(this%matA))    deallocate(this%matA)
     if (allocated(this%rhsB))    deallocate(this%rhsB)
+    if (allocated(this%obs_idx)) deallocate(this%obs_idx)
     if (associated(this%nstruct)) deallocate(this%nstruct)
-    if (associated(this%obs_idx)) deallocate(this%obs_idx)
     if (associated(this%variograms)) deallocate(this%variograms)
     if (allocated(this%global_vario_idx)) deallocate(this%global_vario_idx)
     if (allocated(this%vario_idx)) deallocate(this%vario_idx)
@@ -481,7 +485,8 @@ end subroutine write_summary_krige
     !integer,pointer           :: npoints(i)            ! Number of points (in category) to be used for simple kriging
     !integer,allocatable       :: useidx(:,:)           ! Indices of points to use for simple kriging, within category, by (npoints, nset)
     ! Local
-    integer                               :: i,ier,class_id,matsize,mat_tot
+    integer                               :: i,j,ier,class_id,matsize,mat_tot
+    real,allocatable                      :: merror(:,:)
 
     ! Call super setup
     call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
@@ -491,9 +496,10 @@ end subroutine write_summary_krige
     if (allocated(this%useidx)) deallocate(this%useidx)
     allocate(this%npoints(this%nsets))
     do i=1, this%nsets
-      this%npoints = obs_data(i)%grid%n
+      this%npoints(i) = obs_data(i)%grid%n
     end do
     allocate(this%useidx(maxval(this%npoints),this%nsets))
+    allocate(     merror(maxval(this%npoints),this%nsets))  ! measurement error
 
     ! Get observed data in category
     ! Also, figure out number of datasets in each category
@@ -516,8 +522,25 @@ end subroutine write_summary_krige
 
     this%matA = 0.0
     this%w = 0.0
+    merror = 0.0
+    
+    ! Setup KVME, if using
+    if (this%kvme_enabled) then
+      do i = 1, this%nsets
+        select type(ld => obs_data(i))
+        type is (t_layerdata)
+          class_id = obs_idx(i)
+          if (i > 1) class_id = 1
+          do j = 1, this%npoints(i)
+            merror(j, i) = max(0.0, ld%variance(class_id, this%useidx(j, i)))
+          end do
+        class default
+          ! otherwise: zeros
+        end select
+      end do
+    end if
 
-    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, this%useidx, this%npoints, this%ndim)
+    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, this%useidx, this%npoints, this%ndim, merror)
     if (this%write_matrix) then
       write(log%unit, '(/,A)') 'DEBUG - STARTING SIMPLE (CO)KRIGING'
       call this%write_amat(log%unit)
@@ -686,10 +709,10 @@ end subroutine write_summary_krige
     integer, optional                :: widx(:)              ! idx associated with weights
     integer, optional                :: ppd(size(obs_data))  ! points per dataset
     ! local
-    integer                          :: i, j, d, vidx, wi, osize, matsize, mat_tot, ier, rcount, woffset
+    integer                          :: i, j, d, vidx, wi, osize, matsize, mat_tot, ier, rcount, woffset,class_id
     integer                          :: inear(this%maxnear,this%nsets), loc_usenear(this%nsets)
     real                             :: value, c0
-    real                             :: dist(this%maxnear,this%nsets)
+    real                             :: dist(this%maxnear,this%nsets), merror(this%maxnear,this%nsets)
 
     ! Get nearest for each obs dataset
     loc_usenear = this%usenear  ! LOCAL VERSION
@@ -705,9 +728,26 @@ end subroutine write_summary_krige
     osize   = sum(loc_usenear)
     matsize = osize+this%unbias+this%ndrift
     mat_tot = matsize * (matsize + 1) / 2
+    
+    ! Setup KVME if using
+    merror = 0.0
+    if (this%kvme_enabled) then
+      do i = 1, this%nsets
+        select type(ld => obs_data(i))
+        type is (t_layerdata)
+          class_id = this%obs_idx(i)
+          if (i > 1) class_id = 1
+          do j = 1, loc_usenear(i)
+            merror(j, i) = max(0.0, ld%variance(class_id, inear(j, i)))
+          end do
+        class default
+          ! pilot points (or anything else): leave zeros
+        end select
+      end do
+    end if
 
     ! Create obs-obs matrix
-    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, inear, loc_usenear, this%ndim)
+    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, inear, loc_usenear, this%ndim, merror)
     if (this%write_matrix) then
       write(log%unit, '(/,A,i0)') 'DEBUG - POINT:',idx
       write(log%unit, '(  A,9F12.3)') '  Coordinates:',p
@@ -791,11 +831,12 @@ end subroutine write_summary_krige
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine pset_cok(this, obs_data, ntot, p, id, maxpt, inear, nnear,  dim)
+  subroutine pset_cok(this, obs_data, ntot, p, id, maxpt, inear, nnear,  dim, me_diag)
     implicit none
     ! Rewrite of PSET routine for ordinary cokriging
     ! Author Leland Scantlebury
     !
+    ! LS 8/11/2025 - Added support for KVME through me_diag array
     ! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 
     ! Inputs
@@ -803,11 +844,12 @@ end subroutine write_summary_krige
     type(t_dataset)        :: obs_data(:)
     integer,intent(in)     :: maxpt, ntot, dim
     integer,intent(in)     :: inear(this%maxnear,this%nsets), nnear(this%nsets)
+    real   ,intent(in)     :: me_diag(this%maxnear, this%nsets)
     integer,intent(inout)  :: id(ntot)
-    real    ,intent(inout) :: p(maxpt)
+    real   ,intent(inout)  :: p(maxpt)
 
     ! Subroutine variables
-    integer             :: i,ii,j,jj,n,ind,JS, rowcount, nobs
+    integer             :: i,ii,j,jj,n,r,ind,JS, rowcount, nobs
     integer,allocatable :: colcount(:)
     real                :: coordi(dim),coordj(dim),value,value_sum
 
@@ -859,6 +901,15 @@ end subroutine write_summary_krige
       DO I=1,ntot-1
         P(ID(I)+ntot-I)=1
       END DO
+    end if
+    ! Add measurement error (variance) to diagonal, if using
+    if (this%kvme_enabled) then
+      do j = 1, nobs
+        do jj = 1, nnear(j)
+          r = colcount(j) + jj
+          p( id(r) ) = p( id(r) ) + me_diag(jj, j)
+        end do
+      end do
     end if
 
     deallocate(colcount)
