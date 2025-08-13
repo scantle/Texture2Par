@@ -613,7 +613,7 @@ module m_T2P
       ! If just texture, our jobs is very easy
       allocate(this%dset_intermediate(1,this%fmodel%nlayers))
       call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid", nblank)
-      call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
+      call this%interpolate_model(this%datasets, this%dset_intermediate)
       RETURN
     end if
 
