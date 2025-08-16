@@ -267,7 +267,44 @@ module m_file_io
   end function find_string_index_in_list
 
 !-------------------------------------------------------------------------------------------------!
+  
+  function vstrlist_to_charvec(strings, subset) result(names)
+    implicit none
+    type(t_vstringlist), intent(in) :: strings
+    character(len=:), allocatable   :: names(:)
+    integer                         :: n, i, cmax
+    integer, optional               :: subset(:)
+    integer, allocatable            :: idx(:)
 
+    if (present(subset)) then
+      idx = subset
+      n = size(idx)
+    else
+      n = vstrlist_length(strings)
+      idx = [(i, i=1, n)]
+    end if
+    if (n <= 0) then
+      allocate(character(len=1) :: names(0))
+      return
+    end if
+
+    ! find maximum label width
+    cmax = 1
+    do i = 1, n
+      cmax = max(cmax, vstring_length(vstrlist_index(strings, idx(i))))
+    end do
+
+    ! allocate and copy
+    allocate(character(cmax) :: names(n))
+    do i = 1, n
+      call item2char(strings, idx(i), names(i))
+    end do
+    
+    return
+  end function vstrlist_to_charvec
+  
+!-------------------------------------------------------------------------------------------------!
+  
 !-------------------------------------------------------------------------------------------------!
 ! BASE CLASS FILE TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!

@@ -124,12 +124,12 @@ module m_log
     ! Aquifer Class Pilot Points
     if (.not. t2p%opt%ONLY_TEXTURE) then
       call log%write_line('--- AQUIFER PILOT POINTS ---', blank_start=1)
-      call t2p%pilot_points%write_pp_table(is_aquitard=.false.)
+      call t2p%pilot_points%write_pp_table()
     
       ! Aquitard Class Pilot Points
       if (t2p%fmodel%has_aquitards) then
         call log%write_line('--- AQUITARD PILOT POINTS ---', blank_start=1)
-        call t2p%pilot_points_aquitard%write_pp_table(is_aquitard=.true.)
+        call t2p%pilot_points_aquitard%write_pp_table()
       end if
     end if
     call log%write_line('')

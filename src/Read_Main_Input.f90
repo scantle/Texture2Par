@@ -63,13 +63,13 @@ module m_read_main_input
         CALL read_variogram_block(t2p, reader)
       case("PP_LOCS")
         call pre_block_read_check(t2p, id)
-        CALL read_pploc_block(t2p, reader, t2p%pilot_points)
+        CALL read_pploc_block(t2p, reader, t2p%pilot_points, .false.)
       case("PP_PARAMETERS")
         call pre_block_read_check(t2p, id)
         CALL read_ppparm_block(t2p, reader)
       case("PP_AQUITARD_LOCS")
         call pre_block_read_check(t2p, id)
-        CALL read_pploc_block(t2p, reader, t2p%pilot_points_aquitard)
+        CALL read_pploc_block(t2p, reader, t2p%pilot_points_aquitard, .true.)
       case ("END")
         ! Do nothing - errant line? Block reader ended early?
       case DEFAULT
@@ -529,12 +529,13 @@ end subroutine read_variogram_block
 
 !-------------------------------------------------------------------------------------------------!
 
-subroutine read_pploc_block(t2p, reader, p)
+subroutine read_pploc_block(t2p, reader, p, is_aquitard)
   use m_pilotpoints, only: t_pilotpoints, create_pilotpoint_object
   implicit none
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
   type(t_pilotpoints),pointer     :: p
+  logical,intent(in)              :: is_aquitard
 
   ! Standard file reader variables
   integer                    :: status, length
@@ -553,7 +554,7 @@ subroutine read_pploc_block(t2p, reader, p)
   ! Allocate & setup PP object
   allocate(pp_id       (npp), &
            zone_tracker(npp)  )
-  p => create_pilotpoint_object(npp, t2p%ntexclasses)
+  p => create_pilotpoint_object(npp, t2p%ntexclasses, is_aquitard)
   nzones = 0
   zone_tracker = 0
 

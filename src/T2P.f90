@@ -6,7 +6,7 @@ module m_T2P
   use m_options, only: t_options
   use m_datasets, only: t_layerdata, t_dataset, write_layerdata
   use m_flow_model, only: t_flow_model, t_iwfm_model
-  use m_pilotpoints, only: t_pilotpoints
+  use m_pilotpoints, only: t_pilotpoints, setup_pilotpoint_property_arrays
   use m_interpolator, only: t_interpolator, t_idw
   use m_kriging, only: t_krige, t_globkrige, t_treekrige
   use m_sgsim, only: t_sgsim
@@ -145,6 +145,7 @@ module m_T2P
 
     ! Initialize Elements
     call this%opt%initialize()
+    call setup_pilotpoint_property_arrays()
     call vstrlist_new (this%dataset_files)
     call vstrlist_new (this%dataset_trans)
 
@@ -723,23 +724,30 @@ module m_T2P
       end if
 
       ! Apply weights and create results
-      if (.not. this%fmodel%pparr_aqtard(k)) then
-        do i=1, this%ntexclasses
-          do j=1, nproperties
-            !results(k)%values(:,j,i) = matmul(weights%values,obs_data(1)%values(:,j,i))
-            ! Avoid copying
-            call dgemv('N', to_grid%n, obs_data(1)%grid%n, 1.0, weights%values, to_grid%n, obs_data(1)%values(:,j,i), 1, 0.0, results(k)%values(:,j,i), 1)
-          end do
+      !if (.not. this%fmodel%pparr_aqtard(k)) then
+      !  do i=1, this%ntexclasses
+      !    do j=1, nproperties
+      !      !results(k)%values(:,j,i) = matmul(weights%values,obs_data(1)%values(:,j,i))
+      !      ! Avoid copying
+      !      call dgemv('N', to_grid%n, obs_data(1)%grid%n, 1.0, weights%values, to_grid%n, obs_data(1)%values(:,j,i), 1, 0.0, results(k)%values(:,j,i), 1)
+      !    end do
+      !  end do
+      !else ! Aquitard - subset of parameters
+      !  do i=1, this%ntexclasses
+      !    do j=1, naquitard_props
+      !      !results(k)%values(:,aquitard_props(j),i) = matmul(weights%values,this%pilot_points_aquitard%values(:,aquitard_props(j),i))
+      !      ! Avoid copying
+      !      call dgemv('N', to_grid%n, this%pilot_points_aquitard%grid%n, 1.0, weights%values, to_grid%n, this%pilot_points_aquitard%values(:,aquitard_props(j),i), 1, 0.0, results(k)%values(:,aquitard_props(j),i), 1)
+      !    end do
+      !  end do
+      !end if
+      do i=1, this%ntexclasses
+        do j=1, obs_data(1)%nactive
+          call dgemv('N', to_grid%n, obs_data(1)%grid%n, 1.0, weights%values, to_grid%n, obs_data(1)%values(:,obs_data(1)%active(j),i), 1, 0.0, results(k)%values(:,obs_data(1)%active(j),i), 1)
         end do
-      else ! Aquitard - subset of parameters
-        do i=1, this%ntexclasses
-          do j=1, naquitard_props
-            !results(k)%values(:,aquitard_props(j),i) = matmul(weights%values,this%pilot_points_aquitard%values(:,aquitard_props(j),i))
-            ! Avoid copying
-            call dgemv('N', to_grid%n, this%pilot_points_aquitard%grid%n, 1.0, weights%values, to_grid%n, this%pilot_points_aquitard%values(:,aquitard_props(j),i), 1, 0.0, results(k)%values(:,aquitard_props(j),i), 1)
-          end do
-        end do
-      end if
+      end do
+      
+      
       ! reset weights
       weights%values = 0.0
     end do
