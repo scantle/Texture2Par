@@ -1,12 +1,12 @@
 module m_T2P
   use m_global, only: NODATA
-  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_append, vstrlist_range
+  use m_vstringlist
   use m_vstring, only: t_vstring, vstring_toupper
   use m_error_handler, only: error_handler,warning_handler,warnings
   use m_options, only: t_options
   use m_datasets, only: t_layerdata, t_dataset, write_layerdata
-  use m_flow_model, only: t_flow_model, t_iwfm_model
-  use m_pilotpoints, only: t_pilotpoints, setup_pilotpoint_property_arrays
+  use m_flow_model, only: t_flow_model, t_iwfm_model, get_layer_thicknesses
+  use m_pilotpoints, only: t_pilotpoints, setup_pilotpoint_property_arrays, add_pilotpoint_aquifer_parameter
   use m_interpolator, only: t_interpolator, t_idw
   use m_kriging, only: t_krige, t_globkrige, t_treekrige
   use m_sgsim, only: t_sgsim
@@ -55,6 +55,8 @@ module m_T2P
     type(t_vstringlist)              :: dataset_trans         ! dataset transformations (same order as filenames)
     type(t_vstringlist)              :: dataset_trans_params  ! dataset transformation parameters (same order as filenames) (unimplemented)
     type(t_category),pointer         :: dataset_ppzones       ! Pilot point zone dataset grid arrays & tracking (when INTERP_ORDER=AFTER)
+    integer,allocatable              :: fine_classes(:)       ! Fine classes (for subsidence)
+    integer,allocatable              :: coarse_classes(:)     ! Coarse classes (all classes not in fine_classes). Needed for SskeC.
 
     ! Read trackers - used to check if a block has been read (and make sure it exists)
     logical                          :: has_opt
@@ -83,6 +85,7 @@ module m_T2P
     procedure,public   :: setup_pplocs
     procedure,public   :: setup_dataset_ppzones
     procedure,public   :: setup_categories   ! AKA HSUs & PPZones
+    procedure,public   :: setup_subsidence
     procedure,public   :: check_major_inputs
     !procedure,private  :: check_pp_zone_layertype_assignments
     procedure,private  :: nvario_estimator
@@ -550,6 +553,59 @@ module m_T2P
   end subroutine setup_categories
   
 !-------------------------------------------------------------------------------------------------!
+  
+  subroutine setup_subsidence(this, fine_classes)
+    use m_pilotpoints, only: add_pilotpoint_aquifer_parameter, aquifer_propnames
+    use m_file_io, only: vstrlist_replace, item2char
+    ! Run during subsidence block read
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    type(t_vstringlist)           :: fine_classes
+    integer                       :: nfine, i, j, is_fine, class_id
+    character,allocatable         :: temp
+    
+    ! Setup arrays to track which classes (by id) are fine and coarse
+    nfine = vstrlist_length(fine_classes)
+    allocate(this%fine_classes(nfine), this%coarse_classes(this%nclasses - nfine))
+    this%fine_classes = 0
+    do i=1, nfine
+      class_id = this%get_class_id(vstrlist_index(fine_classes, i))
+      if (class_id==0) then
+        call item2char(fine_classes, i, temp)
+        call error_handler(1,opt_msg="Missing Required OPTIONS Block")
+      end if
+      this%fine_classes(i) = class_id
+    end do
+    
+    ! build coarse = complement of fine in [1..ntexclasses]
+    j = 1
+    do i=1, this%ntexclasses
+      is_fine = findloc(this%fine_classes, i, 1)
+      if (is_fine == 0) then
+        this%coarse_classes(j) = i
+        j = j+1
+      end if
+    end do
+    
+    ! Turn option on
+    this%opt%subsidence_on = .true.
+    
+    ! Modify existing Ss pilot point parameter, add new pilot point parameter
+    call vstrlist_replace(aquifer_propnames, 'Ss', 'Sske')
+    i = vstrlist_search(aquifer_propnames, 'Sske')
+    call add_pilotpoint_aquifer_parameter('Sskv', before=i+1)
+    
+    ! Add output parameters as well
+    call vstrlist_replace(this%parnames, 'SS', 'SSKEC')
+    call vstrlist_append (this%parnames, "SSKEF" )
+    call vstrlist_append (this%parnames, "SSKVF" )
+    call vstrlist_append (this%parnames, "KVF" )
+    call vstrlist_append (this%parnames, "IB_THK" )
+    this%npar = vstrlist_length(this%parnames)
+    
+  end subroutine setup_subsidence
+  
+!-------------------------------------------------------------------------------------------------!
 
   subroutine check_major_inputs(this)
     ! Run in main Texture2Par file, currently before datasets are read but after fmodel/categories
@@ -852,13 +908,31 @@ module m_T2P
 !-------------------------------------------------------------------------------------------------!
 
   subroutine calc_block_parameters(this, pp_obj, tex_obs, par_out)
+    use m_pilotpoints, only: propnames
     implicit none
     class(t_T2P), intent(inout)    :: this
     type(t_pilotpoints),intent(in) :: pp_obj(this%fmodel%ppzones%narr) ! Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, STp
     type(t_layerdata),intent(inout):: tex_obs(this%fmodel%nlayers)  !  values(ntexclasses, npoints)
-    type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !values([Kh, Kv, Ss, Sy], npoints)
+    type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !values([Kh, Kv, Ss, Sy], npoints) subsidence = [Kh, Kv, Sskec, Sy, Sskef, Sskvf, Kvf, IB_thk]
     integer                        :: i, k, r
-    real    ,allocatable           :: depths(:),KhD(:,:),KvD(:,:)
+    integer                        :: Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, Stp, Sske, Sskv
+    real                           :: wf_sum, wc_sum
+    real    ,allocatable           :: depths(:),thk(:),KhD(:,:),KvD(:,:)
+    
+    ! Get parameter ids (indexes in matrix, not the actual values)
+    Kmin  = vstrlist_search(propnames, 'Kmin')   ! 1
+    Kmax  = vstrlist_search(propnames, 'Kmax')   ! 2 
+    Ss    = vstrlist_search(propnames, 'Ss')     ! 3
+    Sy    = vstrlist_search(propnames, 'Sy')     ! 4
+    Aniso = vstrlist_search(propnames, 'Aniso')  ! 5
+    Kd    = vstrlist_search(propnames, 'Kd')     ! 6
+    KHp   = vstrlist_search(propnames, 'KHp')    ! 7
+    KVp   = vstrlist_search(propnames, 'KVp')    ! 8
+    STp   = vstrlist_search(propnames, 'STp')    ! 9
+    if (this%opt%SUBSIDENCE_ON) then
+      Sske = vstrlist_search(propnames, 'Sske')
+      Sskv = vstrlist_search(propnames, 'Sskv')
+    end if
 
     ! Loop over layers
     do k=1, this%fmodel%nlayers
@@ -874,11 +948,16 @@ module m_T2P
       ! Allocate arrays
       if (allocated(depths)) deallocate(depths)
       allocate(depths(this%fmodel%nnodes(k)))
+      if (allocated(thk)) deallocate(thk)
+      if (this%opt%SUBSIDENCE_ON) allocate(thk(this%fmodel%nnodes(k)))
       allocate(KhD(this%fmodel%nnodes(k), this%ntexclasses))
       allocate(KvD(this%fmodel%nnodes(k), this%ntexclasses))
 
       ! Get node midpoint depths
       call this%fmodel%get_midpoint_depths(k, depths)
+      
+      ! Get thicknesses
+      if (this%opt%SUBSIDENCE_ON) call this%fmodel%get_layer_thicknesses(k, thk)
 
       ! Get pilot point array  (point, parameter, class_id)
       r = this%fmodel%ppzones%lay2arr(k)
@@ -891,17 +970,41 @@ module m_T2P
         ! Ensure classes add to one
         tex_obs(k)%values(:,i) = tex_obs(k)%values(:,i) / sum(tex_obs(k)%values(:,i))
         ! Kh - Depth adjusted
-        KhD(i,:) = pp_obj(r)%values(i, 1, :) + pp_obj(r)%values(i, 2, :) * exp(-1 *pp_obj(r)%values(i, 6, :) * depths(i))
+        KhD(i,:) = pp_obj(r)%values(i, Kmin, :) + pp_obj(r)%values(i, Kmax, :) * exp(-1 *pp_obj(r)%values(i, Kd, :) * depths(i))
         ! Kv - Depth adjusted, calculated from anisotropy
-        KvD(i,:) = KhD(i,:) / pp_obj(r)%values(i, 5, :)
+        KvD(i,:) = KhD(i,:) / pp_obj(r)%values(i, Aniso, :)
         ! Kh
-        par_out(k)%values(1,i) = DOT_PRODUCT(KhD(i,:)**pp_obj(r)%values(i, 7, :), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, 7, 1))
+        par_out(k)%values(1,i) = DOT_PRODUCT(KhD(i,:)**pp_obj(r)%values(i, KHp, 1), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, KHp, 1))
         ! Kv
-        par_out(k)%values(2,i) = DOT_PRODUCT(KvD(i,:)**pp_obj(r)%values(i, 8, :), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, 8, 1))
-        ! Ss
-        par_out(k)%values(3,i) = DOT_PRODUCT(pp_obj(r)%values(i,3,:)**pp_obj(r)%values(i, 9, :), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, 9, 1))
+        par_out(k)%values(2,i) = DOT_PRODUCT(KvD(i,:)**pp_obj(r)%values(i, KVp, 1), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, KVp, 1))
+        if (this%opt%SUBSIDENCE_ON) then
+          ! Calculate total "weights" for fine and coarse
+          wf_sum = sum( tex_obs(k)%values(this%fine_classes,  i) )
+          wc_sum = sum( tex_obs(k)%values(this%coarse_classes,i) )
+          if (wc_sum>0.0) then
+            ! SskeC
+            par_out(k)%values(3,i) = DOT_PRODUCT(pp_obj(r)%values(i,Sske,this%coarse_classes)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(this%coarse_classes,i)/wc_sum) ** (1.0 / pp_obj(r)%values(i, STp, 1))
+          else
+            par_out(k)%values(3,i) = 0.0
+          end if
+          if (wf_sum > 0.0) then
+            ! SskeF
+            par_out(k)%values(5,i) = DOT_PRODUCT(pp_obj(r)%values(i,Sske,this%fine_classes)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, STp, 1))
+            ! SskvF
+            par_out(k)%values(6,i) = DOT_PRODUCT(pp_obj(r)%values(i,Sskv,this%fine_classes)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, STp, 1))
+            ! KvF
+            par_out(k)%values(7,i) = DOT_PRODUCT(KvD(i,this%fine_classes)**pp_obj(r)%values(i, KVp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, KVp, 1))
+            ! IB_thk
+            par_out(k)%values(8,i) = wf_sum * thk(i)
+          else
+            par_out(k)%values(5:8,i) = 0.0
+          end if
+        else
+          ! Ss
+          par_out(k)%values(3,i) = DOT_PRODUCT(pp_obj(r)%values(i,Ss,:)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, STp, 1))
+        end if
         ! Sy
-        par_out(k)%values(4,i) = DOT_PRODUCT(pp_obj(r)%values(i,4,:)**pp_obj(r)%values(i, 9, :), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, 9, 1))
+        par_out(k)%values(4,i) = DOT_PRODUCT(pp_obj(r)%values(i,Sy,:)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, STp, 1))
       end do
 
       deallocate(KhD, KvD)

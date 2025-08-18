@@ -67,6 +67,7 @@ module m_flow_model
       procedure,public            :: find_in_grid
       procedure,public            :: get_elev_at_point
       procedure,public            :: get_midpoint_depths
+      procedure,public            :: get_layer_thicknesses
       procedure,public            :: get_active_ppzones
       procedure,public            :: get_layer_id   ! For when layer =/ layer_id (e.g., IWFM aquitards): id = aquifer id... iwfm == k/2
       procedure,public            :: get_layer_no   ! Other direction k*2. TODO come up with a clearer name
@@ -430,6 +431,23 @@ module m_flow_model
 
   end subroutine get_midpoint_depths
 
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine get_layer_thicknesses(this, k, thicknesses)
+    ! To be overloaded where necessary (should be the same for all models)...
+    implicit none
+    class(t_flow_model)                :: this
+    integer,intent(in)                 :: k
+    integer                            :: i
+    real, intent(inout)                :: thicknesses(:)
+    
+    ! Loop & compute depths to avoid large temporary arrays
+    do i = 1, this%nnodes(k)
+      thicknesses(i) = this%elev(i,k-1) - this%elev(i,k)
+    end do
+
+  end subroutine get_layer_thicknesses
+  
 !-------------------------------------------------------------------------------------------------!
 
   function get_active_ppzones(this) result(nactive)

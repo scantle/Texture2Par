@@ -2,7 +2,7 @@ module m_pilotpoints
   use m_datasets, only: t_dataset
   use m_global, only: NODATA
   use m_grid, only: t_grid, create_grid_object
-  use m_vstringlist, only: t_vstringlist, vstrlist_new, vstrlist_length, vstrlist_append, vstrlist_concat, vstrlist_insert
+  use m_vstringlist
   use m_file_io, only: vstrlist_to_charvec
   implicit none
 
@@ -107,14 +107,16 @@ module m_pilotpoints
       allocate(global_props  (nglobal_props),  &
                aquifer_props (naquifer_props), &
                aquitard_props(naquitard_props) )
-      ! We want some simple arrays to be able to pull out subsets later. The order is assumed, this
-      ! could get tricky is we start letting other modules add pilot point parameters
+      ! We want some simple arrays to be able to pull out subsets later.
       aquifer_props = [(i, i=1, naquifer_props)]
       global_props  = [(i, i=naquifer_props+1, naquifer_props + nglobal_props)]
-      ! Aquitards is trickier
-      aquitard_props = [ (aquifer_props(i), i=1,2),  &
-                         (aquifer_props(i), i=5,6),  &
-                         (global_props(i),  i=1,2)   ]
+      ! Aquitards is trickier, since it is a subset of both. Searching is easiest.
+      aquitard_props(1) = vstrlist_search(propnames, 'Kmin')
+      aquitard_props(2) = vstrlist_search(propnames, 'Kmax')
+      aquitard_props(3) = vstrlist_search(propnames, 'Aniso')
+      aquitard_props(4) = vstrlist_search(propnames, 'Kd')
+      aquitard_props(5) = vstrlist_search(propnames, 'KHp')
+      aquitard_props(6) = vstrlist_search(propnames, 'KVp')
     end if
 
     ! Have to allocate this seperately, since init cannot take more than npoints (inheritance)
@@ -134,12 +136,18 @@ module m_pilotpoints
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine add_pilotpoint_aquifer_parameter(name)
+  subroutine add_pilotpoint_aquifer_parameter(name, before)
     ! Must be called prior to create_pilotpoint_object / init_pilotpoints
     implicit none
     character(*), intent(in)     :: name
+    integer,intent(in),optional  :: before
+    integer                      :: i
     
-    aquifer_propnames = vstrlist_insert(aquifer_propnames, naquifer_props+1, name)
+    if (.not. present(before)) then
+      call vstrlist_append(aquifer_propnames, name)
+    else
+      aquifer_propnames = vstrlist_insert(aquifer_propnames, before, name)
+    end if
     naquifer_props = vstrlist_length(aquifer_propnames)
   
   end subroutine add_pilotpoint_aquifer_parameter
@@ -213,6 +221,7 @@ module m_pilotpoints
     ! Now we react to type
     select case(pp_type)
       case("AQUIFER")
+        if (length < naquifer_props+2) call error_handler(1,"Missing 1 or more aquifer parameter columns for pilot point " // trim(id))
         do i=1, naquifer_props
           this%values(pp_index,aquifer_props(i),class_id) = item2dp(strings, 2+i)
         end do
@@ -225,13 +234,10 @@ module m_pilotpoints
           this%values(pp_index,2,class_id) = this%values(pp_index,2,class_id) - this%values(pp_index,1,class_id)
         end if
       case("AQUITARD")
+        if (length < naquitard_props-2) call error_handler(1,"Missing 1 or more aquitard parameter columns for pilot point " // trim(id))
         do i=1, naquitard_props-2  ! Not very dynamic...
           this%values(pp_index,aquitard_props(i),class_id) = item2dp(strings, 2+i)
         end do
-        !this%values(pp_index,1,class_id) = item2dp(strings, 3)  ! Kmin
-        !this%values(pp_index,2,class_id) = item2dp(strings, 4)  ! Kmax
-        !this%values(pp_index,5,class_id) = item2dp(strings, 5)  ! Aniso
-        !this%values(pp_index,6,class_id) = item2dp(strings, 6)  ! Kd
         ! K Processing & Checking
         if (this%values(pp_index,2,class_id) < this%values(pp_index,1,class_id)) then
           call error_handler(1,"KMax < Kmin for pilot point " // trim(id))
@@ -241,6 +247,7 @@ module m_pilotpoints
           this%values(pp_index,2,class_id) = this%values(pp_index,2,class_id) - this%values(pp_index,1,class_id)
         end if
       case("GLOBAL")
+        if (length < nglobal_props+1) call error_handler(1,"Missing 1 or more global parameter columns for pilot point " // trim(id))
         ! Set for ALL classes
         do i=1, nglobal_props
           this%values(pp_index,global_props(i),:) = item2dp(strings, 1+i)
@@ -249,6 +256,7 @@ module m_pilotpoints
         !this%values(pp_index,8, :) = item2dp(strings, 3)  ! KVp
         !this%values(pp_index,9, :) = item2dp(strings, 4)  ! STp
       case("GLOBAL_AQUITARD")
+        if (length < nglobal_props) call error_handler(1,"Missing 1 or more global aquitard parameter columns for pilot point " // trim(id))
         ! Set for ALL classes
         do i=1, nglobal_props-1  ! Not very dynamic...
           this%values(pp_index,global_props(i),:) = item2dp(strings, 1+i)

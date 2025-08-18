@@ -305,6 +305,33 @@ module m_file_io
   
 !-------------------------------------------------------------------------------------------------!
   
+  subroutine vstrlist_replace(strings, existing, replacement)
+    implicit none
+    type(t_vstringlist), intent(inout) :: strings
+    character(*), intent(in)           :: existing, replacement
+    type(t_vstringlist)                :: new_list
+    type(t_vstring)                    :: item
+    integer                            :: idx, i
+
+    ! Find first match
+    idx = vstrlist_search(strings, existing)
+    if (idx <= 0) return   ! nothing to replace
+
+    call vstrlist_new(new_list)
+
+    do i = 1, vstrlist_length(strings)
+      if (i == idx) then
+        call vstrlist_append(new_list, replacement)
+      else
+        item = vstrlist_index(strings, i)
+        call vstrlist_append(new_list, item)
+      end if
+    end do
+
+    strings = new_list
+  
+  end subroutine vstrlist_replace
+  
 !-------------------------------------------------------------------------------------------------!
 ! BASE CLASS FILE TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!

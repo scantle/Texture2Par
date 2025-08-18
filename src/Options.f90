@@ -56,6 +56,7 @@ module m_options
     logical                  :: ASYMMETRIC_COV        ! Whether relationships between covariates can be asymmetric
     logical                  :: PP_WEIGHTS_TEXT       ! Write pp weight file as text file
     logical                  :: GRID_WEIGHTS_TEXT     ! Write grid weight file as text file
+    logical                  :: SUBSIDENCE_ON         ! Tracks if in subsidence mode (inelastic, elastic storage split)
     integer                  :: BLOCK_KRIGE           ! Block kriging active (>1) type (1- gaus. quad. 2- custom points,weights) (set by fmodel read)
 
     contains
@@ -118,6 +119,7 @@ module m_options
     this%ASYMMETRIC_COV       = .false.
     this%PP_WEIGHTS_TEXT      = .false.
     this%GRID_WEIGHTS_TEXT    = .false.
+    this%SUBSIDENCE_ON        = .false.
     this%BLOCK_KRIGE          = 0
   end subroutine initialize
 

@@ -1,7 +1,7 @@
 module m_read_main_input
   use m_T2P, only: t_t2p
   use m_vstring, only: t_vstring, vstring_new, vstring_toupper
-  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_split, vstrlist_append, VSTRINGLIST_INDEX_UNKNOWN
+  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_split, vstrlist_append, vstrlist_range, VSTRINGLIST_INDEX_UNKNOWN
   use m_file_io
   use m_error_handler, only: error_handler
   implicit none
@@ -70,6 +70,9 @@ module m_read_main_input
       case("PP_AQUITARD_LOCS")
         call pre_block_read_check(t2p, id)
         CALL read_pploc_block(t2p, reader, t2p%pilot_points_aquitard, .true.)
+      case("SUBSIDENCE")
+        call pre_block_read_check(t2p, id)
+        CALL read_subsidence_block(t2p, reader)
       case ("END")
         ! Do nothing - errant line? Block reader ended early?
       case DEFAULT
@@ -100,6 +103,9 @@ module m_read_main_input
         if (.not. t2p%has_pplocs) call error_handler(2,reader%file,"PP_LOCS block must be declared before PP_PARAMETERS")
       case("PP_AQUITARD_LOCS")
         if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before PP_AQUITARD_LOCS")
+      case("SUBSIDENCE")
+        if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before SUBSIDENCE")
+        if (t2p%has_pplocs) call error_handler(2,reader%file,"SUBSIDENCE block cannot be declared after PP_LOCS")
       case DEFAULT
       ! Do nothing
     end select
@@ -670,6 +676,36 @@ subroutine read_ppparm_block(t2p, reader)
 
 end subroutine read_ppparm_block
 
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine read_SUBSIDENCE_block(t2p, reader)
+    use m_flow_model, only: t_flow_model, create_flow_model_object, check_id_validity
+    implicit none
+    type(t_t2p),intent(inout)       :: t2p
+    type(t_file_reader), pointer    :: reader
+
+    ! Standard file reader variables
+    integer                    :: status, length
+    character(30)              :: id, value
+    type(t_vstringlist)        :: strings
+    
+    ! Locals
+    integer                    :: nfine
+
+    ! Loop until end of block or end of file
+    do
+      call reader%next_block_item(status, id, strings, length)
+      if (status /= 0) exit  ! exit if end of block or end of file
+      select case(trim(id))
+        case("FINE_CLASSES")
+          call t2p%setup_subsidence(vstrlist_range(strings,2,vstrlist_length(strings)))
+        case DEFAULT
+          call error_handler(1,reader%file,"Unknown Subsidence option: " // trim(id))
+      end select
+    end do
+    
+  end subroutine read_SUBSIDENCE_block
+          
 !-------------------------------------------------------------------------------------------------!
 
 end module m_read_main_input
