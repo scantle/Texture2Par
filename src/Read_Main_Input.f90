@@ -73,6 +73,9 @@ module m_read_main_input
       case("SUBSIDENCE")
         call pre_block_read_check(t2p, id)
         CALL read_subsidence_block(t2p, reader)
+      case("PREPROC")
+        CALL pre_block_read_check(t2p, id)
+        CALL read_preproc_block(t2p, reader)
       case ("END")
         ! Do nothing - errant line? Block reader ended early?
       case DEFAULT
@@ -106,6 +109,8 @@ module m_read_main_input
       case("SUBSIDENCE")
         if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before SUBSIDENCE")
         if (t2p%has_pplocs) call error_handler(2,reader%file,"SUBSIDENCE block cannot be declared after PP_LOCS")
+      case("PREPROC")
+        if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before PREPROC")
       case DEFAULT
       ! Do nothing
     end select
@@ -706,6 +711,44 @@ end subroutine read_ppparm_block
     
   end subroutine read_SUBSIDENCE_block
           
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine read_PREPROC_block(t2p, reader)
+    use m_preproc, only: create_preproc_object
+    implicit none
+    type(t_t2p),intent(inout)       :: t2p
+    type(t_file_reader), pointer    :: reader
+    logical                         :: has_object=.false.
+    
+    ! Standard file reader variables
+    integer                    :: status, length
+    character(30)              :: id, value
+    type(t_vstringlist)        :: strings
+    
+    ! Loop until end of block or end of file
+    do
+      call reader%next_block_item(status, id, strings, length)
+      if (status /= 0) exit  ! exit if end of block or end of file
+      select case(trim(id))
+        case("MODE")
+          call item2char(strings, 2, value, toupper=.true.)
+          t2p%preproc => create_preproc_object(value, t2p%ntexclasses)
+          has_object = .true.
+        case("CLASS")
+          if (.not. has_object) call error_handler(1,reader%file,'Must declare preproc MODE before CLASS')
+          call vstrlist_append(t2p%preproc%class_names, vstring_toupper(vstrlist_index(strings,2)))
+          ! Hardcoded, for now
+          t2p%preproc%nclasses = 1
+        case("FILE","SCALE_FILE")
+          if (.not. has_object) call error_handler(1,reader%file,'Must declare preproc MODE before CLASS')
+          call item2char(strings, 2, t2p%preproc%filename, toupper=.true.)
+        case DEFAULT
+          call error_handler(1,reader%file,"Unknown Preprocessor Block option: " // trim(id))
+      end select
+    end do
+  
+  end subroutine read_PREPROC_block
+  
 !-------------------------------------------------------------------------------------------------!
 
 end module m_read_main_input

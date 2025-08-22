@@ -13,6 +13,7 @@ module m_T2P
   use m_categories, only: t_category
   use m_vario, only: t_vgm
   use m_grid, only: t_grid, create_grid_object
+  use m_preproc, only: t_preprocessor
 !-------------------------------------------------------------------------------------------------!
 
 #ifdef __INTEL_COMPILER
@@ -32,6 +33,7 @@ module m_T2P
     !type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)  ! Moved to interpolator
     type(t_pilotpoints),pointer      :: pilot_points
     type(t_pilotpoints),pointer      :: pilot_points_aquitard
+    type(t_preprocessor),pointer     :: preproc
 
     ! Counters
     integer                          :: npar        ! Kh, Kv, Ss, Sy
@@ -116,6 +118,11 @@ module m_T2P
     procedure, public  :: get_connection_list
     procedure, public  :: get_dataset_idx_list
     procedure, public  :: get_dataval_idx_list
+    
+    ! Preprocessor Hooks
+    procedure,public   :: preproc_setup
+    procedure,public   :: preproc_before_interp
+    procedure,public   :: preproc_after_interp
 
   end type t_T2P
 !-------------------------------------------------------------------------------------------------!
@@ -606,6 +613,42 @@ module m_T2P
   end subroutine setup_subsidence
   
 !-------------------------------------------------------------------------------------------------!
+  
+  subroutine preproc_setup(this)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    
+    if (this%opt%preproc_on) then
+      ! DO THINGS
+    end if
+  
+  end subroutine preproc_setup
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine preproc_before_interp(this)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    
+    if (this%opt%preproc_on) then
+      ! DO THINGS
+    end if
+  
+  end subroutine preproc_before_interp
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine preproc_after_interp(this)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    
+    if (this%opt%preproc_on) then
+      ! DO THINGS
+    end if
+  
+  end subroutine preproc_after_interp
+  
+!-------------------------------------------------------------------------------------------------!
 
   subroutine check_major_inputs(this)
     ! Run in main Texture2Par file, currently before datasets are read but after fmodel/categories
@@ -700,9 +743,15 @@ module m_T2P
     call this%interpolate_pp(pp_to, cat_to, active_to, pp_intermediate)
 
     if (this%opt%INTERP_ORDER=="BEFORE") then
+      if (this%opt%PREPROC_ON) then
+        call this%preproc_before_interp()
+      end if
       ! Krige textures to fmodel grid
       call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid", nblank)
       call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
+      if (this%opt%PREPROC_ON) then
+        call this%preproc_after_interp()
+      end if      
       ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
       call this%write_status("Calculating Hydraulic Parameters", nblank)
       call this%calc_block_parameters(pp_intermediate, this%dset_intermediate(1,1:), this%par)

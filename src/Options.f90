@@ -57,6 +57,7 @@ module m_options
     logical                  :: PP_WEIGHTS_TEXT       ! Write pp weight file as text file
     logical                  :: GRID_WEIGHTS_TEXT     ! Write grid weight file as text file
     logical                  :: SUBSIDENCE_ON         ! Tracks if in subsidence mode (inelastic, elastic storage split)
+    logical                  :: PREPROC_ON            ! Tracks if using preprocessor
     integer                  :: BLOCK_KRIGE           ! Block kriging active (>1) type (1- gaus. quad. 2- custom points,weights) (set by fmodel read)
 
     contains
@@ -120,6 +121,7 @@ module m_options
     this%PP_WEIGHTS_TEXT      = .false.
     this%GRID_WEIGHTS_TEXT    = .false.
     this%SUBSIDENCE_ON        = .false.
+    this%PREPROC_ON           = .false.
     this%BLOCK_KRIGE          = 0
   end subroutine initialize
 

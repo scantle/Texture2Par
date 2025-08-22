@@ -1710,7 +1710,7 @@ module m_flow_model
       ngq = 4**dim
       allocate(gqdelxyz(dim, ngq))
       do k=1, this%nlayers
-        grid => this%grid(k)%ptrgrid
+        grid => this%grid(this%lay2grid(k))%ptrgrid
         call grid%alloc_block_arrays(ngq)
         do i = 1, this%nnodes(k)
           row = int((i-1)/NCOL) + 1
