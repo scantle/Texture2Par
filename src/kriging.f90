@@ -331,11 +331,11 @@ end subroutine doolittle
     real                        :: sum
     integer                     :: q, j, npts
 
-    npts = this%grid%nblockpts(inode)
+    npts = this%grid%active_blocks%nblockpts(inode)
     sum  = 0.0
     do j = 1, this%nstruct(vidx)
       do q = 1, npts
-        sum = sum + this%grid%block_wts(q,inode)*this%variograms(j,vidx)%cov(this%grid%block_coords(:,q,inode),obs_coord)
+        sum = sum + this%grid%active_blocks%block_wts(q,inode)*this%variograms(j,vidx)%cov(this%grid%active_blocks%block_coords(:,q,inode),obs_coord)
       end do
     end do
   end function block_cov_rhs
@@ -349,12 +349,14 @@ end subroutine doolittle
     real                        :: sill
     integer                     :: q, r, j, npts
 
-    npts = this%grid%nblockpts(inode)
+    npts = this%grid%active_blocks%nblockpts(inode)
     sill = 0.0
     do j = 1, this%nstruct(vidx)
       do q = 1, npts
         do r = 1, npts
-          sill = sill + this%grid%block_wts(q,inode) * this%grid%block_wts(r,inode) * this%variograms(j,vidx)%cov(this%grid%block_coords(:,q,inode),this%grid%block_coords(:,r,inode))
+          sill = sill + this%grid%active_blocks%block_wts(q,inode) * &
+                 this%grid%active_blocks%block_wts(r,inode) * &
+                 this%variograms(j,vidx)%cov(this%grid%active_blocks%block_coords(:,q,inode),this%grid%active_blocks%block_coords(:,r,inode))
         end do
       end do
     end do

@@ -904,7 +904,13 @@ module m_T2P
       obslayer = k
       if (this%fmodel%get_layer_id(k)==1) modelgrid => this%fmodel%grid(1)%ptrgrid
     end if
+    
+    if (this%opt%BLOCK_KRIGE > 0) then
+      modelgrid%active_blocks => this%fmodel%layer_blocks(k)
+    end if
+    
   end subroutine
+  
 !-------------------------------------------------------------------------------------------------!
 
   subroutine calc_block_parameters(this, pp_obj, tex_obs, par_out)

@@ -80,7 +80,8 @@
 		</Filter>
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
 			<Filter Name="Data Structures">
-				<File RelativePath=".\src\Grid.f90"/>
+				<File RelativePath=".\src\Grid.f90">
+				</File>
 				<File RelativePath=".\src\Lists.f90"/>
 				<File RelativePath=".\src\Sparse_Symmetric.f90"/>
 			</Filter>
@@ -93,8 +94,10 @@
 				<File RelativePath=".\src\write_fmodel.f90"/>
 			</Filter>
 			<Filter Name="Interpolators">
-				<File RelativePath=".\src\Interpolators.f90"/>
-				<File RelativePath=".\src\kriging.f90"/>
+				<File RelativePath=".\src\Interpolators.f90">
+				</File>
+				<File RelativePath=".\src\kriging.f90">
+				</File>
 				<File RelativePath=".\src\sgsim.f90"/>
 				<File RelativePath=".\src\variogram.f90"/>
 			</Filter>
@@ -115,6 +118,8 @@
 				<File RelativePath=".\src\time.f90"/>
 				<File RelativePath=".\src\Tools.f90"/>
 			</Filter>
+			<File RelativePath=".\cellblocks.f90">
+			</File>
 			<File RelativePath=".\src\global.f90"/>
 			<File RelativePath=".\src\Texture2Par.f90"/>
 			<File RelativePath=".\version.f90"/>

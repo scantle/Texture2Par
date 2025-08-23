@@ -4,6 +4,7 @@ module m_flow_model
   use m_error_handler, only: error_handler
   use m_categories, only: t_category
   use m_options, only: t_options
+  use m_cellblocks
   !use kdtree2_module, only: kdtree2, kdtree2_create
 !-------------------------------------------------------------------------------------------------!
 ! ADDING A NEW FLOW MODEL OR GRID TYPE
@@ -29,57 +30,58 @@ module m_flow_model
   ! The alternative was to write a lot of get/set-type methods that would have to be overwritten
   ! by each derived class.
 
-    integer                       :: model_type              ! 1 - grid, 2 - IWFM, 3 - MODFLOW 2000
-    real                          :: xoff,yoff,rot           ! Conversion from/to global coordinates
-    integer                       :: nlayers                 ! Number of model layers
-    integer                       :: ngrids                  ! Number of unique model grid (xy) layers
-    integer                       :: ncol=0                  ! Number of columns for structured grid
-    integer,allocatable           :: nnodes(:)               ! Number of nodes (points at which flow is solved) by layer
-    integer,pointer               :: lay2grid(:)             ! Which grid each layer uses (e.g., same xy between layers)
-    character(30)                 :: name                    ! For printing nicely to log/screen
-    character(100)                :: preproc_file            ! IWFM main discretization file (empty for others)
-    character(100)                :: sim_file                ! Simulation File or MODFLOW name file
-    character(100)                :: ppzone_file             ! File of pilot point zones defined for each node
-    character(100)                :: hsu_file                ! File of Hydrostratigraphic Units (HSUs) defined for each node
-    character(100)                :: template_file           ! File copied for output_file
-    character(3)                  :: grd_file_type           ! Character string of grid file type (GSF, ...)
-    character(100)                :: grd_file                ! Grid specification file for grid type or MODFLOW-USG
-    character(100)                :: output_file             ! File where aquifer parameters are written
-    character(60)                 :: projectname             ! project name from T2P, used as output prefix
-    real    , allocatable         :: elev(:,:)               ! Bottom Elevations for each layer (node, layer) (indexed from zero = model top)
-    type(t_grid_arr),allocatable  :: grid(:)                 ! xy grids for layers
-    type(t_category)              :: ppzones                 ! Pilot point zone fmodel grid arrays & tracking
-    type(t_category)              :: hsus                    ! HSU fmodel grid arrays & tracking
-    logical                       :: has_aquitards           ! For now, only in IWFM - but helps T2P w/ aquitard pilot points
-    logical                       :: structured              ! T/F Structured (row/col) model
-    logical,allocatable           :: lay_aqtard(:)           ! Tracks whether layer is an aquitard
-    logical,allocatable           :: pparr_aqtard(:)         ! Tracks if a *pilot_point* array is an aquitard
-    logical,allocatable           :: active_nodes_bylay(:,:) ! T/F for each node if it is active in the flow model (primarily for MODFLOW) (node,layer)
-    logical,allocatable           :: active_nodes_flat(:)    ! Same as above, but flat (T if active in *any* layer) (used for PP interp)
+    integer                        :: model_type              ! 1 - grid, 2 - IWFM, 3 - MODFLOW 2000
+    real                           :: xoff,yoff,rot           ! Conversion from/to global coordinates
+    integer                        :: nlayers                 ! Number of model layers
+    integer                        :: ngrids                  ! Number of unique model grid (xy) layers
+    integer                        :: ncol=0                  ! Number of columns for structured grid
+    integer,allocatable            :: nnodes(:)               ! Number of nodes (points at which flow is solved) by layer
+    integer,pointer                :: lay2grid(:)             ! Which grid each layer uses (e.g., same xy between layers)
+    character(30)                  :: name                    ! For printing nicely to log/screen
+    character(100)                 :: preproc_file            ! IWFM main discretization file (empty for others)
+    character(100)                 :: sim_file                ! Simulation File or MODFLOW name file
+    character(100)                 :: ppzone_file             ! File of pilot point zones defined for each node
+    character(100)                 :: hsu_file                ! File of Hydrostratigraphic Units (HSUs) defined for each node
+    character(100)                 :: template_file           ! File copied for output_file
+    character(3)                   :: grd_file_type           ! Character string of grid file type (GSF, ...)
+    character(100)                 :: grd_file                ! Grid specification file for grid type or MODFLOW-USG
+    character(100)                 :: output_file             ! File where aquifer parameters are written
+    character(60)                  :: projectname             ! project name from T2P, used as output prefix
+    real    , allocatable          :: elev(:,:)               ! Bottom Elevations for each layer (node, layer) (indexed from zero = model top)
+    type(t_grid_arr),allocatable   :: grid(:)                 ! xy grids for layers
+    type(t_category)               :: ppzones                 ! Pilot point zone fmodel grid arrays & tracking
+    type(t_category)               :: hsus                    ! HSU fmodel grid arrays & tracking
+    type(t_cellblocks),allocatable :: layer_blocks(:)         ! for block kriging (nlayers)
+    logical                        :: has_aquitards           ! For now, only in IWFM - but helps T2P w/ aquitard pilot points
+    logical                        :: structured              ! T/F Structured (row/col) model
+    logical,allocatable            :: lay_aqtard(:)           ! Tracks whether layer is an aquitard
+    logical,allocatable            :: pparr_aqtard(:)         ! Tracks if a *pilot_point* array is an aquitard
+    logical,allocatable            :: active_nodes_bylay(:,:) ! T/F for each node if it is active in the flow model (primarily for MODFLOW) (node,layer)
+    logical,allocatable            :: active_nodes_flat(:)    ! Same as above, but flat (T if active in *any* layer) (used for PP interp)
 
     contains
-      procedure,public            :: initialize
-      procedure,public            :: read_model
-      procedure,public            :: build_tree
-      procedure,public            :: build_blocks
-      procedure,public            :: read_category_files
-      procedure,public            :: write_input_summary
-      procedure,public            :: find_in_grid
-      procedure,public            :: get_elev_at_point
-      procedure,public            :: get_midpoint_depths
-      procedure,public            :: get_layer_thicknesses
-      procedure,public            :: get_active_ppzones
-      procedure,public            :: get_layer_id   ! For when layer =/ layer_id (e.g., IWFM aquitards): id = aquifer id... iwfm == k/2
-      procedure,public            :: get_layer_no   ! Other direction k*2. TODO come up with a clearer name
-      procedure,public            :: is_active_layer
-      procedure,public            :: is_aquitard_layer
-      procedure,public            :: write_fmodel_input
-      procedure,public            :: write_node_files
-      procedure,public            :: write_node_file
-      procedure,public            :: write_node_file_aqtard
-      procedure,public            :: cell2rowcol
-      procedure,private           :: alloc_layers
-      procedure,private           :: alloc_nodes
+      procedure,public             :: initialize
+      procedure,public             :: read_model
+      procedure,public             :: build_tree
+      procedure,public             :: build_blocks
+      procedure,public             :: read_category_files
+      procedure,public             :: write_input_summary
+      procedure,public             :: find_in_grid
+      procedure,public             :: get_elev_at_point
+      procedure,public             :: get_midpoint_depths
+      procedure,public             :: get_layer_thicknesses
+      procedure,public             :: get_active_ppzones
+      procedure,public             :: get_layer_id   ! For when layer =/ layer_id (e.g., IWFM aquitards): id = aquifer id... iwfm == k/2
+      procedure,public             :: get_layer_no   ! Other direction k*2. TODO come up with a clearer name
+      procedure,public             :: is_active_layer
+      procedure,public             :: is_aquitard_layer
+      procedure,public             :: write_fmodel_input
+      procedure,public             :: write_node_files
+      procedure,public             :: write_node_file
+      procedure,public             :: write_node_file_aqtard
+      procedure,public             :: cell2rowcol
+      procedure,private            :: alloc_layers
+      procedure,private            :: alloc_nodes
 
   end type t_flow_model
 !-------------------------------------------------------------------------------------------------!
@@ -188,7 +190,7 @@ module m_flow_model
     procedure,private         :: get_cell_local => get_cell_local_fd
     procedure,private         :: calc_fdcell_centers
   end type
-
+  
 !-------------------------------------------------------------------------------------------------!
   
   contains
@@ -1700,33 +1702,42 @@ module m_flow_model
     class(t_modflow_model)      :: this
     class(t_options),intent(in) :: opt
     integer                     :: dim, ngq, iqp,i,k,row,col
-    real                        :: blocksize(3)
+    real                        :: blocksize(3), zc
     real, allocatable           :: gqdelxyz(:,:)
     type(t_Grid), pointer :: grid
     
-    ! Build blocks if set by user
+    ! Build blocks, if active
     if (opt%BLOCK_KRIGE==1) then                    ! Gaussian Quadrature
       dim = opt%INTERP_DIM
       ngq = 4**dim
+      if (.not. allocated(this%layer_blocks)) allocate(this%layer_blocks(this%nlayers))
       allocate(gqdelxyz(dim, ngq))
-      do k=1, this%nlayers
-        grid => this%grid(k)%ptrgrid
-        call grid%alloc_block_arrays(ngq)
+      do k = 1, this%nlayers
+        grid => this%grid(this%lay2grid(k))%ptrgrid
+        call alloc_cellblocks(this%layer_blocks(k), ngq, this%nnodes(k), dim)
+
         do i = 1, this%nnodes(k)
           row = int((i-1)/NCOL) + 1
           col = mod(i-1, NCOL) + 1
           blocksize = 0.0
-          blocksize(1) = DELR(col)/2.0
-          blocksize(2) = DELC(row)/2.0
-          if (dim == 3) blocksize(3) = (this%elev(i, k-1) - this%elev(i, k)) / 2.0
-          call gaussian_quadrature(ngq, dim, blocksize, gqdelxyz, grid%block_wts(:,i))
-          ! Setup coord
-          do iqp=1, ngq
-            grid%block_coords(:,iqp,i) = grid%coords(:,i) + gqdelxyz(:,iqp)
-          end do
+          blocksize(1) = DELR(col) * 0.5
+          blocksize(2) = DELC(row) * 0.5
+          if (dim == 3) blocksize(3) = 0.5 * ( this%elev(i,k-1) - this%elev(i,k) )
+
+          call gaussian_quadrature(ngq, dim, blocksize, gqdelxyz, this%layer_blocks(k)%block_wts(:,i))
+
+          ! XY around cell center (shared XY grid):
+          this%layer_blocks(k)%block_coords(1:2, :, i) = spread(grid%coords(1:2,i), 2, ngq) + gqdelxyz(1:2,:)
+
+          if (dim == 3) then
+            zc = 0.5 * ( this%elev(i,k-1) + this%elev(i,k) )
+            this%layer_blocks(k)%block_coords(3, :, i) = zc + gqdelxyz(3,:)
+          end if
         end do
-        grid%nblockpts(:) = ngq
+
+        this%layer_blocks(k)%nblockpts(:) = ngq
       end do
+
       deallocate(gqdelxyz)
     else if (opt%BLOCK_KRIGE==2) then
       ! TODO
