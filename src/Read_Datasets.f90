@@ -131,7 +131,7 @@ module m_read_datasets
           read(line, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
         end if
 	      call reader%iomsg_handler(iomsg)
-        if (didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
+        if ((.not.t2p%opt%NO_TEX_BOUNDS).and.didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
         all_depth = all_depth + depth
 
         if (iint==1) then
@@ -445,7 +445,12 @@ module m_read_datasets
     !                             1        2  3 4 5 6     7
     nsets = vstrlist_length(header) - 7
     if (t2p%has_hsus) nsets = nsets - t2p%fmodel%nlayers
-    if (t2p%opt%KVME) nsets = nsets - t2p%get_active_texture_classes()  ! one per texture class
+    if (t2p%opt%PREPROC_ON) then
+      if (t2p%opt%KVME) nsets = nsets - t2p%preproc%nclasses
+    else
+      if (t2p%opt%KVME) nsets = nsets - t2p%get_active_texture_classes()  ! one per texture class
+    end if
+      
     if (nsets < 1) then
        call error_handler(1,file,"Invalid number of entries in dataset header")
     end if
@@ -454,7 +459,11 @@ module m_read_datasets
     count = 0
 
     do i=1, nsets
-      temp(i) = t2p%get_class_id(vstrlist_index(header,7+i))
+      if (t2p%opt%PREPROC_ON) then
+        temp(i) = t2p%preproc%get_class_id(vstrlist_index(header,7+i))
+      else
+        temp(i) = t2p%get_class_id(vstrlist_index(header,7+i))
+      end if
       if (temp(i)==0) then
         if (t2p%opt%KVME) then
           ! If KVME, then the end of classes will start with var_
@@ -484,6 +493,9 @@ module m_read_datasets
       if (nsets==t2p%get_active_texture_classes()) then
         dataset_idx = 1
         t2p%class_dataset(class_ids) = dataset_idx
+      else if (t2p%opt%PREPROC_ON) then
+        ! Don't worry about it, the preprocessor will produce all the texture classes
+        dataset_idx = 1
       else
         call error_handler(1,file,"All primary datasets must be in same dataset file")
       end if

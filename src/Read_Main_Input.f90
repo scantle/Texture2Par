@@ -442,8 +442,13 @@ subroutine read_variogram_block(t2p, reader)
           select type(p => t2p%interp_data)
             class is(t_krige)
               if (t2p%opt%INTERP_ORDER=="BEFORE") then
-                prime_id = t2p%get_class_id(class_name, adjust_for_infer=.true.)
-                prime_vidx = t2p%get_class_id(class_name)
+                if (t2p%opt%PREPROC_ON) then
+                  prime_id   = t2p%preproc%get_class_id(class_name, adjust_for_infer=.true.)
+                  prime_vidx = t2p%preproc%get_class_id(class_name)
+                else
+                  prime_id = t2p%get_class_id(class_name, adjust_for_infer=.true.)
+                  prime_vidx = t2p%get_class_id(class_name)
+                end if
                 ! If you're wondering -
                 ! connections is indexed by prime_id, which aligns with the active class number
                 ! global_vario_idx,nnear,vgms,and nstruct is indexed by prime_vidx, which aligns with the class number
@@ -746,6 +751,8 @@ end subroutine read_ppparm_block
           call error_handler(1,reader%file,"Unknown Preprocessor Block option: " // trim(id))
       end select
     end do
+    
+    if (has_object.and.t2p%preproc%nclasses>0) call t2p%setup_preproc()
   
   end subroutine read_PREPROC_block
   

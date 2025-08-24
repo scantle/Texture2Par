@@ -89,6 +89,7 @@ module m_T2P
     procedure,public   :: setup_categories   ! AKA HSUs & PPZones
     procedure,public   :: setup_subsidence
     procedure,public   :: check_major_inputs
+    procedure,public   :: setup_preproc
     !procedure,private  :: check_pp_zone_layertype_assignments
     procedure,private  :: nvario_estimator
     procedure,private  :: no_covariates
@@ -336,12 +337,24 @@ module m_T2P
     end do
 
   end subroutine setup_dataset_ppzones
+!-------------------------------------------------------------------------------------------------!  
+  
+  subroutine setup_preproc(this)
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    
+    ! Make some changes, we're doing something very different!
+    this%opt%PREPROC_ON = .true.
+    call this%nvario_estimator()
+  
+  end subroutine setup_preproc
 
 !-------------------------------------------------------------------------------------------------!
 
   subroutine nvario_estimator(this)
     ! Need x(x-1)/2 variograms per class where x is classes involved (prime + secondary)
     ! Called during setup_data_classes AND setup_covariates as more info comes in
+    ! setup_preproc will also call
     ! LATER nvario is passed to the interpolator (if kriging)
     implicit none
     class(t_T2P), intent(inout)   :: this
@@ -409,6 +422,19 @@ module m_T2P
         end if
       end do
     end do
+    
+    ! For pre-processor, all of the above is moot
+    if (this%opt%PREPROC_ON) then
+      deallocate(vario_map)
+      allocate(vario_map(this%preproc%nclasses, this%preproc%nclasses))
+      vario_map = 0
+      vidx = 0
+      ! In the future, we might support cokriging with the preprocessor, but we won't worry about it now
+      do i=1, this%preproc%nclasses
+        vidx = vidx + 1
+        vario_map(i, i) = vidx
+      end do
+    end if
 
     ! Add Pilot Point Variogram (if used/kriging)
     if (.not. this%opt%ONLY_TEXTURE) then

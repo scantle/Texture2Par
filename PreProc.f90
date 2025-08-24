@@ -1,6 +1,7 @@
 module m_preproc
   use m_global, only: NODATA
   use m_vstringlist
+  use m_vstring, only: t_vstring, vstring_toupper
   use m_error_handler, only: error_handler,warning_handler,warnings
 !-------------------------------------------------------------------------------------------------!
 ! Preprocessor module: convert non-texture data to a texture *after* interpolation to model grid
@@ -17,7 +18,7 @@ module m_preproc
     
     contains
       procedure,private              :: initialize
-    
+      procedure,public               :: get_class_id
   end type
   
   type,  extends(t_preprocessor) :: t_res2texture
@@ -62,6 +63,19 @@ module m_preproc
     this%ntexclasses = ntexclasses
   
   end subroutine initialize
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_class_id(this, string, adjust_for_infer) result (id)
+    ! Returns zero if not found
+    implicit none
+    class(t_preprocessor), intent(inout)   :: this
+    type(t_vstring),intent(in)    :: string
+    integer                       :: id
+    logical,optional,intent(in)   :: adjust_for_infer  ! not used, just to keep compatability with t2p%get_class_id
+    id = vstrlist_search(this%class_names, vstring_toupper(string), exact=.true.)
+    return
+  end function get_class_id
   
 !-------------------------------------------------------------------------------------------------!
 ! RES2TEXTURE TYPE-BOUND PROCEDURES
