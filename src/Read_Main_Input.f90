@@ -365,7 +365,7 @@ subroutine read_variogram_block(t2p, reader)
   ! Sub variables
   type(t_vgm),pointer        :: vgms(:,:), tmp(:,:)
   integer,pointer            :: nnear(:), nstruct(:)
-  integer                    :: prime_id, prime_vidx, cross_id, vario_id, struct_id, vcount, maxread, hsu_id
+  integer                    :: prime_id, prime_vidx, cross_id, vario_id, struct_id, vcount, maxread, hsu_id, dim
   logical                    :: iscross, ispp, ishsu
   type(t_vstring)            :: class_name, cross_name, hsu_name
   type(t_vstringlist)        :: class_temp
@@ -435,10 +435,12 @@ subroutine read_variogram_block(t2p, reader)
         if (vstring_match(class_name,"PilotPoints",nocase=.true.)) then
           ispp = .true.
           vario_id = t2p%nvario  ! PP vario is max
+          dim = 2
           !prime_id = size(nnear,1)
           prime_vidx = size(nnear,1)
         else
         ! Not PP
+          dim = t2p%opt%INTERP_DIM
           select type(p => t2p%interp_data)
             class is(t_krige)
               if (t2p%opt%INTERP_ORDER=="BEFORE") then
@@ -504,13 +506,13 @@ subroutine read_variogram_block(t2p, reader)
           !TODO validate struct_id
           ! Is the variogram line long enough?
           write(msg, '(2(a,i3))') 'variogram', vcount+1, ', structure', struct_id
-          if (t2p%opt%INTERP_DIM==2 .and. length < 7) then
+          if (dim==2 .and. length < 7) then
             call error_handler(2,reader%file,"Too few variogram parameters for 2D (7+ expected). See "//msg)
-          else if (t2p%opt%INTERP_DIM==3 .and. length < 10) then
+          else if (dim==3 .and. length < 10) then
             call error_handler(2,reader%file,"Too few variogram parameters for 3D (10+ expected). See "//msg)
           end if
           ! Get full variogram item from the rest of the line
-          call get_vgm_from_line(vgms(struct_id,vario_id), strings, struct_id, t2p%OPT%INTERP_DIM, maxread)
+          call get_vgm_from_line(vgms(struct_id,vario_id), strings, struct_id, dim, maxread)
           ! NNear on first struct read, if not cross, advance vcount
           if (struct_id == 1) then
             if (iscross.or.ishsu) then

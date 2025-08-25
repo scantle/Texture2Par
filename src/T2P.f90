@@ -780,12 +780,12 @@ module m_T2P
       end if      
       ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
       call this%write_status("Calculating Hydraulic Parameters", nblank)
-      call this%calc_block_parameters(pp_intermediate, this%dset_intermediate(1,1:), this%par)
+      call this%calc_block_parameters(pp_intermediate, this%dset_intermediate, this%par)
 
     else if (this%opt%INTERP_ORDER=="AFTER") then
       ! Calc parameters at data locations
     call this%write_status("Calculating Hydraulic Parameters", nblank)
-      call this%calc_block_parameters(pp_intermediate, this%datasets(1,1:), this%dset_intermediate(1,1:))
+      call this%calc_block_parameters(pp_intermediate, this%datasets, this%dset_intermediate)
       ! Krige parameters to fmodel grid
       call this%write_status("Interpolating Hydraulic Parameters to "//trim(this%fmodel%name)//" Grid")
       call this%interpolate_model(this%dset_intermediate, this%par)
@@ -812,9 +812,14 @@ module m_T2P
     type(t_pilotpoints)             :: obs_data(1)  ! a little trick to appease calc_weights
     character(5)                    :: temp
     real,pointer                    :: obs_vec(:)
-    integer                         :: nrows, m
+    integer                         :: nrows, m, glo_dim
 
     class_idx(1) = 1
+    
+    ! Store INTERP_DIM, temporarily set to 2D (Pilot Points are hardwired to 2D, at least for now)
+    ! TODO separate INTERP_DIM for PP/data; have interp::setup() take a DIM argument; implement PP 3D kriging
+    glo_dim = this%opt%INTERP_DIM
+    this%opt%INTERP_DIM = 2
 
     ! Go by pilot point zone arrays (up to nlayers)
     do k=1, this%fmodel%ppzones%narr
@@ -878,10 +883,11 @@ module m_T2P
         end do
       end do
       
-      
       ! reset weights
       weights%values = 0.0
     end do
+    
+    this%opt%INTERP_DIM = glo_dim
 
   end subroutine interpolate_pp
 
