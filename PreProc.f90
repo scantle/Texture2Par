@@ -11,14 +11,18 @@ module m_preproc
   implicit none
   
   type :: t_preprocessor  ! abstract base class
-    character(100)                   :: filename
+    character(100)                   :: filename, mult_filename
     integer                          :: nclasses     ! Number of *preprocessor* classes (usually 1)
     integer                          :: ntexclasses  ! Texture datasets (in T2P)
     type(t_vstringlist)              :: class_names  ! *preprocessor* data class names
     
     contains
       procedure,private              :: initialize
+      procedure,public               :: read_input_files
+      procedure,public               :: to_texture
       procedure,public               :: get_class_id
+      procedure,public               :: get_dataset_idx_list
+      procedure,public               :: get_dataval_idx_list
   end type
   
   type,  extends(t_preprocessor) :: t_res2texture
@@ -63,7 +67,25 @@ module m_preproc
     this%ntexclasses = ntexclasses
   
   end subroutine initialize
+
+!-------------------------------------------------------------------------------------------------!
   
+  subroutine read_input_files(this)
+    implicit none
+    class(t_preprocessor), intent(inout) :: this
+    
+  end subroutine read_input_files
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine to_texture(this)
+    implicit none
+    class(t_preprocessor), intent(inout) :: this
+    
+  end subroutine to_texture
+  
+!-------------------------------------------------------------------------------------------------!
+! T2P class replicating functions  
 !-------------------------------------------------------------------------------------------------!
   
   function get_class_id(this, string, adjust_for_infer) result (id)
@@ -76,6 +98,36 @@ module m_preproc
     id = vstrlist_search(this%class_names, vstring_toupper(string), exact=.true.)
     return
   end function get_class_id
+
+!-------------------------------------------------------------------------------------------------!
+  
+  function get_dataset_idx_list(this,class_ids) result(dataset_idx)
+    implicit none
+    class(t_preprocessor)   :: this
+    integer,intent(in)      :: class_ids(:)
+    integer,allocatable     :: dataset_idx(:)
+
+    if (allocated(dataset_idx)) deallocate(dataset_idx)
+    allocate(dataset_idx(size(class_ids)))
+    dataset_idx(:) = 1    ! Will need to revise if we allow multiple preproc classes
+    return
+  end function
+
+!-------------------------------------------------------------------------------------------------!
+
+  function get_dataval_idx_list(this, class_ids) result (dataval_idx)
+    implicit none
+    class(t_preprocessor)   :: this
+    integer,intent(in)      :: class_ids(:)
+    integer,allocatable     :: dataval_idx(:)
+    integer                 :: nactive
+
+    if (allocated(dataval_idx)) deallocate(dataval_idx)
+    nactive = 1    ! Will need to revise if we allow multiple preproc classes/cokriging
+    dataval_idx = class_ids
+    where (dataval_idx>nactive) dataval_idx = 1  ! All covariates use idx=1 for values
+
+  end function get_dataval_idx_list
   
 !-------------------------------------------------------------------------------------------------!
 ! RES2TEXTURE TYPE-BOUND PROCEDURES

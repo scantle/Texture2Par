@@ -2,6 +2,7 @@ module m_T2P
   use m_global, only: NODATA
   use m_vstringlist
   use m_vstring, only: t_vstring, vstring_toupper
+  use m_file_io, only: item2char
   use m_error_handler, only: error_handler,warning_handler,warnings
   use m_options, only: t_options
   use m_datasets, only: t_layerdata, t_dataset, write_layerdata
@@ -669,7 +670,7 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     
     if (this%opt%preproc_on) then
-      ! DO THINGS
+      call this%preproc%to_texture()
     end if
   
   end subroutine preproc_after_interp
@@ -730,7 +731,9 @@ module m_T2P
     type(t_category),pointer      :: cat_to                                     ! Categories the pilot points are interpolated using
     logical,allocatable           :: active_to(:)                               ! Whether the given to point is active (skipped if inactive)
     type(t_pilotpoints)           :: pp_intermediate(this%fmodel%ppzones%narr)  ! The pilot point data interpolated to pp_to (by ppzone array)
-    integer                       :: i,j
+    integer                       :: i
+    type(t_layerdata),pointer     :: p(:)
+    character(100)                :: fname, temp
 
     ! Allocate the final parameter objects
     allocate(this%par(this%fmodel%nlayers))
@@ -774,10 +777,24 @@ module m_T2P
       end if
       ! Krige textures to fmodel grid
       call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid", nblank)
-      call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
+      call this%interpolate_model(this%datasets, this%dset_intermediate)
+      
       if (this%opt%PREPROC_ON) then
+        ! Write out file of interpolated preproc class
+        if (this%opt%WRITE_DATASET_FILES) then
+          p=>this%datasets(1,:)
+          call item2char(this%preproc%class_names, 1, temp)
+          write(fname,'(3a)') trim(this%opt%PROJECT_NAME)//'_', trim(temp), 'log_xyz.csv'
+          call this%write_dataset_file(fname, p, i)
+        end if
+        if (this%opt%WRITE_NODE_FILES) then
+          p=>this%dset_intermediate(1,:)
+          call this%fmodel%write_node_files(p, vstrlist_range(this%preproc%class_names, 1, this%preproc%nclasses), this%opt%write_variance)
+        end if
+        ! Finish preproc
         call this%preproc_after_interp()
       end if      
+      
       ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
       call this%write_status("Calculating Hydraulic Parameters", nblank)
       call this%calc_block_parameters(pp_intermediate, this%dset_intermediate, this%par)
@@ -926,11 +943,18 @@ module m_T2P
 
       ! Loop over primary classes
       do i=1, this%nprimary
-        ! Interpolate
+        
         class_idx   = this%get_connection_list(i)           ! Classes involved
-        dataset_idx = this%get_dataset_idx_list(class_idx)  ! What datasets those classes are in
-        dataval_idx = this%get_dataval_idx_list(class_idx)  ! What index is associated with those values
+        if (this%opt%PREPROC_ON) then
+          if (i>this%preproc%nclasses) exit                   ! Early loop exit if we've exhuasted our preproc classes
+          dataset_idx = this%preproc%get_dataset_idx_list(class_idx)  ! What datasets those classes are in
+          dataval_idx = this%preproc%get_dataval_idx_list(class_idx)  ! What index is associated with those values
+        else
+          dataset_idx = this%get_dataset_idx_list(class_idx)  ! What datasets those classes are in
+          dataval_idx = this%get_dataval_idx_list(class_idx)  ! What index is associated with those values
+        end if
 
+        ! Interpolate
         x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
         call this%interp_data%calc(obs(dataset_idx,obslayer), &
                                             class_idx,  &
@@ -1146,7 +1170,6 @@ module m_T2P
 !-------------------------------------------------------------------------------------------------!
 
   subroutine write_dataset_files(this)
-    use m_file_io, only: item2char
     implicit none
     class(t_T2P), intent(inout)   :: this
     integer                       :: i
