@@ -739,7 +739,7 @@ end subroutine read_ppparm_block
       select case(trim(id))
         case("MODE")
           call item2char(strings, 2, value, toupper=.true.)
-          t2p%preproc => create_preproc_object(value, t2p%ntexclasses)
+          t2p%preproc => create_preproc_object(value, t2p%ntexclasses, t2p%fmodel)
           has_object = .true.
         case("CLASS")
           if (.not. has_object) call error_handler(1,reader%file,'Must declare preproc MODE before CLASS')

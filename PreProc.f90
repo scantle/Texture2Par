@@ -2,7 +2,10 @@ module m_preproc
   use m_global, only: NODATA
   use m_vstringlist
   use m_vstring, only: t_vstring, vstring_toupper
+  use m_file_io
   use m_error_handler, only: error_handler,warning_handler,warnings
+  use m_flow_model, only: t_flow_model
+  use m_datasets, only: t_layerdata
 !-------------------------------------------------------------------------------------------------!
 ! Preprocessor module: convert non-texture data to a texture *after* interpolation to model grid
 ! Available preprocessors:
@@ -15,9 +18,12 @@ module m_preproc
     integer                          :: nclasses     ! Number of *preprocessor* classes (usually 1)
     integer                          :: ntexclasses  ! Texture datasets (in T2P)
     type(t_vstringlist)              :: class_names  ! *preprocessor* data class names
+    class(t_flow_model),pointer      :: fmodel      => null()
+    real,allocatable                 :: mult(:,:)    ! multiplier arrays
     
     contains
       procedure,private              :: initialize
+      procedure,private              :: apply_mult
       procedure,public               :: read_input_files
       procedure,public               :: to_texture
       procedure,public               :: get_class_id
@@ -26,7 +32,12 @@ module m_preproc
   end type
   
   type,  extends(t_preprocessor) :: t_res2texture
-
+    real,allocatable                 :: shapes(:,:,:)    ! lognormal "shape" parameter (~mean)
+    real,allocatable                 :: scales(:,:,:)    ! lognormal "scale" parameter (std)
+    
+    contains
+      procedure,public               :: read_input_files => read_input_files_r2t
+      procedure,public               :: to_texture       => to_texture_r2t
   end type
 !-------------------------------------------------------------------------------------------------!
   contains
@@ -34,12 +45,13 @@ module m_preproc
 ! MODULE PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  function create_preproc_object(preproc_mode_char, ntexclasses) result(object)
+  function create_preproc_object(preproc_mode_char, ntexclasses, fmodel) result(object)
     implicit none
 
-    character(*),intent(in)        :: preproc_mode_char
-    integer, intent(in)            :: ntexclasses
-    class(t_preprocessor),pointer  :: object
+    character(*),intent(in)                :: preproc_mode_char
+    integer, intent(in)                    :: ntexclasses
+    class(t_preprocessor),pointer          :: object
+    class(t_flow_model),pointer,intent(in) :: fmodel
 
     select case(preproc_mode_char)
       case ("RES2TEXTURE")
@@ -49,7 +61,7 @@ module m_preproc
     end select
 
     ! Initialize new object
-    call object%initialize(ntexclasses)
+    call object%initialize(ntexclasses, fmodel)
 
   end function create_preproc_object
   
@@ -57,14 +69,18 @@ module m_preproc
 ! BASE CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine initialize(this, ntexclasses)
+  subroutine initialize(this, ntexclasses, fmodel)
     implicit none
-    class(t_preprocessor), intent(inout) :: this
-    integer, intent(in)                  :: ntexclasses
+    class(t_preprocessor), intent(inout)   :: this
+    integer, intent(in)                    :: ntexclasses
+    class(t_flow_model),pointer,intent(in) :: fmodel
     
     call vstrlist_new(this%class_names)
     this%nclasses    = 0
     this%ntexclasses = ntexclasses
+    this%filename = ''
+    this%mult_filename = ''
+    this%fmodel => fmodel
   
   end subroutine initialize
 
@@ -73,14 +89,58 @@ module m_preproc
   subroutine read_input_files(this)
     implicit none
     class(t_preprocessor), intent(inout) :: this
+    type(t_file_reader), pointer         :: reader
+    integer                              :: k, i
+    
+    ! by default, just reads in the multiplier file, if set
+    if (len_trim(this%mult_filename) > 0) then
+      ! allocate
+      allocate(this%mult(maxval(this%fmodel%nnodes),this%fmodel%nlayers))
+      this%mult = 0
+      ! read
+      reader => open_file_reader(this%mult_filename)
+      do k=1, this%fmodel%nlayers
+        do i=1, this%fmodel%nnodes(k)
+          read(reader%unit, *) this%mult(i, k)
+        end do
+      end do
+    end if
     
   end subroutine read_input_files
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine to_texture(this)
+  subroutine apply_mult(this, layerdata, class_idx)
+    ! Multipliers are on variance of dataset, added to data, not on data itself
     implicit none
     class(t_preprocessor), intent(inout) :: this
+    type(t_layerdata), intent(inout) :: layerdata(:)  ! (nlayers)
+    integer,intent(in)               :: class_idx
+    integer                          :: i, k
+    
+    do k=1, this%fmodel%nlayers
+      do i=1, this%fmodel%nnodes(k)
+        layerdata(k)%values(class_idx, i) = layerdata(k)%values(class_idx, i) + layerdata(k)%variance(class_idx, i) * this%mult(i,k)
+      end do
+    end do
+  
+  end subroutine apply_mult
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine to_texture(this, layerdata)
+    implicit none
+    class(t_preprocessor), intent(inout) :: this
+    type(t_layerdata), intent(inout)     :: layerdata(:,:)  ! (nsets, nlayers)
+    integer                              :: i
+    
+    ! Apply multipliers if present
+    if (allocated(this%mult)) then
+      do i=1, this%nclasses
+        ! Assumption: only act on primary data
+        call this%apply_mult(layerdata(1,:), i)
+      end do
+    end if
     
   end subroutine to_texture
   
@@ -131,6 +191,58 @@ module m_preproc
   
 !-------------------------------------------------------------------------------------------------!
 ! RES2TEXTURE TYPE-BOUND PROCEDURES
+!-------------------------------------------------------------------------------------------------!
+  
+  
+  subroutine read_input_files_r2t(this)
+    implicit none
+    class(t_res2texture), intent(inout) :: this
+    type(t_file_reader), pointer         :: reader
+    integer                              :: i, ierr, inode, lay
+    real,allocatable                     :: scales(:), shapes(:)   ! log mean, std
+    
+    ! do default by calling super
+    call read_input_files(this)
+    
+    ! allocate reading arrays, scale & shape arrays
+    allocate(this%scales(this%ntexclasses,maxval(this%fmodel%nnodes),this%fmodel%nlayers), &
+             this%shapes(this%ntexclasses,maxval(this%fmodel%nnodes),this%fmodel%nlayers), &
+             scales(this%ntexclasses), &
+             shapes(this%ntexclasses)  )
+    
+    ! read in scale & shape values for each texture, for each cell
+    reader => open_file_reader(this%filename)
+    ! Read first line
+    read(reader%unit, *, iostat=ierr) inode, scales, shapes
+    ! Read all the other lines
+    do
+      ! process previous line
+      read(reader%unit, *, iostat=ierr) inode, lay, scales, shapes
+      if (ierr/=0) exit
+      this%scales(:,inode,lay) = scales
+      this%shapes(:,inode,lay) = shapes
+    end do
+    
+  end subroutine read_input_files_r2t
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine to_texture_r2t(this, layerdata)
+    implicit none
+    class(t_res2texture), intent(inout) :: this
+    type(t_layerdata), intent(inout)     :: layerdata(:,:)  ! (nsets, nlayers)
+    integer                              :: i
+    
+    ! Apply multipliers if present
+    if (allocated(this%mult)) then
+      do i=1, this%nclasses
+        ! Assumption: only act on primary data
+        call this%apply_mult(layerdata(1,:), i)
+      end do
+    end if
+    
+  end subroutine to_texture_r2t
+  
 !-------------------------------------------------------------------------------------------------!
   
 end module m_preproc

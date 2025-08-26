@@ -90,7 +90,6 @@ module m_T2P
     procedure,public   :: setup_categories   ! AKA HSUs & PPZones
     procedure,public   :: setup_subsidence
     procedure,public   :: check_major_inputs
-    procedure,public   :: setup_preproc
     !procedure,private  :: check_pp_zone_layertype_assignments
     procedure,private  :: nvario_estimator
     procedure,private  :: no_covariates
@@ -122,7 +121,7 @@ module m_T2P
     procedure, public  :: get_dataval_idx_list
     
     ! Preprocessor Hooks
-    procedure,public   :: preproc_setup
+    procedure,public   :: setup_preproc
     procedure,public   :: preproc_before_interp
     procedure,public   :: preproc_after_interp
 
@@ -338,17 +337,6 @@ module m_T2P
     end do
 
   end subroutine setup_dataset_ppzones
-!-------------------------------------------------------------------------------------------------!  
-  
-  subroutine setup_preproc(this)
-    implicit none
-    class(t_T2P), intent(inout)   :: this
-    
-    ! Make some changes, we're doing something very different!
-    this%opt%PREPROC_ON = .true.
-    call this%nvario_estimator()
-  
-  end subroutine setup_preproc
 
 !-------------------------------------------------------------------------------------------------!
 
@@ -639,17 +627,23 @@ module m_T2P
     
   end subroutine setup_subsidence
   
-!-------------------------------------------------------------------------------------------------!
+!-------------------------------------------------------------------------------------------------!  
   
-  subroutine preproc_setup(this)
+  subroutine setup_preproc(this)
     implicit none
     class(t_T2P), intent(inout)   :: this
+
+    ! Standard file reader variables
+    integer                    :: status, length, eof
+    character(200)             :: id, value
+    type(t_vstringlist)        :: strings
     
-    if (this%opt%preproc_on) then
-      ! DO THINGS
-    end if
+    ! Make some changes, we're doing something very different!
+    this%opt%PREPROC_ON = .true.
+    this%opt%WRITE_VARIANCE = .true.
+    call this%nvario_estimator()
   
-  end subroutine preproc_setup
+  end subroutine setup_preproc
   
 !-------------------------------------------------------------------------------------------------!
   
@@ -658,7 +652,8 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     
     if (this%opt%preproc_on) then
-      ! DO THINGS
+      ! Read in files
+      call this%preproc%read_input_files()
     end if
   
   end subroutine preproc_before_interp
@@ -670,7 +665,7 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     
     if (this%opt%preproc_on) then
-      call this%preproc%to_texture()
+      call this%preproc%to_texture(this%dset_intermediate)
     end if
   
   end subroutine preproc_after_interp
