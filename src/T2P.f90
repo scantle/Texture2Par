@@ -34,7 +34,7 @@ module m_T2P
     !type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)  ! Moved to interpolator
     type(t_pilotpoints),pointer      :: pilot_points
     type(t_pilotpoints),pointer      :: pilot_points_aquitard
-    type(t_preprocessor),pointer     :: preproc
+    class(t_preprocessor),pointer     :: preproc
 
     ! Counters
     integer                          :: npar        ! Kh, Kv, Ss, Sy
@@ -651,10 +651,8 @@ module m_T2P
     implicit none
     class(t_T2P), intent(inout)   :: this
     
-    if (this%opt%preproc_on) then
-      ! Read in files
-      call this%preproc%read_input_files()
-    end if
+    ! Read in files
+    call this%preproc%read_input_files()
   
   end subroutine preproc_before_interp
   
@@ -663,10 +661,24 @@ module m_T2P
   subroutine preproc_after_interp(this)
     implicit none
     class(t_T2P), intent(inout)   :: this
+    type(t_layerdata),pointer     :: p(:)
+    character(100)                :: fname, temp
     
-    if (this%opt%preproc_on) then
-      call this%preproc%to_texture(this%dset_intermediate)
+    ! Write out file of interpolated preproc class
+    if (this%opt%WRITE_DATASET_FILES) then
+      p=>this%datasets(1,:)
+      call item2char(this%preproc%class_names, 1, temp)
+      write(fname,'(3a)') trim(this%opt%PROJECT_NAME)//'_', trim(temp), '_log_xyz.csv'
+      call this%write_dataset_file(fname, p, 1)
+      ! Make sure it doesn't try to write them again later
+      this%opt%WRITE_DATASET_FILES = .false.
     end if
+    if (this%opt%WRITE_NODE_FILES) then
+      p=>this%dset_intermediate(1,:)
+      call this%fmodel%write_node_files(p, vstrlist_range(this%preproc%class_names, 1, this%preproc%nclasses), this%opt%write_variance)
+    end if
+    ! Done writing out intermediate results, convert to texture for final steps
+    call this%preproc%to_texture(this%dset_intermediate)
   
   end subroutine preproc_after_interp
   
@@ -726,9 +738,7 @@ module m_T2P
     type(t_category),pointer      :: cat_to                                     ! Categories the pilot points are interpolated using
     logical,allocatable           :: active_to(:)                               ! Whether the given to point is active (skipped if inactive)
     type(t_pilotpoints)           :: pp_intermediate(this%fmodel%ppzones%narr)  ! The pilot point data interpolated to pp_to (by ppzone array)
-    integer                       :: i
-    type(t_layerdata),pointer     :: p(:)
-    character(100)                :: fname, temp
+
 
     ! Allocate the final parameter objects
     allocate(this%par(this%fmodel%nlayers))
@@ -773,20 +783,7 @@ module m_T2P
       ! Krige textures to fmodel grid
       call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid", nblank)
       call this%interpolate_model(this%datasets, this%dset_intermediate)
-      
       if (this%opt%PREPROC_ON) then
-        ! Write out file of interpolated preproc class
-        if (this%opt%WRITE_DATASET_FILES) then
-          p=>this%datasets(1,:)
-          call item2char(this%preproc%class_names, 1, temp)
-          write(fname,'(3a)') trim(this%opt%PROJECT_NAME)//'_', trim(temp), 'log_xyz.csv'
-          call this%write_dataset_file(fname, p, i)
-        end if
-        if (this%opt%WRITE_NODE_FILES) then
-          p=>this%dset_intermediate(1,:)
-          call this%fmodel%write_node_files(p, vstrlist_range(this%preproc%class_names, 1, this%preproc%nclasses), this%opt%write_variance)
-        end if
-        ! Finish preproc
         call this%preproc_after_interp()
       end if      
       

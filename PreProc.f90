@@ -38,6 +38,7 @@ module m_preproc
     contains
       procedure,public               :: read_input_files => read_input_files_r2t
       procedure,public               :: to_texture       => to_texture_r2t
+      procedure,private              :: calc_normalized_likelihoods
   end type
 !-------------------------------------------------------------------------------------------------!
   contains
@@ -230,8 +231,9 @@ module m_preproc
   subroutine to_texture_r2t(this, layerdata)
     implicit none
     class(t_res2texture), intent(inout) :: this
-    type(t_layerdata), intent(inout)     :: layerdata(:,:)  ! (nsets, nlayers)
-    integer                              :: i
+    type(t_layerdata), intent(inout)    :: layerdata(:,:)  ! (nsets, nlayers) with %values(nclasses, npoints)
+    real                                :: texture_lhoods(this%ntexclasses)
+    integer                             :: i, k
     
     ! Apply multipliers if present
     if (allocated(this%mult)) then
@@ -241,7 +243,55 @@ module m_preproc
       end do
     end if
     
+    ! Now the big transform
+    do k=1, this%fmodel%nlayers
+      do i=1, size(layerdata(1,k)%values, 2)
+        if (layerdata(1,k)%values(1,i) <= NODATA) then
+          texture_lhoods = NODATA
+        else
+          call this%calc_normalized_likelihoods(exp(layerdata(1,k)%values(1,i)), this%shapes(:,i,k), this%scales(:,i,k), texture_lhoods)
+        end if
+        layerdata(1,k)%values(:,i) = texture_lhoods
+      end do
+    end do
+    
   end subroutine to_texture_r2t
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine calc_normalized_likelihoods(this, value, ln_shape, ln_scale, lhood)
+    use m_global, only: NODATA
+    use tools, only: lognorm_prob
+    implicit none
+    class(t_res2texture),intent(inout) :: this
+    real, intent(in)                   :: value
+    real, intent(in)                   :: ln_shape(this%ntexclasses), ln_scale(this%ntexclasses)
+    real, intent(inout)                :: lhood(this%ntexclasses)
+    real(8),parameter                  :: delta = 1d0, zero = 0.0d0,cutoff=1d-10
+    integer                            :: i
+     
+    lhood = 0.0
+    if (value==NODATA) then
+      lhood = NODATA
+    else if (value < minval(ln_scale)) then
+      lhood(minloc(ln_scale)) = 1.0d0
+    else if (value > maxval(ln_scale)) then
+      lhood(maxloc(ln_scale)) = 1.0d0
+    else
+      ! Get texture
+      do i=1, this%ntexclasses
+        lhood(i) = lognorm_prob(value, delta, ln_scale(i), ln_shape(i), 0.0)
+        if (lhood(i) < cutoff) lhood(i) = 0.0
+      end do
+      if (sum(lhood) <= 0.0) then
+        ! Prevent divide by zero
+        call error_handler(9, opt_msg="Probabilities <= 0 for all texture classes for point")
+      end if
+      ! Normalize
+      lhood = lhood / sum(lhood)
+    end if
+  
+  end subroutine calc_normalized_likelihoods
   
 !-------------------------------------------------------------------------------------------------!
   
