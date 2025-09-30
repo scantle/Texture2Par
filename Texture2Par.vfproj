@@ -28,7 +28,7 @@
 			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
 		</Configuration>
 		<Configuration Name="Debug|x64" UseCompiler="ifortCompiler" IntermediateDirectory=".\build\$(PlatformName)\$(ConfigurationName)">
-			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" WarnInterfaces="true" RealKIND="realKIND8" LocalSavedScalarsZero="true" Traceback="true" RuntimeChecks="rtChecksAll" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" UseMkl="mklSequential" Interfaces="true"/>
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" WarnInterfaces="true" RealKIND="realKIND8" LocalSavedScalarsZero="true" Traceback="true" RuntimeChecks="rtChecksAll" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
 			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
 			<Tool Name="VFResourceCompilerTool"/>
 			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
@@ -39,7 +39,7 @@
 			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
 		</Configuration>
 		<Configuration Name="Release|x64" UseCompiler="ifxCompiler" OutputDirectory=".\bin\" IntermediateDirectory=".\build\$(PlatformName)\$(ConfigurationName)">
-			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" RealKIND="realKIND8" UseWindowsLibs="true" UseMkl="mklSequential"/>
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" RealKIND="realKIND8" UseWindowsLibs="true"/>
 			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" SubSystem="subSystemConsole"/>
 			<Tool Name="VFResourceCompilerTool"/>
 			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
@@ -61,7 +61,7 @@
 			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
 		</Configuration>
 		<Configuration Name="T2PTests|x64" UseCompiler="ifxCompiler" OutputDirectory=".\bin\" IntermediateDirectory=".\build\$(PlatformName)\$(ConfigurationName)">
-			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" WarnInterfaces="true" RealKIND="realKIND8" LocalSavedScalarsZero="true" Traceback="true" RuntimeLibrary="rtMultiThreadedDebug" UseMkl="mklSequential" Interfaces="true"/>
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" WarnInterfaces="true" RealKIND="realKIND8" LocalSavedScalarsZero="true" Traceback="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
 			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
 			<Tool Name="VFResourceCompilerTool"/>
 			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
@@ -99,7 +99,8 @@
 				<File RelativePath=".\src\variogram.f90"/>
 			</Filter>
 			<Filter Name="Objects">
-				<File RelativePath=".\src\Categories.f90"/>
+				<File RelativePath=".\src\Categories.f90">
+				</File>
 				<File RelativePath=".\src\DataSets.f90"/>
 				<File RelativePath=".\src\FlowModel.f90"/>
 				<File RelativePath=".\src\Options.f90"/>
@@ -117,6 +118,7 @@
 			</Filter>
 			<File RelativePath=".\cellblocks.f90"/>
 			<File RelativePath=".\src\global.f90"/>
+			<File RelativePath=".\src\sgemv.f"/>
 			<File RelativePath=".\src\Texture2Par.f90"/>
 			<File RelativePath=".\version.f90"/>
 		</Filter>

@@ -635,6 +635,7 @@ module m_T2P
       ! Check pilot point zones
       ! Doesn't ensure they are the same ID values...
       if (this%pilot_points%nppzones /= this%fmodel%get_active_ppzones()) then
+        print*, this%pilot_points%nppzones, this%fmodel%get_active_ppzones()
         call error_handler(1,opt_msg="Mismatch between Pilot Point Zones assigned to Pilot Points vs Model Grid")
       end if
 
@@ -804,7 +805,7 @@ module m_T2P
       !end if
       do i=1, this%ntexclasses
         do j=1, obs_data(1)%nactive
-          call dgemv('N', to_grid%n, obs_data(1)%grid%n, 1.0, weights%values, to_grid%n, obs_data(1)%values(:,obs_data(1)%active(j),i), 1, 0.0, results(k)%values(:,obs_data(1)%active(j),i), 1)
+          call sgemv('N', to_grid%n, obs_data(1)%grid%n, 1.0, weights%values, to_grid%n, obs_data(1)%values(:,obs_data(1)%active(j),i), 1, 0.0, results(k)%values(:,obs_data(1)%active(j),i), 1)
         end do
       end do
       
