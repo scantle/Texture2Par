@@ -91,7 +91,8 @@ module m_preproc
     implicit none
     class(t_preprocessor), intent(inout) :: this
     type(t_file_reader), pointer         :: reader
-    integer                              :: k, i
+    integer                              :: k, i, inode, lay
+    real                                 :: mult
     
     ! by default, just reads in the multiplier file, if set
     if (len_trim(this%mult_filename) > 0) then
@@ -100,9 +101,11 @@ module m_preproc
       this%mult = 0
       ! read
       reader => open_file_reader(this%mult_filename)
+      read(reader%unit, *)     ! header
       do k=1, this%fmodel%nlayers
         do i=1, this%fmodel%nnodes(k)
-          read(reader%unit, *) this%mult(i, k)
+          read(reader%unit, *) inode, lay, mult
+          this%mult(inode, lay) = mult
         end do
       end do
     end if
@@ -213,11 +216,8 @@ module m_preproc
     
     ! read in scale & shape values for each texture, for each cell
     reader => open_file_reader(this%filename)
-    ! Read first line
-    read(reader%unit, *, iostat=ierr) inode, scales, shapes
-    ! Read all the other lines
+    read(reader%unit, *, iostat=ierr)     ! header
     do
-      ! process previous line
       read(reader%unit, *, iostat=ierr) inode, lay, scales, shapes
       if (ierr/=0) exit
       this%scales(:,inode,lay) = scales

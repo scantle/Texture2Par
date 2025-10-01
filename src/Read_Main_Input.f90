@@ -746,9 +746,12 @@ end subroutine read_ppparm_block
           call vstrlist_append(t2p%preproc%class_names, vstring_toupper(vstrlist_index(strings,2)))
           ! Hardcoded, for now
           t2p%preproc%nclasses = 1
-        case("FILE","SCALE_FILE")
+        case("SCALE_FILE")
           if (.not. has_object) call error_handler(1,reader%file,'Must declare preproc MODE before CLASS')
           call item2char(strings, 2, t2p%preproc%filename, toupper=.true.)
+        case("MULT_FILE")
+          if (.not. has_object) call error_handler(1,reader%file,'Must declare preproc MODE before CLASS')
+          call item2char(strings, 2, t2p%preproc%mult_filename, toupper=.true.)
         case DEFAULT
           call error_handler(1,reader%file,"Unknown Preprocessor Block option: " // trim(id))
       end select
