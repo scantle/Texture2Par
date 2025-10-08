@@ -20,6 +20,7 @@ module m_kriging
     integer                   :: unbias                  ! Unbias term (0 - SK, 1 - OK)
     integer                   :: ndrift                  ! Unimplemented
     integer                   :: nzones                  ! Tracks length of zones list (see below)
+    real                      :: max_pdist               ! Maximum inclusion distance for primary data
     real                      :: max_sdist               ! Maximum inclusion distance for secondary data
     real   ,allocatable       :: matA(:)                 ! LHS obs-obs covariance matrix (lower triangle, stored as an array)
     real   ,allocatable       :: rhsB(:)                 ! RHS grid-obs covariance array
@@ -280,6 +281,7 @@ end subroutine doolittle
     this%obs_idx = obs_idx
 
     ! If MAX_SECONDARY_DIST is zero, will use 3x the largest structure range
+    this%max_pdist = opt%MAX_PRIMARY_DIST
     this%max_sdist = opt%MAX_SECONDARY_DIST
 
     if (allocated(this%vario_idx)) deallocate(this%vario_idx)
@@ -291,23 +293,33 @@ end subroutine doolittle
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine filter_near_points(this, usenear, inear, dist, vidx)
+  subroutine filter_near_points(this, usenear, inear, dist, vidx, primary)
     implicit none
     class(t_krige),intent(inout)  :: this
     integer, intent(inout)        :: usenear
     integer, intent(inout)        :: inear(:)
-    real    , intent(inout)       :: dist(:)
+    real   , intent(inout)        :: dist(:)
     integer, intent(in)           :: vidx
-    real                          :: max_sdist
+    logical, intent(in), optional :: primary
+    real                          :: max_dist
 
     integer :: count, j
 
-    max_sdist = this%max_sdist
-    if (this%max_sdist < 0.1) max_sdist = maxval(this%variograms(:,vidx)%a_hmax) * 3.0
+    max_dist = -999.0
+    if (present(primary)) then
+      if (primary) max_dist = this%max_pdist
+    end if
+    if (max_dist < 0.0) then
+      if (this%max_sdist > 0.1) then
+        max_dist = this%max_sdist
+      else
+        max_dist = maxval(this%variograms(:,vidx)%a_hmax) * 3.0
+      end if
+    end if
 
     count = 0
     do j = 1, usenear
-      if (sqrt(dist(j)) <= max_sdist) then
+      if (sqrt(dist(j)) <= max_dist) then
         count = count + 1
         ! Move valid entries to the beginning of the array
         if (count /= j) then
@@ -322,7 +334,7 @@ end subroutine doolittle
   end subroutine filter_near_points
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   function block_cov_rhs(this,inode,obs_coord,vidx) result(sum)
     implicit none
     class(t_krige), intent(in) :: this
@@ -339,9 +351,9 @@ end subroutine doolittle
       end do
     end do
   end function block_cov_rhs
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function block_sill(this,inode,vidx) result(sill)
     implicit none
     class(t_krige), intent(in) :: this
@@ -361,7 +373,7 @@ end subroutine doolittle
       end do
     end do
   end function block_sill
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine write_amat(this, log_unit)
@@ -525,7 +537,7 @@ end subroutine write_summary_krige
     this%matA = 0.0
     this%w = 0.0
     merror = 0.0
-    
+
     ! Setup KVME, if using
     if (this%kvme_enabled) then
       do i = 1, this%nsets
@@ -599,7 +611,7 @@ end subroutine write_summary_krige
       where (weights < 0.0) weights = 0.0
       weights = weights / sum(weights)
     end if
-    
+
     ! Variance
     vidx  = this%vario_idx(1,1)
     c0 = 0.0
@@ -721,16 +733,24 @@ end subroutine write_summary_krige
     do i=1, this%nsets
       vidx = this%vario_idx(i,i)
       call obs_data(i)%grid%get_nnear(p, loc_usenear(i), inear(:,i), dist(:,i))
-      ! Filter out points beyond max_sdist for covariate datasets
-      if (i > 1) call this%filter_near_points(loc_usenear(i), inear(:,i), dist(:,i), vidx)
+      ! Filter out points beyond max_sdist
+      if (i ==1) then
+        call this%filter_near_points(loc_usenear(i), inear(:,i), dist(:,i), vidx, primary=.true.)
+      else
+        call this%filter_near_points(loc_usenear(i), inear(:,i), dist(:,i), vidx)
+      end if
     end do
 
     if (present(ppd)) ppd = loc_usenear
 
     osize   = sum(loc_usenear)
+    if (osize==0) then
+      print*, "Error: No data found for kriging at point ", idx," with coordinates ", p(1:this%ndim)
+      call error_handler(4)
+    end if
     matsize = osize+this%unbias+this%ndrift
     mat_tot = matsize * (matsize + 1) / 2
-    
+
     ! Setup KVME if using
     merror = 0.0
     if (this%kvme_enabled) then
@@ -762,7 +782,7 @@ end subroutine write_summary_krige
     ! Create RHS
     this%rhsB = 0.0
     this%w = 0
-    
+
     if (this%unbias==1) this%rhsB(matsize) = 1.0
     rcount = 1
     ! Loop over datasets
@@ -791,7 +811,7 @@ end subroutine write_summary_krige
       where (this%w(1:osize) < 0.0) this%w(1:osize) = 0.0
       this%w(1:osize) = this%w(1:osize)/sum(this%w(1:osize))
     end if
-    
+
     ! Variance
     vidx  = this%vario_idx(1,1)
     c0 = 0.0

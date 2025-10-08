@@ -16,6 +16,7 @@ module m_options
     ! "Optional" Options - Default Value and Settings
     real                     :: NO_DATA_VALUE         !
     real                     :: IDW_POWER             ! Inverse Distance Weighting Power Parameter
+    real                     :: MAX_PRIMARY_DIST      ! Maximum distance to include primary data in interpolation
     real                     :: MAX_SECONDARY_DIST    ! Maximum distance to include secondary data in interpolation
     real                     :: MAX_OUTSIDE_DIST      ! Maximum distance data can be outside of [model] domain
     real                     :: MAX_LOG_LENGTH        ! Maximum interval length when reading 3D data, longer logs will be split
@@ -81,6 +82,7 @@ module m_options
     !this%DATA_CLASSES         = -1
     this%NO_DATA_VALUE        = NODATA
     this%IDW_POWER            = 2.0
+    this%MAX_PRIMARY_DIST     = -999.0
     this%MAX_SECONDARY_DIST   = 0.0                   ! Default is overwritten in filter_near_points
     this%MAX_OUTSIDE_DIST     = 0.0
     this%MAX_LOG_LENGTH       = HUGE(0.0)
@@ -175,6 +177,8 @@ subroutine read_options(this, reader)
         this%NO_DATA_VALUE        = item2real(strings, 2)
       case("IDW_POWER")
         this%IDW_POWER            = item2real(strings, 2)
+      case("MAX_PRIMARY_DIST")
+        this%MAX_PRIMARY_DIST     = item2real(strings, 2)
       case("MAX_SECONDARY_DIST")
         this%MAX_SECONDARY_DIST   = item2real(strings, 2)
       case("MAX_OUTSIDE_DIST")
@@ -263,6 +267,12 @@ subroutine write_input_summary(this)
     call log%write_valueline('Max Variogram Structures:', this%MAX_VSTRUCT)
     call log%write_valueline('No Data Value:',this%NO_DATA_VALUE)
     call log%write_valueline('IDW Power Value:',this%IDW_POWER)
+    if (this%MAX_PRIMARY_DIST>=0.0) then
+      call log%write_valueline('Max Primary Data Dist:', this%MAX_PRIMARY_DIST)
+    else
+      this%MAX_PRIMARY_DIST = huge(0.0)
+      call log%write_valueline('Max Primary Data Dist:', 'Not Set (using all primary data)')
+    end if
     call log%write_valueline('Max Secondary Data Dist:', this%MAX_SECONDARY_DIST)
     call log%write_valueline('Max Outside Bounds Dist:', this%MAX_OUTSIDE_DIST)
     if (this%INTERP_DIM == 3) call log%write_valueline('Max Log Interval Length:', this%MAX_LOG_LENGTH)
