@@ -368,7 +368,14 @@ module m_read_datasets
           prev_depth = 0.0  ! new log
           if (idx <= prev_idx) call error_handler(1,file,"Well IDs must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
           prev_idx = idx
-          ! Get location in model, get top elevation at location
+        end if
+        if (prev_depth > depth) call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp)))
+
+        thick = (depth - prev_depth)
+        resized_intervals = ceiling(thick / t2p%opt%MAX_LOG_LENGTH)        
+        
+        ! Get location in model only if need to align with grid's top elevation
+        if (t2p%opt%USE_MODEL_GSE) then
           fmodel_loc = t2p%fmodel%find_in_grid([x,y], t2p%opt%MAX_OUTSIDE_DIST)
           if (fmodel_loc==0) then
             if (t2p%opt%MAX_OUTSIDE_DIST > 0.0) then
@@ -380,11 +387,7 @@ module m_read_datasets
           call t2p%fmodel%get_elev_at_point([x,y], local_elevs(:), fmodel_loc)
           fmodel_z = local_elevs(0)
         end if
-        if (prev_depth > depth) call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp)))
-
-        thick = (depth - prev_depth)
-        resized_intervals = ceiling(thick / t2p%opt%MAX_LOG_LENGTH)
-
+          
         ! Transform values
         if (minval(wvalues)>=NODATA) call data_transformer%apply(wvalues)
 
