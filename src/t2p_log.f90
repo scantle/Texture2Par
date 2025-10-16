@@ -6,14 +6,13 @@ module m_log
 
 !-------------------------------------------------------------------------------------------------!
   subroutine log_init(log, main_input_file)
-    use m_file_io, only: log_unit
+    use m_file_io, only: log_unit, basename
     implicit none
     type(t_file_writer),pointer  :: log
     character(100)               :: main_input_file
     integer                      :: i
-    character(100)               :: basename
     ! Initialize
-    do i=max(1,len_trim(main_input_file)-20), len_trim(main_input_file)
+    do i=len_trim(main_input_file), 1, -1
       if (main_input_file(i:i)==".") basename=main_input_file(1:i-1)
     end do
     log => open_file_writer(trim(basename)//".out")
@@ -99,10 +98,10 @@ module m_log
 
     ! Options
     call t2p%opt%write_input_summary() ! Move here?
-    
+
     ! Connections Array
     call t2p%write_connections()
-    
+
     ! Variograms
     if (t2p%opt%INTERP_METHOD=='OK'.or.t2p%opt%INTERP_METHOD=='SK') then
       if (t2p%opt%INTERP_ORDER=="BEFORE") write(line,'(a)') '-- CLASS VARIOGRAMS --'
@@ -120,12 +119,12 @@ module m_log
         call t2p%interp_pp%write_summary()
       end if
     end if
-    
+
     ! Aquifer Class Pilot Points
     if (.not. t2p%opt%ONLY_TEXTURE) then
       call log%write_line('--- AQUIFER PILOT POINTS ---', blank_start=1)
       call t2p%pilot_points%write_pp_table()
-    
+
       ! Aquitard Class Pilot Points
       if (t2p%fmodel%has_aquitards) then
         call log%write_line('--- AQUITARD PILOT POINTS ---', blank_start=1)

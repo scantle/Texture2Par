@@ -26,7 +26,7 @@ module m_options
     character(10)            :: INTERP_METHOD         ! OK, SK, IDW
     character(10)            :: INTERP_ORDER          ! Interpolate to grid: [BEFORE, AFTER] upscaling/aggegating?
     character(60)            :: MAIN_OUTPUT           !
-    character(60)            :: PROJECT_NAME          ! project name, used as prefix for output file names
+    character(500)           :: PROJECT_NAME          ! project name, used as prefix for output file names
     !character(100)           :: OUTPUT_DIR            ! Directory where output gets written
     !character(100)           :: INPUT_DIR             ! Direction where input gets read
     logical                  :: SILENT_MODE           ! UNIMPLMENTED
@@ -75,6 +75,7 @@ module m_options
 
   subroutine initialize(this)
     use m_global, only: NODATA
+    use m_file_io, only: basename
     implicit none
     class(t_options),intent(inout)         :: this
 
@@ -91,7 +92,7 @@ module m_options
     this%SEED                 = 0
     this%INTERP_METHOD        = 'OK'
     this%INTERP_ORDER         = 'BEFORE'
-    this%PROJECT_NAME         = 't2p'
+    this%PROJECT_NAME         = trim(basename)
     this%MAIN_OUTPUT          = ''
     !this%OUTPUT_DIR           = './'
     !this%INPUT_DIR            = './'

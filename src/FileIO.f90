@@ -56,6 +56,7 @@ module m_file_io
   integer                     :: log_unit   ! Unit the log file is open on
                                             ! (so IO errors can be written to it)
   character(500)              :: line       ! For reading in lines from files
+  character(500)              :: basename   ! basename of main input file (for log/output files)
   INTEGER, PARAMETER          :: dp = SELECTED_REAL_KIND(15,307)  ! 64-bit real
   integer, parameter          :: log_width=38
 
@@ -136,7 +137,7 @@ module m_file_io
     else
       open(f%unit, file=f%file, action='READ', STATUS='OLD', iostat=f%ioerr, iomsg=iomsg)
     end if
-    
+
     write(log_unit,'(3a)') 'Opening file ', trim(f%file), ' for reading.'
     call f%iomsg_handler(iomsg)
 
@@ -267,7 +268,7 @@ module m_file_io
   end function find_string_index_in_list
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   function vstrlist_to_charvec(strings, subset) result(names)
     implicit none
     type(t_vstringlist), intent(in) :: strings
@@ -299,12 +300,12 @@ module m_file_io
     do i = 1, n
       call item2char(strings, idx(i), names(i))
     end do
-    
+
     return
   end function vstrlist_to_charvec
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine vstrlist_replace(strings, existing, replacement)
     implicit none
     type(t_vstringlist), intent(inout) :: strings
@@ -329,9 +330,9 @@ module m_file_io
     end do
 
     strings = new_list
-  
+
   end subroutine vstrlist_replace
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! BASE CLASS FILE TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!

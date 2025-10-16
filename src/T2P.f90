@@ -766,8 +766,8 @@ module m_T2P
 
       ! Check if we have precalculated weights for the pilot point interpolation
       if (this%opt%READ_PP_WEIGHTS) then
-        write(temp,'(i0)') k
-        call weights%load_from_file('t2p_ppweights_arr'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
+        write(temp,'(i2.2)') k
+        call weights%load_from_file(trim(this%opt%PROJECT_NAME)//'_ppweights_arr'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
       else
         call this%interp_pp%calc_weights(obs_data, &
                                          class_idx,  &
@@ -781,8 +781,8 @@ module m_T2P
 
       ! Write PP weights
       if (this%opt%WRITE_PP_WEIGHTS) then
-        write(temp,'(i0)') k
-        call weights%save_to_file('t2p_ppweights_arr'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
+        write(temp,'(i2.2)') k
+        call weights%save_to_file(trim(this%opt%PROJECT_NAME)//'_ppweights_arr'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
       end if
 
       ! Apply weights and create results

@@ -201,7 +201,7 @@ module m_interpolator
     call weights%initialize(this%wsize_estimate(obs_data, obs_idx, opt), size(obs_data))
     
     ! Open weights file if using (call does nothing if options are false)
-    write(wtfile, '(A,I0,A,I0,A)') 't2p_grdweights_arr', layer, '_obs', obs_idx(1), '.wts'
+    write(wtfile, '(A,I2.2,A,I0,A)') trim(opt%PROJECT_NAME)//'_grdweights_arr', layer, '_obs', obs_idx(1), '.wts'
     call weights%open_file(trim(wtfile), opt%WRITE_GRID_WEIGHTS, opt%READ_GRID_WEIGHTS, opt%GRID_WEIGHTS_TEXT)
     
     if (opt%READ_GRID_WEIGHTS) then
