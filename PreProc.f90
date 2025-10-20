@@ -124,7 +124,7 @@ module m_preproc
     
     do k=1, this%fmodel%nlayers
       do i=1, this%fmodel%nnodes(k)
-        layerdata(k)%values(class_idx, i) = layerdata(k)%values(class_idx, i) + layerdata(k)%variance(class_idx, i) * this%mult(i,k)
+        layerdata(k)%values(class_idx, i) = layerdata(k)%values(class_idx, i) + sqrt(layerdata(k)%variance(class_idx, i)) * this%mult(i,k)
       end do
     end do
   
