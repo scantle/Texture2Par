@@ -219,24 +219,24 @@ module m_T2P
       if (this%opt%ONLY_TEXTURE) call error_handler(1,opt_msg='ONLY_TEXTURE option is only valid for INTERP_ORDER=="BEFORE"')
       if (this%opt%INFER_LAST_CLASS) call error_handler(1,opt_msg='Cannot use INFER_LAST_CLASS with INTERP_ORDER=="AFTER"')
     end if
-    
+
     if (this%opt%WRITE_GRID_WEIGHTS.and.this%opt%READ_GRID_WEIGHTS) then
       call error_handler(1,opt_msg='Cannot both WRITE_GRID_WEIGHTS and READ_GRID_WEIGHTS - only one')
     end if
-    
+
     if (this%opt%WRITE_PP_WEIGHTS.and.this%opt%READ_PP_WEIGHTS) then
       call error_handler(1,opt_msg='Cannot both WRITE_PP_WEIGHTS and READ_PP_WEIGHTS - only one')
     end if
-    
+
     if (this%opt%nsim > 1) then
       if (this%opt%WRITE_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot WRITE_GRID_WEIGHTS while using SGSIM (NSIM>1)')
       if (this%opt%READ_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot READ_GRID_WEIGHTS while using SGSIM (NSIM>1)')
     end if
-    
+
     if (this%opt%READ_GRID_WEIGHTS.and.this%opt%WRITE_VARIANCE) then
       call error_handler(1,opt_msg='Cannot WRITE_VARIANCE while reusing weights from READ_GRID_WEIGHTS')
     end if
-    
+
     ! Some warnings
     if (this%opt%WRITE_VARIANCE.and.this%opt%CORRECT_WEIGHTS) then
       call warning_handler("Variance calculated with corrected weights is an approximation and may be biased low - use with caution.")
@@ -524,15 +524,15 @@ module m_T2P
   end subroutine setup_pplocs
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine setup_categories(this)
     implicit none
     class(t_T2P), intent(inout)   :: this
-    
+
     ! Read in category files
     call this%fmodel%read_category_files()
     this%nhsus = this%fmodel%HSUS%ncat
-    
+
     ! Setup HSU variograms
     select type(p => this%interp_data)
       class is(t_krige)
@@ -540,7 +540,7 @@ module m_T2P
         p%cat2zone = 0
         call p%init_zones(this%fmodel%hsus%strlist_glo)
     end select
-      
+
     ! Setup PP zone variograms - don't have different variograms (yet)
     if (.not. this%opt%ONLY_TEXTURE) then
       select type(p => this%interp_pp)
@@ -549,11 +549,11 @@ module m_T2P
           p%cat2zone = 1
       end select
     end if
-    
+
   end subroutine setup_categories
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine setup_subsidence(this, fine_classes)
     use m_pilotpoints, only: add_pilotpoint_aquifer_parameter, aquifer_propnames
     use m_file_io, only: vstrlist_replace, item2char
@@ -563,7 +563,7 @@ module m_T2P
     type(t_vstringlist)           :: fine_classes
     integer                       :: nfine, i, j, is_fine, class_id
     character,allocatable         :: temp
-    
+
     ! Setup arrays to track which classes (by id) are fine and coarse
     nfine = vstrlist_length(fine_classes)
     allocate(this%fine_classes(nfine), this%coarse_classes(this%nclasses - nfine))
@@ -576,7 +576,7 @@ module m_T2P
       end if
       this%fine_classes(i) = class_id
     end do
-    
+
     ! build coarse = complement of fine in [1..ntexclasses]
     j = 1
     do i=1, this%ntexclasses
@@ -586,15 +586,15 @@ module m_T2P
         j = j+1
       end if
     end do
-    
+
     ! Turn option on
     this%opt%subsidence_on = .true.
-    
+
     ! Modify existing Ss pilot point parameter, add new pilot point parameter
     call vstrlist_replace(aquifer_propnames, 'Ss', 'Sske')
     i = vstrlist_search(aquifer_propnames, 'Sske')
     call add_pilotpoint_aquifer_parameter('Sskv', before=i+1)
-    
+
     ! Add output parameters as well
     call vstrlist_replace(this%parnames, 'SS', 'SSKEC')
     call vstrlist_append (this%parnames, "SSKEF" )
@@ -602,9 +602,9 @@ module m_T2P
     call vstrlist_append (this%parnames, "KVF" )
     call vstrlist_append (this%parnames, "IB_THK" )
     this%npar = vstrlist_length(this%parnames)
-    
+
   end subroutine setup_subsidence
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine check_major_inputs(this)
@@ -741,7 +741,7 @@ module m_T2P
     integer                         :: nrows, m, glo_dim
 
     class_idx(1) = 1
-    
+
     ! Store INTERP_DIM, temporarily set to 2D (Pilot Points are hardwired to 2D, at least for now)
     ! TODO separate INTERP_DIM for PP/data; have interp::setup() take a DIM argument; implement PP 3D kriging
     glo_dim = this%opt%INTERP_DIM
@@ -808,11 +808,11 @@ module m_T2P
           call sgemv('N', to_grid%n, obs_data(1)%grid%n, 1.0, weights%values, to_grid%n, obs_data(1)%values(:,obs_data(1)%active(j),i), 1, 0.0, results(k)%values(:,obs_data(1)%active(j),i), 1)
         end do
       end do
-      
+
       ! reset weights
       weights%values = 0.0
     end do
-    
+
     this%opt%INTERP_DIM = glo_dim
 
   end subroutine interpolate_pp
@@ -870,7 +870,7 @@ module m_T2P
                                             this%opt,&
                                             k)
         ! Enforce values must be greater than zero
-        if (.not. this%opt%NO_TEX_BOUNDS) then 
+        if (.not. this%opt%NO_TEX_BOUNDS) then
           where(dout(k)%values(i,1:) < 0.0) dout(k)%values(i,1:) = 0.0
           ! If we're kriging texture - must be below 1.0
           if (this%opt%INTERP_ORDER=="BEFORE") where(dout(k)%values(i,1:) > 1.0) dout(k)%values(i,1:) = 1.0
@@ -911,13 +911,13 @@ module m_T2P
       obslayer = k
       if (this%fmodel%get_layer_id(k)==1) modelgrid => this%fmodel%grid(1)%ptrgrid
     end if
-    
+
     if (this%opt%BLOCK_KRIGE > 0) then
       modelgrid%active_blocks => this%fmodel%layer_blocks(k)
     end if
-    
+
   end subroutine
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine calc_block_parameters(this, pp_obj, tex_obs, par_out)
@@ -931,10 +931,10 @@ module m_T2P
     integer                        :: Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, Stp, Sske, Sskv
     real                           :: wf_sum, wc_sum
     real    ,allocatable           :: depths(:),thk(:),KhD(:,:),KvD(:,:)
-    
+
     ! Get parameter ids (indexes in matrix, not the actual values)
     Kmin  = vstrlist_search(propnames, 'Kmin')   ! 1
-    Kmax  = vstrlist_search(propnames, 'Kmax')   ! 2 
+    Kmax  = vstrlist_search(propnames, 'Kmax')   ! 2
     Ss    = vstrlist_search(propnames, 'Ss')     ! 3
     Sy    = vstrlist_search(propnames, 'Sy')     ! 4
     Aniso = vstrlist_search(propnames, 'Aniso')  ! 5
@@ -968,7 +968,7 @@ module m_T2P
 
       ! Get node midpoint depths
       call this%fmodel%get_midpoint_depths(k, depths)
-      
+
       ! Get thicknesses
       if (this%opt%SUBSIDENCE_ON) call this%fmodel%get_layer_thicknesses(k, thk)
 
@@ -1043,6 +1043,12 @@ module m_T2P
     call this%write_status("Writing output files")
 
     ! Write parameters by node/cell, and if texture was kriged, textures by node/cell
+    if (this%opt%WRITE_ELEVATION_FILE) then
+      ! Write out the grid elevation file
+      call this%write_minor_status("Writing Grid Elevation File")
+      call this%fmodel%write_elev_file(trim(this%opt%PROJECT_NAME)//'_ELEVATION.csv')
+    end if
+
     if (.not. (this%opt%WRITE_NODE_FILES.and.this%opt%ONLY_TEXTURE)) then
       call this%write_minor_status('Writing Parameter Node Files')
       call this%fmodel%write_node_files(this%par, this%parnames, .false.)
@@ -1184,7 +1190,7 @@ module m_T2P
   end subroutine write_dataset_file_aqtard
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_connections(this)
     use m_global, only: log
     use m_vstringlist
@@ -1193,7 +1199,7 @@ module m_T2P
     class(t_T2P), intent(inout)  :: this
     integer                      :: i,j
     character(128)               :: line, temp, id
-    
+
     if (this%has_covar) then
       call log%write_line('-- INTERPOLATION SETUP: [Primary] : [Secondary]', blank_start=1)
       do i=1, this%nprimary
@@ -1223,9 +1229,9 @@ module m_T2P
         call log%write_line(line)
       end do
     end if
-    
+
   end subroutine write_connections
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine write_status(line, blank_start, blank_end)

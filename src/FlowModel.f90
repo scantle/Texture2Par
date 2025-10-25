@@ -78,6 +78,7 @@ module m_flow_model
       procedure,public             :: write_fmodel_input
       procedure,public             :: write_node_files
       procedure,public             :: write_node_file
+      procedure,public             :: write_elev_file
       procedure,public             :: write_node_file_aqtard
       procedure,public             :: cell2rowcol
       procedure,private            :: alloc_layers
@@ -176,10 +177,10 @@ module m_flow_model
 
   end type
 !-------------------------------------------------------------------------------------------------!
-  
+
   type, extends(t_modflow_model) :: t_flow_fdgrid
   ! Basically a MODFLOW model defined by a simplied DIS file
-  
+
   integer                     :: nx, ny      ! ncol, nrow
   real                        :: dx, dy, dz  ! delr, delc, delz
 
@@ -190,9 +191,9 @@ module m_flow_model
     procedure,private         :: get_cell_local => get_cell_local_fd
     procedure,private         :: calc_fdcell_centers
   end type
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   contains
 
 !-------------------------------------------------------------------------------------------------!
@@ -304,17 +305,17 @@ module m_flow_model
   end subroutine build_tree
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine build_blocks(this, opt)
     ! Base class method for building trees - should not be run
     implicit none
     class(t_flow_model)         :: this
     class(t_options),intent(in) :: opt
-    
+
     call error_handler(9,opt_msg='Block Kriging unimplemented for model type. Please contact the developers.')
-    
+
   end subroutine build_blocks
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine alloc_layers(this, lay2grid)
@@ -351,7 +352,7 @@ module m_flow_model
     ! Initialize to active
     this%active_nodes_bylay = .true.
     this%active_nodes_flat  = .true.
-    
+
     ! Loop over layers creating grid object
     do i=1, this%ngrids
       this%grid(i)%ptrgrid => create_grid_object(2, this%nnodes(this%lay2grid(i)))
@@ -425,7 +426,7 @@ module m_flow_model
     real, intent(inout)                :: depths(:)
 
     !depths = this%elev(:,0) - ((this%elev(:,k-1) + this%elev(:,k)) / 2.0)
-    
+
     ! Loop & compute depths to avoid large temporary arrays
     do i = 1, this%nnodes(k)
       depths(i) = this%elev(i,0) - ((this%elev(i,k-1) + this%elev(i,k)) * 0.5)
@@ -434,7 +435,7 @@ module m_flow_model
   end subroutine get_midpoint_depths
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine get_layer_thicknesses(this, k, thicknesses)
     ! To be overloaded where necessary (should be the same for all models)...
     implicit none
@@ -442,14 +443,14 @@ module m_flow_model
     integer,intent(in)                 :: k
     integer                            :: i
     real, intent(inout)                :: thicknesses(:)
-    
+
     ! Loop & compute depths to avoid large temporary arrays
     do i = 1, this%nnodes(k)
       thicknesses(i) = this%elev(i,k-1) - this%elev(i,k)
     end do
 
   end subroutine get_layer_thicknesses
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   function get_active_ppzones(this) result(nactive)
@@ -581,6 +582,34 @@ module m_flow_model
     logical                    :: write_variance
 
   end subroutine write_node_file
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine write_elev_file(this, fname)
+    ! Base class method, should not be run
+    implicit none
+    character(*)               :: fname
+    class(t_flow_model)        :: this
+    ! local
+    integer                    :: unit, inode, ilay
+    character(:),allocatable   :: header
+    character(20)              :: tmpstr
+
+    header = "Node,X,Y,Top"
+    do ilay=1, this%nlayers
+      write(tmpstr,'(I0)') ilay
+      header = trim(header) // ',Bottom' // trim(tmpstr)
+    end do
+
+    open(newunit=unit, file=trim(fname), status='replace')
+    write(unit,"(A)") header
+    do inode = 1, this%nnodes(1)
+      write(unit, "(I0,9999(:',',G0.10))")     &
+        inode,                                 &
+        this%grid(1)%ptrgrid%coords(:,inode),  &
+        this%elev(inode, 0:this%nlayers)
+    end do
+  end subroutine write_elev_file
 
 !-------------------------------------------------------------------------------------------------!
 
@@ -1405,7 +1434,7 @@ module m_flow_model
 !-------------------------------------------------------------------------------------------------!
 ! FINITE-DIFFERENCE GENERIC GRID (FDGRID)
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine init_fdgrid(this)
     implicit none
     class(t_flow_fdgrid)       :: this
@@ -1423,9 +1452,9 @@ module m_flow_model
     this%dz = 0.0
 
   end subroutine init_fdgrid
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine get_cell_local_fd(this, cell, xmin, xmax, ymin, ymax)
     ! Could consolidate by making generic along with MF version (get_cell_local)
     implicit none
@@ -1441,7 +1470,7 @@ module m_flow_model
     ymax = this%loc_grid(this%lay2grid(1))%ptrgrid%coords(2,cell) + 0.5 * this%dy
 
   end subroutine get_cell_local_fd
-  
+
 !-------------------------------------------------------------------------------------------------!
   subroutine calc_fdcell_centers(this)
     ! Both local and global (formerly was just global, causing some issues in get_cell_local!)
@@ -1475,7 +1504,7 @@ module m_flow_model
 
   end subroutine calc_fdcell_centers
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine read_fdgrid(this, opt)
     use m_file_io, only: log_unit
     implicit none
@@ -1492,14 +1521,14 @@ module m_flow_model
     integer                    :: status, length, eof
     character(200)             :: id, value
     type(t_vstringlist)        :: strings
-    
+
     topfile = ''
     botfile = ''
     iboundfile = ''
     uniform_ibound = .false.
-    
+
     reader => open_file_reader(this%grd_file)
-    
+
     ! Pretend we're in a block...
     do
       call reader%next_block_item(status, id, strings, length)
@@ -1575,16 +1604,16 @@ module m_flow_model
       end select
     end do
     call reader%close_file()
-    
+
     ! Handle other input cases
     if (trim(topfile)/='') then             ! top as external file
       reader => open_file_reader(trim(topfile))
       read(reader%unit, *) top
     else if (.not.allocated(top)) then      ! no top entered, default 0
       allocate(top(this%nx*this%ny))
-      top = 0.0      
+      top = 0.0
     end if
-    
+
     if (trim(botfile)/='') then             ! bot as external file
       reader => open_file_reader(trim(botfile))
       read(reader%unit, *) bot
@@ -1593,7 +1622,7 @@ module m_flow_model
       allocate(bot(this%nx*this%ny))
       bot = top - this%dz * this%nlayers
     end if
-    
+
     if (trim(iboundfile)/='') then          ! ibound as external file
       if (uniform_ibound) then
         allocate(ibound(this%nx*this%ny))
@@ -1618,7 +1647,7 @@ module m_flow_model
     this%ncol = this%nx  ! for cell2rowcol
     this%nnodes = (/ (this%nx * this%ny, k=1, this%nlayers) /)
     call this%alloc_nodes()
-    
+
     ! Handle inactive cells
     offset = 0
     if (.not.opt%PREDICT_INACTIVE) then
@@ -1662,7 +1691,7 @@ module m_flow_model
   end subroutine read_fdgrid
 
 !-------------------------------------------------------------------------------------------------!
-  
+
  subroutine write_fdgrid_out(this, par)
     use m_datasets, only: t_layerdata
     use m_file_io, only: t_file_reader, t_file_writer, open_file_reader, open_file_writer
@@ -1673,11 +1702,11 @@ module m_flow_model
     type(t_file_writer),pointer  :: fwrite
     integer                      :: ierr
     character(500)               :: fname
-    
+
     ! Nothing, for now
 
   end subroutine write_fdgrid_out
-  
+
 !-------------------------------------------------------------------------------------------------!
 ! MODFLOW 2000 CLASS TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -1694,7 +1723,7 @@ module m_flow_model
   end subroutine init_modflow2000
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine build_blocks_mf(this, opt)
     use GLOBAL, ONLY : NROW, NCOL, DELR, DELC
     use tools, only: gaussian_quadrature
@@ -1705,7 +1734,7 @@ module m_flow_model
     real                        :: blocksize(3), zc
     real, allocatable           :: gqdelxyz(:,:)
     type(t_Grid), pointer :: grid
-    
+
     ! Build blocks, if active
     if (opt%BLOCK_KRIGE==1) then                    ! Gaussian Quadrature
       dim = opt%INTERP_DIM
@@ -1742,7 +1771,7 @@ module m_flow_model
     else if (opt%BLOCK_KRIGE==2) then
       ! TODO
     end if
-    
+
   end subroutine build_blocks_mf
 
 !-------------------------------------------------------------------------------------------------!
@@ -1806,9 +1835,9 @@ module m_flow_model
     end do
 
   end subroutine calc_mfcell_centers
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   function find_in_grid_cell(this, coords, max_outside_dist) result(cell)
     use tools, only: glo2loc
     ! Assumes coords is in GLOBAL coordinates
@@ -1969,7 +1998,7 @@ module m_flow_model
     ! Count nodes
     this%nnodes = (/ (nodlay(k) - nodlay(k-1), k=1, nlay) /)
     call this%alloc_nodes()
-    
+
     ! Handle inactive cells
     if (.not.opt%PREDICT_INACTIVE) then
       do k = 1, nlay
