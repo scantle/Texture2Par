@@ -28,6 +28,7 @@ type :: t_vgm
     procedure,public        :: cov
     procedure,public        :: cov_vec
     procedure,public        :: write_variogram
+    procedure,public        :: print_rotmat
 end type t_vgm
 
 !-------------------------------------------------------------------------------------------------!
@@ -143,59 +144,76 @@ end type t_vgm
 ! Author: C. Deutsch                                Date: September 1989
 ! Modified for T2P by Leland Scantlebury
 !-------------------------------------------------------------------------------------------------!
-      real*8, parameter         :: DEG2RAD = 3.141592654/180.0, &
-                                   EPSLON = 1.e-10
-      real*8                    :: alpha, beta, theta,&
-                                   sina, sinb, sint, &
-                                   cosa, cosb, cost, &
-                                   afac1, afac2
-!
-! Converts the input angles to three angles which make more
-!  mathematical sense:
-!
-!         alpha   angle between the major axis of anisotropy and the
-!                 E-W axis. Note: Counter clockwise is positive.
-!         beta    angle between major axis and the horizontal plane.
-!                 (The dip of the ellipsoid measured positive down)
-!         theta   Angle of rotation of minor axis about the major axis
-!                 of the ellipsoid.
+      real, parameter         :: DEG2RAD = 3.141592654/180.0, &
+                                 EPSLON = 1.e-10
+      real                    :: alpha, sina, cosa, rotmat(3,3), tmp(3,3)
 !
 
-      if(this%ang1.ge.0.0d0.and.this%ang1.lt.270.0d0) then
-          alpha = (90.0d0   - this%ang1) * DEG2RAD
-      else
-          alpha = (450.0d0  - this%ang1) * DEG2RAD
-      endif
-      beta  = -1.0d0 * this%ang2 * DEG2RAD
-      theta =          this%ang3 * DEG2RAD
-!
-! Get the required sines and cosines:
-!
-      sina = sin(alpha)
-      sinb = sin(beta)
-      sint = sin(theta)
-      cosa = cos(alpha)
-      cosb = cos(beta)
-      cost = cos(theta)
-!
-! Construct the rotation matrix in the required memory:
-!
-      afac1 = 1.0d0 / max(this%anis1,EPSLON)
-      afac2 = 1.0d0 / max(this%anis2,EPSLON)
-      this%rotmat(1,1) =       (cosb * cosa)
-      this%rotmat(1,2) =       (cosb * sina)
-      this%rotmat(1,3) =       (-sinb)
-      this%rotmat(2,1) = afac1*(-cost*sina + sint*sinb*cosa)
-      this%rotmat(2,2) = afac1*(cost*cosa + sint*sinb*sina)
-      this%rotmat(2,3) = afac1*( sint * cosb)
-      this%rotmat(3,1) = afac2*(sint*sina + cost*sinb*cosa)
-      this%rotmat(3,2) = afac2*(-sint*cosa + cost*sinb*sina)
-      this%rotmat(3,3) = afac2*(cost * cosb)
+      rotmat(:,1) = [this%a_hmax/this%a_hmin, 0.0, 0.0]
+      rotmat(:,2) = [0.0, 1.0, 0.0]
+      rotmat(:,3) = [0.0, 0.0, this%a_hmax/this%a_vert]
+        
+      ! rotate around Y axis
+      if (ABS(this%ang3)>EPSLON) then
+        alpha =  -this%ang3 * DEG2RAD
+        sina = sin(alpha)
+        cosa = cos(alpha)
+        tmp(:,1) = [ cosa, 0.0, sina]
+        tmp(:,2) = [ 0.0 , 1.0, 0.0 ]
+        tmp(:,3) = [-sina, 0.0, cosa]
+        rotmat = MATMUL(rotmat, tmp)
+      end if
+    
+      ! rotate around X axis
+      if (ABS(this%ang2)>EPSLON) then
+        alpha =  -this%ang2 * DEG2RAD
+        sina = sin(alpha)
+        cosa = cos(alpha)
+        tmp(:,1) = [1.0,  0.0 , 0.0 ]
+        tmp(:,2) = [0.0,  cosa, sina]
+        tmp(:,3) = [0.0, -sina, cosa]
+        rotmat = MATMUL(rotmat, tmp)
+      end if
+    
+      ! rotate around Z axis
+      if (ABS(this%ang1)>EPSLON) then
+        alpha = this%ang1 * DEG2RAD
+        sina = sin(alpha)
+        cosa = cos(alpha)
+        tmp(:,1) = [ cosa, sina, 0.0]
+        tmp(:,2) = [-sina, cosa, 0.0]
+        tmp(:,3) = [ 0.0 , 0.0 , 1.0]
+        rotmat = MATMUL(rotmat, tmp)
+      end if
+      
+      this%rotmat = rotmat
 !
 ! Return to calling program:
 !
+      ! call this%print_rotmat()
       return
     end subroutine setrot
+
+!-------------------------------------------------------------------------------------------------!
+
+
+  subroutine print_rotmat(this, iout)
+    implicit none
+    class(t_vgm)            :: this
+    integer, optional       :: iout
+    integer                 :: iiout
+    if (present(iout)) then
+        iiout=iout
+    else
+        iiout=6
+    end if
+    write(iiout, *) ''
+    write(iiout, *) 'Rotation matrix:'
+    write(iiout, '(A,5F10.3)') ' Parameters:', this%ang1,this%ang2,this%ang3,this%anis1,this%anis2
+    write(iiout, '(3F15.10)') this%rotmat
+    write(iiout, *) ''
+  end subroutine
+
 
 !-------------------------------------------------------------------------------------------------!
 
