@@ -166,7 +166,7 @@ end type t_vgm
     
       ! rotate around X axis
       if (ABS(this%ang2)>EPSLON) then
-        alpha =  -this%ang2 * DEG2RAD
+        alpha =  this%ang2 * DEG2RAD
         sina = sin(alpha)
         cosa = cos(alpha)
         tmp(:,1) = [1.0,  0.0 , 0.0 ]
