@@ -43,7 +43,7 @@ module m_read_datasets
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
     integer                       :: idx, idx_offset, iint, prev_idx, prev_iint, fmodel_loc, didx
     integer,allocatable           :: cids(:), all_count(:)
-    real                          :: x, y, z, fmodel_z, prev_depth, depth, intv_top, intv_bot, thick, frac_thick
+    real                          :: x, y, z, fmodel_z, depth0, depth, intv_top, intv_bot, thick, frac_thick
     real    ,allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:), wvariance(:), var_accumulator(:,:)
     real    ,allocatable          :: all_sum(:), all_depth(:)
     type(t_grid),pointer          :: grid
@@ -90,7 +90,6 @@ module m_read_datasets
       all_depth = 0
       prev_idx = 0
       prev_iint = 0
-      prev_depth = 0.0
 
       ! Get data length (not file length, since we've gone past the header)
       call reader%next_item(eof, strings)
@@ -126,9 +125,9 @@ module m_read_datasets
         write(tmp, '(i)') j+1
         read(reader%unit, "(A)", iostat=reader%ioerr, iomsg=iomsg) line
         if (t2p%opt%KVME) then
-          read(line, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), wvariance(1:nsets), hsus(1:ncats)
+          read(line, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth0, depth, wvalues(1:nsets), wvariance(1:nsets), hsus(1:ncats)
         else
-          read(line, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
+          read(line, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth0, depth, wvalues(1:nsets), hsus(1:ncats)
         end if
 	      call reader%iomsg_handler(iomsg)
         if ((.not. t2p%opt%NO_TEX_BOUNDS).and.didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
@@ -168,7 +167,6 @@ module m_read_datasets
           grid%coords(2,idx) = y
           prev_idx = 0
           prev_iint = 0
-          prev_depth = 0.0
           ! Get location in model, get elevation at model layers in model
           fmodel_loc = t2p%fmodel%find_in_grid([x,y], t2p%opt%MAX_OUTSIDE_DIST)
           if (fmodel_loc==0) then
@@ -202,15 +200,15 @@ module m_read_datasets
           if (t2p%opt%USE_MODEL_GSE) intv_top = fmodel_z
           prev_idx = idx
         else
-          thick = depth - prev_depth
+          thick = depth - depth0
           if (t2p%opt%USE_MODEL_GSE) then
-            intv_top = fmodel_z - prev_depth
+            intv_top = fmodel_z - depth0
           else
-            intv_top = z - prev_depth
+            intv_top = z - depth0
           end if
           ! Some data checking
           if (iint <= prev_iint) call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
-          if (prev_depth > depth)  call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp))//new_line("")//trim(line)//new_line(""))
+          if (depth0 >= depth)  call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp))//new_line("")//trim(line)//new_line(""))
         end if  ! End of new log handling
 
         ! Start of accumulator
@@ -235,7 +233,6 @@ module m_read_datasets
             end do
           end if
         end do
-        prev_depth = depth
         prev_iint = iint
       end do
 
@@ -277,7 +274,7 @@ module m_read_datasets
     integer                       :: idx, iint, ipoint, prev_idx, prev_iint, fmodel_loc, didx, resized_intervals
     integer                       :: all_count
     integer,allocatable           :: cids(:)
-    real                          :: x, y, z, prev_depth, depth, re_depth, thick, fmodel_z
+    real                          :: x, y, z, depth0, depth, re_depth, thick, fmodel_z
     real    ,allocatable          :: wvalues(:), local_elevs(:), all_thick(:), all_sum(:), wvariance(:)
     type(t_grid),pointer          :: grid
     type(t_data_transformer)      :: data_transformer
@@ -319,18 +316,15 @@ module m_read_datasets
       all_thick = 0
       prev_idx = 0
       prev_iint = 0
-      prev_depth = 0.0
       npoints = 0    ! in 3D, npoints =/ nwells. Instead, its the total number of intervals.
 
       ! Pre-read to get npoints, given opt%MAX_LOG_LENGTH. Logs are to be split evenly into length/MAX_LOG_LENGTH
       do
-        read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth
+        read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth0, depth
         if (reader%ioerr /= 0) exit   ! done
         nlines = nlines + 1
-        if (iint==1) prev_depth = 0.0 ! new log
         ! How many points will this interval become?
-        npoints = npoints + ceiling((depth - prev_depth) / t2p%opt%MAX_LOG_LENGTH)
-        prev_depth = depth
+        npoints = npoints + ceiling((depth - depth0) / t2p%opt%MAX_LOG_LENGTH)
         !write(*,*) nlines
       end do
 
@@ -357,23 +351,22 @@ module m_read_datasets
         write(tmp, '(i)') j+1
         !write(*,*) tmp // " / ", nlines
         if (t2p%opt%KVME) then
-          read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), wvariance(1:nsets), hsus(1:ncats)
+          read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth0, depth, wvalues(1:nsets), wvariance(1:nsets), hsus(1:ncats)
         else
-          read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth, wvalues(1:nsets), hsus(1:ncats)
+          read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth0, depth, wvalues(1:nsets), hsus(1:ncats)
         end if
 	      call reader%iomsg_handler(iomsg)
         if ((.not. t2p%opt%NO_TEX_BOUNDS).and.didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
         if (iint <= prev_iint) call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
         if (iint==1) then
-          prev_depth = 0.0  ! new log
           if (idx <= prev_idx) call error_handler(1,file,"Well IDs must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
           prev_idx = idx
         end if
-        if (prev_depth > depth) call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp)))
+        if (depth0 >= depth) call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp)))
 
-        thick = (depth - prev_depth)
-        resized_intervals = ceiling(thick / t2p%opt%MAX_LOG_LENGTH)        
-        
+        thick = (depth - depth0)
+        resized_intervals = ceiling(thick / t2p%opt%MAX_LOG_LENGTH)
+
         ! Get location in model only if need to align with grid's top elevation
         if (t2p%opt%USE_MODEL_GSE) then
           fmodel_loc = t2p%fmodel%find_in_grid([x,y], t2p%opt%MAX_OUTSIDE_DIST)
@@ -387,7 +380,7 @@ module m_read_datasets
           call t2p%fmodel%get_elev_at_point([x,y], local_elevs(:), fmodel_loc)
           fmodel_z = local_elevs(0)
         end if
-          
+
         ! Transform values
         if (minval(wvalues)>=NODATA) call data_transformer%apply(wvalues)
 
@@ -401,7 +394,7 @@ module m_read_datasets
         do k=1, resized_intervals
           grid%coords(1, ipoint) = x
           grid%coords(2, ipoint) = y
-          re_depth = prev_depth+(thick/resized_intervals)*(k-1) + ((thick/resized_intervals)/2)
+          re_depth = depth0+(thick/resized_intervals)*(k-1) + ((thick/resized_intervals)/2)
           if (t2p%opt%USE_MODEL_GSE) then
             grid%coords(3, ipoint) = fmodel_z - re_depth
           else
@@ -415,7 +408,6 @@ module m_read_datasets
         end do
 
         if (depth>0) all_count = all_count + 1
-        prev_depth = depth
       end do
 
       ! Store means
@@ -440,13 +432,14 @@ module m_read_datasets
     integer,intent(out)                :: nsets, dataset_idx
     integer,allocatable                :: temp(:)
     integer,allocatable,intent(out)    :: class_ids(:)
-    integer                            :: i, count
+    integer                            :: i, count, nhead
     character(30)                      :: badclass
     character(5)                       :: cint
 
-    ! Columns of header should be Location ID n X Y Zland Depth followed by class data, then layer groups
-    !                             1        2  3 4 5 6     7
-    nsets = vstrlist_length(header) - 7
+    ! Columns of header should be Location ID n X Y Zland DepthTop DepthBot followed by class data, then layer groups
+    !                             1        2  3 4 5 6     7        8
+    nhead = 8
+    nsets = vstrlist_length(header) - nhead
     if (t2p%has_hsus) nsets = nsets - t2p%fmodel%nlayers
     if (t2p%opt%KVME) nsets = nsets - t2p%get_active_texture_classes()  ! one per texture class
     if (nsets < 1) then
@@ -457,7 +450,7 @@ module m_read_datasets
     count = 0
 
     do i=1, nsets
-      temp(i) = t2p%get_class_id(vstrlist_index(header,7+i))
+      temp(i) = t2p%get_class_id(vstrlist_index(header,nhead+i))
       if (temp(i)==0) then
         if (t2p%opt%KVME) then
           ! If KVME, then the end of classes will start with var_
