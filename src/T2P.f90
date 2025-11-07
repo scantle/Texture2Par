@@ -28,8 +28,9 @@ module m_T2P
     class(t_interpolator),pointer    :: interp_pp   => null()
     type(t_layerdata),pointer        :: datasets(:,:)           ! Datasets (dataset, layer) (1+nsecondary, layer)
     type(t_layerdata),pointer        :: dset_intermediate(:,:)  ! texture or parameters data interpolated to model grid (nsets, nlayers)
-    type(t_layerdata),pointer        :: par(:)            ! Final model hydraulic parameters (nlayers)&values(npar, npoints)
-    !type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)  ! Moved to interpolator
+    type(t_layerdata),pointer        :: par(:)                  ! Final model hydraulic parameters (nlayers)&values(npar, npoints)
+    type(t_layerdata),allocatable    :: interbed_count(:)       ! interbed counts by (layer) with %values(:) of counts by location
+    type(t_layerdata),allocatable    :: interbed_thick(:)       ! interbed thickness by (layer) with %values(2,:) (thicknesses, squared thicknesses)
     type(t_pilotpoints),pointer      :: pilot_points
     type(t_pilotpoints),pointer      :: pilot_points_aquitard
 
@@ -116,6 +117,7 @@ module m_T2P
     procedure, public  :: get_connection_list
     procedure, public  :: get_dataset_idx_list
     procedure, public  :: get_dataval_idx_list
+    procedure, public  :: is_inferred_class_fine
 
   end type t_T2P
 !-------------------------------------------------------------------------------------------------!
@@ -1395,6 +1397,22 @@ module m_T2P
     return
   end function get_active_texture_classes
 
+!-------------------------------------------------------------------------------------------------!
+  
+  function is_inferred_class_fine(this) result (inferred_fine)  ! specific, no?
+    implicit none
+    class(t_T2P)            :: this
+    logical               :: inferred_fine
+    integer               :: i
+    inferred_fine = .false.
+    if (this%opt%INFER_LAST_CLASS) then
+      do i=1, size(this%fine_classes)
+        if (this%fine_classes(i)==this%ntexclasses) inferred_fine=.true.
+      end do
+    end if
+    return
+  end function
+  
 !-------------------------------------------------------------------------------------------------!
 
   subroutine finalize(this)

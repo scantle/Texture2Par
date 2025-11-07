@@ -8,6 +8,7 @@ module m_read_datasets
   use m_error_handler, only: error_handler, warning_handler
   use m_grid, only: t_grid, create_grid_object
   use m_data_transformer, only: t_data_transformer
+  use m_subsidence, only: accumulate_interbeds, reset_interbeds, build_interbed_mask, is_interbed_interval
   implicit none
 
   type(t_file_reader), pointer :: reader
@@ -43,13 +44,23 @@ module m_read_datasets
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
     integer                       :: idx, idx_offset, iint, prev_idx, prev_iint, fmodel_loc, didx
     integer,allocatable           :: cids(:), all_count(:)
-    real                          :: x, y, z, fmodel_z, depth0, depth, intv_top, intv_bot, thick, frac_thick
+    real                          :: x, y, z, fmodel_z, depth0, depth, intv_top, intv_bot, frac_thick
     real    ,allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:), wvariance(:), var_accumulator(:,:)
     real    ,allocatable          :: all_sum(:), all_depth(:)
     type(t_grid),pointer          :: grid
     type(t_data_transformer)      :: data_transformer
+    ! subsidence variables
+    real,allocatable              :: kbed_run(:)
+    logical,allocatable           :: kbed_open(:), interbed_mask(:)
+    logical                       :: is_interbed, inferred_fine
 
     allocate(t2p%datasets(t2p%ndatasets, t2p%fmodel%nlayers))
+    if (t2p%opt%SUBSIDENCE_ON) then
+      allocate(t2p%interbed_count(t2p%fmodel%nlayers),&
+               t2p%interbed_thick(t2p%fmodel%nlayers),&
+               kbed_run(t2p%fmodel%nlayers),&
+               kbed_open(t2p%fmodel%nlayers))
+    end if
 
     ! Setup for HSUs - if a HSU file was given/read, then they are expected in the dataset files
     ! Should we skip if ncat is 1???
@@ -82,6 +93,7 @@ module m_read_datasets
       allocate(wv_accumulator (nsets,t2p%fmodel%nlayers))
       allocate(var_accumulator(nsets,t2p%fmodel%nlayers))
       allocate(hsus(ncats))
+      
       var_accumulator = 0.0
       wvariance = 0.0
       if (.not. allocated(local_elevs)) allocate(local_elevs(0:t2p%fmodel%nlayers))
@@ -90,6 +102,17 @@ module m_read_datasets
       all_depth = 0
       prev_idx = 0
       prev_iint = 0
+      ! interbeds (good to set even if not using)
+      kbed_run = 0.0
+      kbed_open = .false.
+      inferred_fine = .false.
+      
+      if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
+        ! Handle interbed mask
+        allocate(interbed_mask(nsets))
+        call build_interbed_mask(nsets, t2p%fine_classes, cids, interbed_mask)
+        inferred_fine = t2p%is_inferred_class_fine()
+      end if
 
       ! Get data length (not file length, since we've gone past the header)
       call reader%next_item(eof, strings)
@@ -108,6 +131,16 @@ module m_read_datasets
         t2p%datasets(didx,k)%values = NODATA
         t2p%datasets(didx,k)%grid => grid
         t2p%datasets(didx,k)%id = didx
+        if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
+          call t2p%interbed_count(k)%initialize(npoints, 1)
+          call t2p%interbed_thick(k)%initialize(npoints, 2)
+          t2p%interbed_count(k)%values = NODATA
+          t2p%interbed_count(k)%grid => grid
+          t2p%interbed_count(k)%id = didx
+          t2p%interbed_thick(k)%values = NODATA
+          t2p%interbed_thick(k)%grid => grid
+          t2p%interbed_thick(k)%id = didx
+        end if
       end do
 
       ! For texture classes, if opt%INTERP_ORDER=AFTER we need to store ppzones for these points, too!
@@ -157,15 +190,17 @@ module m_read_datasets
               end do
             end do
           end if
+          ! Store/close open interbeds...
+          if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
+            if (j>1) call reset_interbeds(prev_idx, kbed_open, kbed_run, t2p%interbed_thick)
+          end if
           ! And reset for new log
           wv_accumulator = 0.0
           var_accumulator = 0.0
           total_thick = 0.0
           intv_top = z
-          thick = depth
           grid%coords(1,idx) = x
           grid%coords(2,idx) = y
-          prev_idx = 0
           prev_iint = 0
           ! Get location in model, get elevation at model layers in model
           fmodel_loc = t2p%fmodel%find_in_grid([x,y], t2p%opt%MAX_OUTSIDE_DIST)
@@ -200,25 +235,29 @@ module m_read_datasets
           if (t2p%opt%USE_MODEL_GSE) intv_top = fmodel_z
           prev_idx = idx
         else
-          thick = depth - depth0
-          if (t2p%opt%USE_MODEL_GSE) then
-            intv_top = fmodel_z - depth0
-          else
-            intv_top = z - depth0
-          end if
           ! Some data checking
           if (iint <= prev_iint) call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
           if (depth0 >= depth)  call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp))//new_line("")//trim(line)//new_line(""))
         end if  ! End of new log handling
+        
+        if (t2p%opt%USE_MODEL_GSE) then
+          intv_top = fmodel_z - depth0
+          intv_bot = fmodel_z - depth
+        else
+          intv_top = z - depth0
+          intv_bot = z - depth
+        end if  
+        
+        ! Interbed thickness accumulator...
+        if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
+          is_interbed = is_interbed_interval(wvalues, nsets, interbed_mask, inferred_fine)
+          call accumulate_interbeds(local_elevs, intv_top, intv_bot, is_interbed, kbed_open, kbed_run, prev_idx, t2p%interbed_count, t2p%interbed_thick)
+        end if
 
         ! Start of accumulator
         ! Transform values
         if (minval(wvalues)>NODATA) call data_transformer%apply(wvalues)
-        if (t2p%opt%USE_MODEL_GSE) then
-          intv_bot = fmodel_z - depth
-        else
-          intv_bot = z - depth
-        end if
+        
         ! Accumulate wvalues * interval values for averaging... by layer. It's fun.
         do k=1, t2p%fmodel%nlayers
           if ((intv_top >= local_elevs(k)).and.(intv_bot <= local_elevs(k-1))) then
@@ -227,14 +266,15 @@ module m_read_datasets
             do l=1, nsets
               if (wvalues(l)>NODATA) then
                 wv_accumulator(l,k) = wv_accumulator(l,k) + wvalues(l) * frac_thick
-                var_accumulator(l,k) = var_accumulator(l,k) + wvariance(l) * frac_thick**2
+                if (t2p%opt%KVME) var_accumulator(l,k) = var_accumulator(l,k) + wvariance(l) * frac_thick**2
                 total_thick(l,k) = total_thick(l,k) + frac_thick
               end if
             end do
           end if
         end do
+        ! NEXT
         prev_iint = iint
-      end do
+      end do  ! end of loop over file lines
 
       ! Store final log values
       do k=1, t2p%fmodel%nlayers
@@ -247,6 +287,11 @@ module m_read_datasets
           end if
         end do
       end do
+      
+      ! Store/close open interbeds...
+      if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
+        call reset_interbeds(prev_idx, kbed_open, kbed_run, t2p%interbed_thick)
+      end if
 
       ! Store means
       do l=1, nsets
@@ -257,7 +302,10 @@ module m_read_datasets
 
       ! Cleanup loop variables
       deallocate(wvalues, wvariance, all_count, all_sum, all_depth, total_thick, wv_accumulator, var_accumulator, hsus)
+      if (allocated(interbed_mask)) deallocate(interbed_mask)
     end do
+    if (allocated(kbed_run)) deallocate(kbed_run)
+    if (allocated(kbed_open)) deallocate(kbed_open)
   end subroutine read_datasets_2D
 
 !-------------------------------------------------------------------------------------------------!
@@ -270,14 +318,25 @@ module m_read_datasets
     character(30),allocatable     :: hsus(:)
     character(256)                :: iomsg
     character(20)                 :: tmp
-    integer                       :: i, j, k, l, nlines, npoints, nsets, ncats, eof
+    integer                       :: i, j, k, l, nlines, npoints, nsets, ncats, eof, idx_offset
     integer                       :: idx, iint, ipoint, prev_idx, prev_iint, fmodel_loc, didx, resized_intervals
     integer                       :: all_count
     integer,allocatable           :: cids(:)
-    real                          :: x, y, z, depth0, depth, re_depth, thick, fmodel_z
+    real                          :: x, y, z, depth0, depth, re_depth, thick, fmodel_z, intv_top, intv_bot
     real    ,allocatable          :: wvalues(:), local_elevs(:), all_thick(:), all_sum(:), wvariance(:)
-    type(t_grid),pointer          :: grid
+    type(t_grid),pointer          :: grid, interbed_grid
     type(t_data_transformer)      :: data_transformer
+    ! subsidence variables
+    real,allocatable              :: kbed_run(:)
+    logical,allocatable           :: kbed_open(:), interbed_mask(:)
+    logical                       :: is_interbed, inferred_fine
+
+    if (t2p%opt%SUBSIDENCE_ON) then
+      allocate(t2p%interbed_count(t2p%fmodel%nlayers),&
+               t2p%interbed_thick(t2p%fmodel%nlayers),&
+               kbed_run(t2p%fmodel%nlayers),&
+               kbed_open(t2p%fmodel%nlayers))
+    end if
 
     allocate(t2p%datasets(t2p%ndatasets, 1)) ! For 3D, we store it all in one layer
 
@@ -317,12 +376,24 @@ module m_read_datasets
       prev_idx = 0
       prev_iint = 0
       npoints = 0    ! in 3D, npoints =/ nwells. Instead, its the total number of intervals.
+      ! interbeds (good to set even if not using)
+      kbed_run = 0.0
+      kbed_open = .false.
+      inferred_fine = .false.
+      
+      if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
+        ! Handle interbed mask
+        allocate(interbed_mask(nsets))
+        call build_interbed_mask(nsets, t2p%fine_classes, cids, interbed_mask)
+        inferred_fine = t2p%is_inferred_class_fine()
+      end if
 
       ! Pre-read to get npoints, given opt%MAX_LOG_LENGTH. Logs are to be split evenly into length/MAX_LOG_LENGTH
       do
         read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth0, depth
         if (reader%ioerr /= 0) exit   ! done
         nlines = nlines + 1
+        if (nlines==1) idx_offset = idx - 1
         ! How many points will this interval become?
         npoints = npoints + ceiling((depth - depth0) / t2p%opt%MAX_LOG_LENGTH)
         !write(*,*) nlines
@@ -334,7 +405,23 @@ module m_read_datasets
       t2p%datasets(didx,1)%values = NODATA
       t2p%datasets(didx,1)%grid => grid
       t2p%datasets(didx,1)%id = didx
-
+      ! Interbeds are still by layer
+      if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
+        ! Convert npoints back to it's 2D meaning...
+        npoints = idx - idx_offset
+        interbed_grid => create_grid_object(2, npoints)
+        do k=1, t2p%fmodel%nlayers
+          call t2p%interbed_count(k)%initialize(npoints, 1)
+          call t2p%interbed_thick(k)%initialize(npoints, 2)
+          t2p%interbed_count(k)%values = NODATA
+          t2p%interbed_count(k)%grid => interbed_grid
+          t2p%interbed_count(k)%id = didx
+          t2p%interbed_thick(k)%values = NODATA
+          t2p%interbed_thick(k)%grid => interbed_grid
+          t2p%interbed_thick(k)%id = didx
+        end do
+      end if
+      
       ! For texture classes, if opt%INTERP_ORDER=AFTER we need to store ppzones for these points, too!
       if (didx==1.and.t2p%opt%INTERP_ORDER=="AFTER") then
         call t2p%setup_dataset_ppzones()
@@ -359,30 +446,51 @@ module m_read_datasets
         if ((.not. t2p%opt%NO_TEX_BOUNDS).and.didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
         if (iint <= prev_iint) call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
         if (iint==1) then
+          idx = idx - idx_offset
           if (idx <= prev_idx) call error_handler(1,file,"Well IDs must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
+          ! Get location in model only if need to align with grid's top elevation OR if subsidence is on (needed for interbeds)
+          if (t2p%opt%USE_MODEL_GSE.or.t2p%opt%SUBSIDENCE_ON) then
+            fmodel_loc = t2p%fmodel%find_in_grid([x,y], t2p%opt%MAX_OUTSIDE_DIST)
+            if (fmodel_loc==0) then
+              if (t2p%opt%MAX_OUTSIDE_DIST > 0.0) then
+                call error_handler(1,file,"Well distance from model greater than MAX_OUTSIDE_DIST: "//name)
+              else
+                call error_handler(1,file,"Well not found in model domain: "//name)
+              end if
+            end if
+            call t2p%fmodel%get_elev_at_point([x,y], local_elevs(:), fmodel_loc)
+            if (t2p%opt%USE_MODEL_GSE) fmodel_z = local_elevs(0)
+          end if
+          ! Store/close open interbeds, setup grid
+          if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
+            interbed_grid%coords(1, idx) = x
+            interbed_grid%coords(2, idx) = y
+            if (j>1) call reset_interbeds(prev_idx, kbed_open, kbed_run, t2p%interbed_thick)
+          end if
           prev_idx = idx
-        end if
+        end if  ! End new well if
         if (depth0 >= depth) call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp)))
 
         thick = (depth - depth0)
         resized_intervals = ceiling(thick / t2p%opt%MAX_LOG_LENGTH)
 
-        ! Get location in model only if need to align with grid's top elevation
+        ! Elevations
         if (t2p%opt%USE_MODEL_GSE) then
-          fmodel_loc = t2p%fmodel%find_in_grid([x,y], t2p%opt%MAX_OUTSIDE_DIST)
-          if (fmodel_loc==0) then
-            if (t2p%opt%MAX_OUTSIDE_DIST > 0.0) then
-              call error_handler(1,file,"Well distance from model greater than MAX_OUTSIDE_DIST: "//name)
-            else
-              call error_handler(1,file,"Well not found in model domain: "//name)
-            end if
-          end if
-          call t2p%fmodel%get_elev_at_point([x,y], local_elevs(:), fmodel_loc)
-          fmodel_z = local_elevs(0)
+          intv_top = fmodel_z - depth0
+          intv_bot = fmodel_z - depth
+        else
+          intv_top = z - depth0
+          intv_bot = z - depth
+        end if
+            
+        ! Interbed handling
+        if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
+          is_interbed = is_interbed_interval(wvalues, nsets, interbed_mask, inferred_fine)
+          call accumulate_interbeds(local_elevs, intv_top, intv_bot, is_interbed, kbed_open, kbed_run, prev_idx, t2p%interbed_count, t2p%interbed_thick)
         end if
 
         ! Transform values
-        if (minval(wvalues)>=NODATA) call data_transformer%apply(wvalues)
+        if (minval(wvalues)>NODATA) call data_transformer%apply(wvalues)
 
         do k=1, nsets
           if (wvalues(k) > NODATA) then
@@ -409,6 +517,11 @@ module m_read_datasets
 
         if (depth>0) all_count = all_count + 1
       end do
+      
+      ! Store/close open interbeds...
+      if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
+        call reset_interbeds(prev_idx, kbed_open, kbed_run, t2p%interbed_thick)
+      end if
 
       ! Store means
       do j=1, nsets
@@ -419,7 +532,10 @@ module m_read_datasets
 
       ! Cleanup loop variables
       deallocate(wvalues, all_sum, all_thick, hsus, wvariance)
+      if (allocated(interbed_mask)) deallocate(interbed_mask)
     end do
+    if (allocated(kbed_run)) deallocate(kbed_run)
+    if (allocated(kbed_open)) deallocate(kbed_open)
   end subroutine read_datasets_3D
 
 !-------------------------------------------------------------------------------------------------!

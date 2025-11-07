@@ -682,6 +682,7 @@ end subroutine read_ppparm_block
 
   subroutine read_SUBSIDENCE_block(t2p, reader)
     use m_flow_model, only: t_flow_model, create_flow_model_object, check_id_validity
+    use m_subsidence, only: interbed_cutoff
     implicit none
     type(t_t2p),intent(inout)       :: t2p
     type(t_file_reader), pointer    :: reader
@@ -701,6 +702,8 @@ end subroutine read_ppparm_block
       select case(trim(id))
         case("FINE_CLASSES")
           call t2p%setup_subsidence(vstrlist_range(strings,2,vstrlist_length(strings)))
+        case("INTERBED_CUTOFF")
+          interbed_cutoff = item2real(strings,2)
         case DEFAULT
           call error_handler(1,reader%file,"Unknown Subsidence option: " // trim(id))
       end select

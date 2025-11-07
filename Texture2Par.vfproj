@@ -99,7 +99,8 @@
 				<File RelativePath=".\src\variogram.f90"/>
 			</Filter>
 			<Filter Name="Objects">
-				<File RelativePath=".\src\Categories.f90">
+				<File RelativePath=".\src\Categories.f90"/>
+				<File RelativePath=".\src\cellblocks.f90">
 				</File>
 				<File RelativePath=".\src\DataSets.f90"/>
 				<File RelativePath=".\src\FlowModel.f90"/>
@@ -113,10 +114,11 @@
 				<File RelativePath=".\src\ErrorHandler.f90"/>
 				<File RelativePath=".\src\kdtree2.f90"/>
 				<File RelativePath=".\src\Str_Module.f90"/>
+				<File RelativePath=".\src\subsidence_funcs.f90">
+				</File>
 				<File RelativePath=".\src\time.f90"/>
 				<File RelativePath=".\src\Tools.f90"/>
 			</Filter>
-			<File RelativePath=".\cellblocks.f90"/>
 			<File RelativePath=".\src\global.f90"/>
 			<File RelativePath=".\src\sgemv.f"/>
 			<File RelativePath=".\src\Texture2Par.f90"/>
