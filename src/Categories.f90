@@ -216,6 +216,7 @@ module m_categories
     !type(t_vstring)                  :: temp
     integer                          :: lay2arr(nlayers)
     integer                          :: eof, ierr, narr, cidx, i, j, inode, itemp
+    character(50)                    :: shortline
     character(30),allocatable        :: chartemp(:)
     character(256)                   :: iomsg
     logical                          :: has_aquitard
@@ -277,10 +278,11 @@ module m_categories
       call reader%read_to_next_line(eof)  ! Skip header
       if (datatype==0) then ! INT
         ! Check for constant
-        read(reader%unit,*) chartemp(1), itemp
-        if (trim(chartemp(1))=="CONSTANT") then
-          this%array(:,i) = itemp
+        read(reader%unit,'(a50)') shortline
+        if (index(adjustl(shortline),"CONSTANT") == 1) then
+          read(shortline,*) chartemp(1), itemp
           call this%add_category(itemp, i, cidx)
+          this%array(:,i) = itemp
         else
           ! array
           backspace(reader%unit)
@@ -291,9 +293,10 @@ module m_categories
           end do
         end if
       else if (datatype==1) then  ! STR/CHAR
-        ! Check for constant
-        read(reader%unit,*) chartemp(1), chartemp(2)
-        if (trim(chartemp(1))=="CONSTANT") then
+        ! Check for constant  
+        read(reader%unit,'(a50)') shortline
+        if (index(adjustl(shortline),"CONSTANT") == 1) then
+          read(shortline,*) chartemp(1), chartemp(2)
           call this%add_category(chartemp(2), i, cidx)
           this%array(:,i) = cidx
         else
