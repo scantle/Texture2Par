@@ -129,7 +129,7 @@ module m_interpolator
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine calc_weights(this, obs_data, obs_idx, to_grid, active, weights, catlist, to_cats, opt)
+  subroutine calc_weights(this, obs_data, obs_idx, to_grid, active, weights, catlist, to_cats, opt, data_str)
     implicit none
     class(t_interpolator),intent(inout)   :: this
     class(t_dataset)                      :: obs_data(:)
@@ -140,6 +140,7 @@ module m_interpolator
     real                                  :: variance
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
+    character(*),intent(in)               :: data_str
     integer                               :: i, j, cat, count_cat
     logical                               :: has_data
 
@@ -157,8 +158,8 @@ module m_interpolator
         call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
         if (.not.has_data) then
           ! TODO - setup runtime warnings through Error Handler
-          write(*,'(a,i0)') 'Warning - no data for pp in this array for category ', cat
-          write(log%unit,'(a,i0)') 'Warning - no data for pp in this array for category ', cat
+          write(*,'(a,i0)') 'Warning - no data for '//trim(data_str)//' in this array for category ', cat
+          write(log%unit,'(a,i0)') 'Warning - no data for '//trim(data_str)//' in this array for category ', cat
           cycle
         end if
         do j=1, to_grid%n

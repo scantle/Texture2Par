@@ -36,8 +36,10 @@ module m_options
     logical                  :: WRITE_VARIANCE        ! Write kriging variance
     logical                  :: WRITE_PP_WEIGHTS      ! Write pilot point weights for reuse
     logical                  :: WRITE_GRID_WEIGHTS    ! Write grid (texture) weights for reuse
+    logical                  :: WRITE_IB_WEIGHTS      ! Write interbed weights for reuse (subsidence ON)
     logical                  :: READ_PP_WEIGHTS       ! Reuse pilot point weights
     logical                  :: READ_GRID_WEIGHTS     ! Reuse grid (texture) weights
+    logical                  :: READ_IB_WEIGHTS       ! Reuse interbed weights (subsidence ON)
     logical                  :: WRITE_NONE            ! Skips model output files (as implemented...)
     logical                  :: WRITE_NODE_FILES      ! Writes parameters by node/cell
     logical                  :: WRITE_DATASET_FILES   ! Writes out datasets averaged by layer
@@ -58,6 +60,7 @@ module m_options
     logical                  :: ASYMMETRIC_COV        ! Whether relationships between covariates can be asymmetric
     logical                  :: PP_WEIGHTS_TEXT       ! Write pp weight file as text file
     logical                  :: GRID_WEIGHTS_TEXT     ! Write grid weight file as text file
+    logical                  :: IB_WEIGHTS_TEXT       ! Write interbed weight file as text file
     logical                  :: SUBSIDENCE_ON         ! Tracks if in subsidence mode (inelastic, elastic storage split)
     integer                  :: BLOCK_KRIGE           ! Block kriging active (>1) type (1- gaus. quad. 2- custom points,weights) (set by fmodel read)
 
@@ -104,7 +107,9 @@ module m_options
     this%WRITE_VARIANCE       = .false.
     this%WRITE_PP_WEIGHTS     = .false.
     this%WRITE_GRID_WEIGHTS   = .false.
+    this%WRITE_IB_WEIGHTS     = .false.
     this%READ_PP_WEIGHTS      = .false.
+    this%READ_GRID_WEIGHTS    = .false.
     this%READ_GRID_WEIGHTS    = .false.
     this%WRITE_NONE           = .false.
     this%WRITE_NODE_FILES     = .false.
@@ -124,6 +129,7 @@ module m_options
     this%ASYMMETRIC_COV       = .false.
     this%PP_WEIGHTS_TEXT      = .false.
     this%GRID_WEIGHTS_TEXT    = .false.
+    this%IB_WEIGHTS_TEXT      = .false.
     this%SUBSIDENCE_ON        = .false.
     this%BLOCK_KRIGE          = 0
   end subroutine initialize
@@ -210,6 +216,12 @@ subroutine read_options(this, reader)
           call item2char(strings, 2, temp,toupper=.true.)
           if (trim(temp)=="TEXT") this%GRID_WEIGHTS_TEXT = .true.
         end if
+      case("WRITE_IB_WEIGHTS")
+        this%WRITE_IB_WEIGHTS     = .true.
+        if (length>1) then
+          call item2char(strings, 2, temp,toupper=.true.)
+          if (trim(temp)=="TEXT") this%IB_WEIGHTS_TEXT = .true.
+        end if
       case("READ_PP_WEIGHTS")
         this%READ_PP_WEIGHTS      = .true.
         if (length>1) then
@@ -221,6 +233,12 @@ subroutine read_options(this, reader)
         if (length>1) then
           call item2char(strings, 2, temp,toupper=.true.)
           if (trim(temp)=="TEXT") this%GRID_WEIGHTS_TEXT = .true.
+        end if
+      case("READ_IB_WEIGHTS")
+        this%READ_IB_WEIGHTS      = .true.
+        if (length>1) then
+          call item2char(strings, 2, temp,toupper=.true.)
+          if (trim(temp)=="TEXT") this%IB_WEIGHTS_TEXT = .true.
         end if
       case("WRITE_NONE")
         this%WRITE_NONE           = .true.
@@ -316,8 +334,10 @@ subroutine write_input_summary(this)
     if (this%WRITE_VARIANCE     ) logic_true = trim(logic_true) // "WRITE_VARIANCE"      // ","
     if (this%WRITE_PP_WEIGHTS   ) logic_true = trim(logic_true) // "WRITE_PP_WEIGHTS"    // ","
     if (this%WRITE_GRID_WEIGHTS ) logic_true = trim(logic_true) // "WRITE_GRID_WEIGHTS"  // ","
+    if (this%WRITE_IB_WEIGHTS   ) logic_true = trim(logic_true) // "WRITE_IB_WEIGHTS"    // ","
     if (this%READ_PP_WEIGHTS    ) logic_true = trim(logic_true) // "READ_PP_WEIGHTS"     // ","
     if (this%READ_GRID_WEIGHTS  ) logic_true = trim(logic_true) // "READ_GRID_WEIGHTS"   // ","
+    if (this%READ_IB_WEIGHTS    ) logic_true = trim(logic_true) // "READ_IB_WEIGHTS"     // ","
     if (this%WRITE_NONE         ) logic_true = trim(logic_true) // "WRITE_NONE"          // ","
     if (this%WRITE_NODE_FILES   ) logic_true = trim(logic_true) // "WRITE_NODE_FILES"    // ","
     if (this%WRITE_DATASET_FILES) logic_true = trim(logic_true) // "WRITE_DATASET_FILES" // ","

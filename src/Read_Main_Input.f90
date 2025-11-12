@@ -682,7 +682,8 @@ end subroutine read_ppparm_block
 
   subroutine read_SUBSIDENCE_block(t2p, reader)
     use m_flow_model, only: t_flow_model, create_flow_model_object, check_id_validity
-    use m_subsidence, only: interbed_cutoff
+    use m_subsidence, only: interbed_cutoff, setup_ib_variogram, has_ib_classes
+    use m_vario, only: t_vgm, get_vgm_from_line
     implicit none
     type(t_t2p),intent(inout)       :: t2p
     type(t_file_reader), pointer    :: reader
@@ -693,17 +694,57 @@ end subroutine read_ppparm_block
     type(t_vstringlist)        :: strings
     
     ! Locals
-    integer                    :: nfine
+    integer                    :: nfine, struct_id, dim, maxread
+    type(t_vgm),pointer        :: vgms(:,:), tmp(:,:)
+    integer,pointer            :: nnear(:), nstruct(:)
+    character(100)             :: msg
+    
+    allocate(vgms(t2p%opt%max_vstruct,1), nnear(1), nstruct(1))  ! single variogram (mult struct ok) for interbeds
+    dim=2  ! Hardcoded, for now
 
     ! Loop until end of block or end of file
     do
+      if (status /= 0) exit  ! Exit if inner loop variogram read loop found the end
       call reader%next_block_item(status, id, strings, length)
       if (status /= 0) exit  ! exit if end of block or end of file
       select case(trim(id))
         case("FINE_CLASSES")
           call t2p%setup_subsidence(vstrlist_range(strings,2,vstrlist_length(strings)))
+          has_ib_classes = .true.
         case("INTERBED_CUTOFF")
           interbed_cutoff = item2real(strings,2)
+        case('VARIOGRAM','VARIO')
+          ! Loop and read in structures
+          do
+            call reader%next_block_item(status, id, strings, length)
+            if (status /= 0) exit       ! exit if end of block or end of file
+            if (trim(id)=="FINE_CLASSES".or.trim(id)=="INTERBED_CUTOFF".or.trim(id)=="END") then ! no more struct
+              call reader%back(1)
+              exit
+            end if
+            ! Read structure
+            struct_id = item2int(strings, 1)
+            nstruct(1) = struct_id
+
+            ! Only 2D for interbeds
+            write(msg, '(2(a,i3))') 'interbed variogram structure', struct_id
+            if (dim==2 .and. length < 7) then
+              call error_handler(2,reader%file,"Too few variogram parameters for 2D (7+ expected). See "//msg)
+            !else if (dim==3 .and. length < 10) then
+            !  call error_handler(2,reader%file,"Too few variogram parameters for 3D (10+ expected). See "//msg)
+            end if
+            ! Get full variogram item from the rest of the line
+            call get_vgm_from_line(vgms(struct_id,1), strings, struct_id, dim, maxread)
+            ! NNear on first struct read, if not cross, advance vcount
+            if (struct_id == 1) then
+              nnear(1) = item2int(strings, maxread+1)
+            end if
+          end do
+          ! End of variogram structure reading
+          
+          ! Pass to IB interp object
+          call setup_ib_variogram(vgms, nnear, nstruct, t2p%opt)
+          
         case DEFAULT
           call error_handler(1,reader%file,"Unknown Subsidence option: " // trim(id))
       end select

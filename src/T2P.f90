@@ -13,6 +13,7 @@ module m_T2P
   use m_categories, only: t_category
   use m_vario, only: t_vgm
   use m_grid, only: t_grid, create_grid_object
+  use m_subsidence, only: interp_ib, check_subsidence_inputs
 !-------------------------------------------------------------------------------------------------!
 
 #ifdef __INTEL_COMPILER
@@ -29,8 +30,9 @@ module m_T2P
     type(t_layerdata),pointer        :: datasets(:,:)           ! Datasets (dataset, layer) (1+nsecondary, layer)
     type(t_layerdata),pointer        :: dset_intermediate(:,:)  ! texture or parameters data interpolated to model grid (nsets, nlayers)
     type(t_layerdata),pointer        :: par(:)                  ! Final model hydraulic parameters (nlayers)&values(npar, npoints)
-    type(t_layerdata),allocatable    :: interbed_count(:)       ! interbed counts by (layer) with %values(:) of counts by location
-    type(t_layerdata),allocatable    :: interbed_thick(:)       ! interbed thickness by (layer) with %values(2,:) (thicknesses, squared thicknesses)
+    type(t_layerdata),pointer        :: interbed_count(:)       ! interbed counts by (layer) with %values(1,:) of counts by location
+    type(t_layerdata),pointer        :: interbed_thick(:)       ! interbed thickness by (layer) with %values(2,:) (thicknesses, squared thicknesses)
+    type(t_layerdata),pointer        :: interbed_final(:)       ! Where the kriged interbed ararys are stored %values(3,:) (count, thick, thick^2)
     type(t_pilotpoints),pointer      :: pilot_points
     type(t_pilotpoints),pointer      :: pilot_points_aquitard
 
@@ -49,6 +51,7 @@ module m_T2P
     ! Trackers
     type(t_vstringlist),pointer      :: class_names           ! Data class names
     type(t_vstringlist)              :: parnames              ! Names of output parameters calculated
+    type(t_vstringlist)              :: ibparnames            ! Names of subsidence interbed parameters calculated
     integer,pointer                  :: nsecondary_by_id(:)=>null() ! Connections (covariates) per [class, hyd property]
     integer,pointer                  :: connections(:,:)   =>null() ! (connections, [classes or hyd properties])
     integer,allocatable              :: class_dataset(:)      ! Translation from class id to dataset_id, ie datasets(dataset_id, layer)
@@ -96,6 +99,7 @@ module m_T2P
     procedure,public   :: predict
     procedure,private  :: interpolate_pp
     procedure,private  :: interpolate_model
+    procedure,private  :: interpolate_ib
     procedure,private  :: interpolate_prepare
     procedure,private  :: calc_block_parameters
 
@@ -161,6 +165,11 @@ module m_T2P
     call vstrlist_append (this%parnames, "SS" )
     call vstrlist_append (this%parnames, "SY" )
     this%npar = vstrlist_length(this%parnames)
+    
+    ! Initialize interbed parameter list
+    call vstrlist_new(this%ibparnames)
+    call vstrlist_append (this%ibparnames, 'IB_COUNT')
+    call vstrlist_append (this%ibparnames, 'IB_THICK')
 
     ! Intialize counters (useful to determine when a block is missing or has not been read yet)
     this%nclasses = 0
@@ -190,7 +199,7 @@ module m_T2P
     select case (this%opt%INTERP_METHOD)
       case("OK")
         if (this%opt%NSIM == 0) then
-        allocate(t_treekrige::this%interp_data)
+          allocate(t_treekrige::this%interp_data)
         else
           allocate(t_sgsim::this%interp_data)
         end if
@@ -228,6 +237,10 @@ module m_T2P
 
     if (this%opt%WRITE_PP_WEIGHTS.and.this%opt%READ_PP_WEIGHTS) then
       call error_handler(1,opt_msg='Cannot both WRITE_PP_WEIGHTS and READ_PP_WEIGHTS - only one')
+    end if
+    
+    if (this%opt%WRITE_IB_WEIGHTS.and.this%opt%READ_IB_WEIGHTS) then
+      call error_handler(1,opt_msg='Cannot both WRITE_IB_WEIGHTS and READ_IB_WEIGHTS - only one')
     end if
 
     if (this%opt%nsim > 1) then
@@ -647,6 +660,8 @@ module m_T2P
         call error_handler(1,opt_msg="Mismatch in aquitard existance between Pilot Points and Model")
       end if
     end if
+    
+    if (this%opt%SUBSIDENCE_ON) call check_subsidence_inputs(this%opt)
 
   end subroutine check_major_inputs
 
@@ -660,7 +675,7 @@ module m_T2P
     use m_grid, only: t_grid
     implicit none
     class(t_T2P), intent(inout)   :: this
-    class(t_grid),pointer         :: pp_to                                      ! Where we interpolate the pilot points to
+    class(t_grid),pointer         :: pp_to,ib_to                                ! Where we interpolate to (for PP and IB)
     type(t_category),pointer      :: cat_to                                     ! Categories the pilot points are interpolated using
     logical,allocatable           :: active_to(:)                               ! Whether the given to point is active (skipped if inactive)
     type(t_pilotpoints)           :: pp_intermediate(this%fmodel%ppzones%narr)  ! The pilot point data interpolated to pp_to (by ppzone array)
@@ -701,6 +716,15 @@ module m_T2P
 
     ! Interpolate PP to PPTO_grid
     call this%interpolate_pp(pp_to, cat_to, active_to, pp_intermediate)
+    
+    ! If subsidence is on, interpolate interbed counts/thicknesses
+    ! These always go to the model grid: they are grid-scale properties
+    if (this%opt%SUBSIDENCE_ON) then
+      allocate(this%interbed_final(this%fmodel%nlayers))
+      ib_to => this%fmodel%grid(1)%ptrgrid
+      call this%write_status("Interpolating Interbed Parameters to "//trim(this%fmodel%name)//" Grid")
+      call this%interpolate_ib(ib_to, this%fmodel%hsus, this%fmodel%active_nodes_flat, this%interbed_final)
+    end if
 
     if (this%opt%INTERP_ORDER=="BEFORE") then
       ! Krige textures to fmodel grid
@@ -712,7 +736,7 @@ module m_T2P
 
     else if (this%opt%INTERP_ORDER=="AFTER") then
       ! Calc parameters at data locations
-    call this%write_status("Calculating Hydraulic Parameters", nblank)
+      call this%write_status("Calculating Hydraulic Parameters", nblank)
       call this%calc_block_parameters(pp_intermediate, this%datasets, this%dset_intermediate)
       ! Krige parameters to fmodel grid
       call this%write_status("Interpolating Hydraulic Parameters to "//trim(this%fmodel%name)//" Grid")
@@ -778,7 +802,8 @@ module m_T2P
                                          weights%values, &
                                          to_categories%catlist(1:to_categories%arrncat(k),k), &
                                          to_categories%array(:,k),&
-                                         this%opt)
+                                         this%opt,&
+                                         'pp')
       end if
 
       ! Write PP weights
@@ -787,24 +812,6 @@ module m_T2P
         call weights%save_to_file(trim(this%opt%PROJECT_NAME)//'_ppweights_arr'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
       end if
 
-      ! Apply weights and create results
-      !if (.not. this%fmodel%pparr_aqtard(k)) then
-      !  do i=1, this%ntexclasses
-      !    do j=1, nproperties
-      !      !results(k)%values(:,j,i) = matmul(weights%values,obs_data(1)%values(:,j,i))
-      !      ! Avoid copying
-      !      call dgemv('N', to_grid%n, obs_data(1)%grid%n, 1.0, weights%values, to_grid%n, obs_data(1)%values(:,j,i), 1, 0.0, results(k)%values(:,j,i), 1)
-      !    end do
-      !  end do
-      !else ! Aquitard - subset of parameters
-      !  do i=1, this%ntexclasses
-      !    do j=1, naquitard_props
-      !      !results(k)%values(:,aquitard_props(j),i) = matmul(weights%values,this%pilot_points_aquitard%values(:,aquitard_props(j),i))
-      !      ! Avoid copying
-      !      call dgemv('N', to_grid%n, this%pilot_points_aquitard%grid%n, 1.0, weights%values, to_grid%n, this%pilot_points_aquitard%values(:,aquitard_props(j),i), 1, 0.0, results(k)%values(:,aquitard_props(j),i), 1)
-      !    end do
-      !  end do
-      !end if
       do i=1, this%ntexclasses
         do j=1, obs_data(1)%nactive
           call sgemv('N', to_grid%n, obs_data(1)%grid%n, 1.0, weights%values, to_grid%n, obs_data(1)%values(:,obs_data(1)%active(j),i), 1, 0.0, results(k)%values(:,obs_data(1)%active(j),i), 1)
@@ -920,7 +927,80 @@ module m_T2P
 
   end subroutine
 
-!-------------------------------------------------------------------------------------------------!
+!-------------------------------------------------------------------------------------------------!  
+
+  subroutine interpolate_ib(this, to_grid, to_categories, to_active, results)
+    use m_grid, only: t_grid
+    use m_weights, only: t_weights
+    use m_pilotpoints, only: nproperties, naquitard_props, aquitard_props
+    ! Pilot Point type in, Pilot Point type out
+    implicit none
+    class(t_T2P), intent(inout)     :: this
+    type(t_layerdata)               :: results(this%fmodel%nlayers)
+    class(t_grid),pointer           :: to_grid
+    type(t_category)                :: to_categories
+    logical                         :: to_active(:)
+    type(t_weights)                 :: weights
+    integer                         :: i,j,k,x
+    integer                         :: class_idx(1)
+    character(5)                    :: temp
+    real,pointer                    :: obs_vec(:)
+    integer                         :: nrows, m, glo_dim
+
+    class_idx(1) = 1
+
+    ! Store INTERP_DIM, temporarily set to 2D (Interbeds are hardwired to 2D, at least for now)
+    glo_dim = this%opt%INTERP_DIM
+    this%opt%INTERP_DIM = 2
+
+    ! Go by pilot point zone arrays (up to nlayers)
+    do k=1, this%fmodel%nlayers
+      call this%write_minor_status('- Layer:',k)
+
+      ! Initialize weights & results for this array
+      call weights%initialize(this%interbed_count(1)%grid%n, to_grid%n)  !input_n, output_n
+      call results(k)%initialize(this%fmodel%grid(1)%ptrgrid%n, 3, default_value=NODATA)
+      
+      ! Check if layer is active (generally IWFM: means it has thickness)
+      if (.not. this%fmodel%is_active_layer(k)) cycle
+
+      ! Check if we have precalculated weights for the interbed interpolation
+      if (this%opt%READ_IB_WEIGHTS) then
+        write(temp,'(i2.2)') k
+        call weights%load_from_file(trim(this%opt%PROJECT_NAME)//'_ibweights_lay'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
+      else
+        x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
+        call this%interp_pp%calc_weights(this%interbed_count(k:k), &
+                                         class_idx,  &
+                                         to_grid,  &
+                                         to_active, &
+                                         weights%values, &
+                                         to_categories%catlist(1:this%fmodel%hsus%arrncat(x),x), &
+                                         to_categories%array(1:,x),&
+                                         this%opt,&
+                                         'ib')
+      end if
+
+      ! Write PP weights
+      if (this%opt%WRITE_IB_WEIGHTS) then
+        write(temp,'(i2.2)') k
+        call weights%save_to_file(trim(this%opt%PROJECT_NAME)//'_ibweights_lay'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
+      end if
+
+      ! Apply weights for counts, thicknesses, and square thicknesses
+      call sgemv('N', to_grid%n, this%interbed_count(k)%grid%n, 1.0, weights%values, to_grid%n, this%interbed_count(k)%values(1,:), 1, 0.0, results(k)%values(1,:), 1)
+      call sgemv('N', to_grid%n, this%interbed_thick(k)%grid%n, 1.0, weights%values, to_grid%n, this%interbed_thick(k)%values(1,:), 1, 0.0, results(k)%values(2,:), 1)
+      call sgemv('N', to_grid%n, this%interbed_thick(k)%grid%n, 1.0, weights%values, to_grid%n, this%interbed_thick(k)%values(2,:), 1, 0.0, results(k)%values(3,:), 1)
+
+      ! reset weights
+      weights%values = 0.0
+    end do
+
+    this%opt%INTERP_DIM = glo_dim
+
+  end subroutine interpolate_ib
+
+  !-------------------------------------------------------------------------------------------------!
 
   subroutine calc_block_parameters(this, pp_obj, tex_obs, par_out)
     use m_pilotpoints, only: propnames
@@ -1060,6 +1140,10 @@ module m_T2P
       p=>this%dset_intermediate(1,:)
       call this%fmodel%write_node_files(p, vstrlist_range(this%class_names, 1, this%ntexclasses), this%opt%write_variance)
     end if
+    if (this%opt%WRITE_NODE_FILES.and.this%opt%SUBSIDENCE_ON) then
+      !p=>this%interbed_final
+      call this%fmodel%write_node_files(this%interbed_final, this%ibparnames, this%opt%write_variance)
+    end if
 
     ! Write the observed datasets that were averaged by layer
     if (this%opt%WRITE_DATASET_FILES) then
@@ -1083,7 +1167,7 @@ module m_T2P
     use m_file_io, only: item2char
     implicit none
     class(t_T2P), intent(inout)   :: this
-    integer                       :: i
+    integer                       :: i, idx
     character(100)                :: fname, suffix(2), temp
     type(t_layerdata),pointer     :: p(:)
 
@@ -1113,6 +1197,25 @@ module m_T2P
       p=>this%datasets(1+i,:)
       call this%write_dataset_file(fname, p,1)
     end do
+    
+    if (this%opt%SUBSIDENCE_ON) then
+      do i=1,2
+        call item2char(this%ibparnames, i, temp)
+        write(fname,'(3a)') trim(this%opt%PROJECT_NAME)//'_', trim(temp), trim(suffix(1))
+        if (i==1) then
+          p=>this%interbed_count(:)
+          idx = 1
+        else
+          p=>this%interbed_thick(:)
+          idx = i-1
+        end if
+        call this%write_dataset_file(fname, p, idx)
+        if (this%fmodel%has_aquitards) then
+          write(fname,'(3a)') trim(this%opt%PROJECT_NAME)//'_', trim(temp), trim(suffix(2))
+          call this%write_dataset_file_aqtard(fname, p, idx)
+        end if
+      end do
+    end if
 
   end subroutine write_dataset_files
 

@@ -1,14 +1,26 @@
 module m_subsidence
   ! Extra routines for subsidence - generally to hide away interbed calculations
-  use m_global, only: NODATA
+  use m_global, only: log, NODATA
   use m_datasets, only: t_layerdata
+  use m_interpolator, only: t_interpolator, t_idw
+  use m_kriging, only: t_krige, t_treekrige
+  use m_vario, only: t_vgm
+  use m_options, only: t_options
+  use m_error_handler, only: error_handler
+  use m_grid, only: t_grid
   
   implicit none
   
-  real         :: interbed_cutoff=1.0
+  real                             :: interbed_cutoff = 1.0
+  class(t_interpolator),pointer    :: interp_ib => null()
+  
+  logical                          :: has_ib_variogram = .false.
+  logical                          :: has_ib_classes   = .false.
   
   contains
+  
 !-------------------------------------------------------------------------------------------------!
+  
   subroutine build_interbed_mask(nsets, interbed_class_ids, file_class_ids, interbed_mask)
     implicit none
     integer,intent(in)    :: nsets, interbed_class_ids(:), file_class_ids(nsets)
@@ -24,6 +36,52 @@ module m_subsidence
     end do
   
   end subroutine
+  
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine setup_ib_variogram(variograms, nnear, nstruct, opt)
+    implicit none
+    integer, pointer              :: nnear(:), nstruct(:)
+    type(t_vgm),pointer           :: variograms(:,:)
+    class(*),pointer              :: p
+    type(t_options),intent(in)    :: opt
+    
+    ! Handle Interpolation Method
+    select case (opt%INTERP_METHOD)
+      case("OK","SK")
+        allocate(t_treekrige::interp_ib)  ! Still should use OK - mean addition/subtraction not implemented!
+      case("IDW")
+        allocate(t_idw::interp_ib)
+      case DEFAULT
+        call error_handler(1,opt_msg="Invalid Interpolation Method: " // opt%INTERP_METHOD)
+    end select
+    call interp_ib%initialize()
+
+    select type(p => interp_ib)
+      class is(t_krige)
+        p%nvario     = 1
+        p%nstruct    => nstruct
+        p%variograms => variograms
+        p%nnear      => nnear
+    end select
+
+    has_ib_variogram = .true.
+  end subroutine setup_ib_variogram
+  
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine check_subsidence_inputs(opt)
+    ! Run in main Texture2Par file, currently before datasets are read but after fmodel/categories
+    implicit none
+    type(t_options),intent(in)    :: opt
+
+    if(.not. has_ib_classes) call error_handler(1,opt_msg="Missing FINE_CLASSES in SUBSIDENCE block")
+
+    if ((opt%INTERP_METHOD=="OK".or.opt%INTERP_METHOD=="SK").and. .not.has_ib_variogram) then
+      call error_handler(1,opt_msg="Missing Required VARIOGRAM argument in SUBSIDENCE block")
+    end if
+
+  end subroutine check_subsidence_inputs
   
 !-------------------------------------------------------------------------------------------------!
   

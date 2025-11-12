@@ -41,7 +41,7 @@ module m_read_datasets
     character(256)                :: iomsg
     character(2048)               :: line
     character(20)                 :: tmp,tmp2
-    integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof
+    integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof, hsu_id
     integer                       :: idx, idx_offset, iint, prev_idx, prev_iint, fmodel_loc, didx
     integer,allocatable           :: cids(:), all_count(:)
     real                          :: x, y, z, fmodel_z, depth0, depth, intv_top, intv_bot, frac_thick
@@ -214,6 +214,10 @@ module m_read_datasets
           ! Store location
           do k=1, t2p%fmodel%nlayers
             t2p%datasets(didx,k)%fmodel_loc(idx) = fmodel_loc
+            if (t2p%opt%SUBSIDENCE_ON) then
+              t2p%interbed_count(k)%fmodel_loc(idx) = fmodel_loc
+              t2p%interbed_thick(k)%fmodel_loc(idx) = fmodel_loc
+            end if
           end do
           ! If using, get ppzone in model
           if (t2p%opt%INTERP_ORDER=="AFTER") then
@@ -224,7 +228,12 @@ module m_read_datasets
           ! Store HSUs for each layer
           do k=1, ncats
             do l=1, nsets
-              t2p%datasets(didx,k)%category(idx) = t2p%fmodel%hsus%get_id(hsus(k))
+              hsu_id = t2p%fmodel%hsus%get_id(hsus(k))
+              t2p%datasets(didx,k)%category(idx) = hsu_id
+              if (t2p%opt%SUBSIDENCE_ON) then
+                t2p%interbed_count(k)%category(idx) = hsu_id
+                t2p%interbed_thick(k)%category(idx) = hsu_id
+              end if
               if (t2p%datasets(didx,k)%category(idx)==0) then
                 call error_handler(1,file,"Invalid HSU: "//trim(hsus(k))//" (No matching category in HSU file)")
               end if
@@ -459,6 +468,10 @@ module m_read_datasets
               end if
             end if
             call t2p%fmodel%get_elev_at_point([x,y], local_elevs(:), fmodel_loc)
+            if (t2p%opt%SUBSIDENCE_ON) then
+              t2p%interbed_count(k)%fmodel_loc(idx) = fmodel_loc
+              t2p%interbed_thick(k)%fmodel_loc(idx) = fmodel_loc
+            end if
             if (t2p%opt%USE_MODEL_GSE) fmodel_z = local_elevs(0)
           end if
           ! Store/close open interbeds, setup grid

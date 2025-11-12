@@ -52,7 +52,7 @@ module m_log
     seconds = int(mod(elapsed_time, 60))
 
     if (hours > 0) then
-      write(line,'(a,i3,a,(i2,a))') "Elapsed time: ", hours, " hours, ", minutes, " minutes, ", seconds, " seconds."
+      write(line,'(a,i3,a,2(i2,a))') "Elapsed time: ", hours, " hours, ", minutes, " minutes, ", seconds, " seconds."
     else if (minutes > 0) then
       write(line,'(a,2(i2,a))') "Elapsed time: ", minutes, " minutes, ", seconds, " seconds."
     else
