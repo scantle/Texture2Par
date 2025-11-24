@@ -288,7 +288,7 @@ module m_categories
           backspace(reader%unit)
           read(reader%unit,*) this%array(:,i)
           do j=1, nnodes
-            call this%add_category(this%array(j,i), i, cidx)
+            if (this%array(j,i)/=0) call this%add_category(this%array(j,i), i, cidx)
             !this%array(j,i) = cidx  ! Excessively confusing, e.g. cat 4 is 3...
           end do
         end if
