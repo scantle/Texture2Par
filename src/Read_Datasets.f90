@@ -227,17 +227,15 @@ module m_read_datasets
           end if
           ! Store HSUs for each layer
           do k=1, ncats
-            do l=1, nsets
-              hsu_id = t2p%fmodel%hsus%get_id(hsus(k))
-              t2p%datasets(didx,k)%category(idx) = hsu_id
-              if (t2p%opt%SUBSIDENCE_ON) then
-                t2p%interbed_count(k)%category(idx) = hsu_id
-                t2p%interbed_thick(k)%category(idx) = hsu_id
-              end if
-              if (t2p%datasets(didx,k)%category(idx)==0) then
-                call error_handler(1,file,"Invalid HSU: "//trim(hsus(k))//" (No matching category in HSU file)")
-              end if
-            end do
+            hsu_id = t2p%fmodel%hsus%get_id(hsus(k))
+            t2p%datasets(didx,k)%category(idx) = hsu_id
+            if (t2p%opt%SUBSIDENCE_ON) then
+              t2p%interbed_count(k)%category(idx) = hsu_id
+              t2p%interbed_thick(k)%category(idx) = hsu_id
+            end if
+            if (t2p%datasets(didx,k)%category(idx)==0) then
+              call error_handler(1,file,"Invalid HSU: "//trim(hsus(k))//" (No matching category in HSU file)")
+            end if
           end do
           call t2p%fmodel%get_elev_at_point(grid%coords(:,idx), local_elevs(:), fmodel_loc)
           fmodel_z = local_elevs(0)
@@ -469,8 +467,10 @@ module m_read_datasets
             end if
             call t2p%fmodel%get_elev_at_point([x,y], local_elevs(:), fmodel_loc)
             if (t2p%opt%SUBSIDENCE_ON) then
-              t2p%interbed_count(k)%fmodel_loc(idx) = fmodel_loc
-              t2p%interbed_thick(k)%fmodel_loc(idx) = fmodel_loc
+              do k=1, t2p%fmodel%nlayers
+                t2p%interbed_count(k)%fmodel_loc(idx) = fmodel_loc
+                t2p%interbed_thick(k)%fmodel_loc(idx) = fmodel_loc
+              end do
             end if
             if (t2p%opt%USE_MODEL_GSE) fmodel_z = local_elevs(0)
           end if
