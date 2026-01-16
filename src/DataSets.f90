@@ -1,6 +1,7 @@
 module m_datasets
   use m_global, only: NODATA
   use m_grid, only: t_grid, create_grid_object
+  use m_categories, only: CAT_ALL
   implicit none
 !-------------------------------------------------------------------------------------------------!
   type  :: t_dataset  ! Abstract Base Class
@@ -224,7 +225,6 @@ module m_datasets
     has_data = .true.
     
     call this%grid%burn_tree()  ! Clear out previous tree
-    !allocate(catmask(this%grid%n), na_mask(this%grid%n))
     allocate(combined_mask(this%grid%n))
     
     ! Compute combined mask in a single loop - in category & not NA
@@ -232,18 +232,23 @@ module m_datasets
     select type(this)
       class is (t_layerdata)
         do i = 1, this%grid%n
-          combined_mask(i) = (this%category(i) == cat) .and. (this%values(class_idx, i) /= NODATA)
+          combined_mask(i) = ((this%category(i) == cat) .or. (this%category(i) == CAT_ALL)) .and. (this%values(class_idx, i) /= NODATA)
         end do
       class default
-        combined_mask = (this%category == cat)
+        do i = 1, this%grid%n
+          combined_mask(i) = (this%category(i) == cat) .or. (this%category(i) == CAT_ALL)
+        end do
     end select
     
     if (count(combined_mask) > 0) then  ! Should min_points be a setting??
-      call this%grid%build_tree(combined_mask, rotmat=rotmat)
+      if (present(rotmat)) then
+        call this%grid%build_tree(combined_mask, rotmat=rotmat)
+      else
+        call this%grid%build_tree(combined_mask)
+      end if
     else
       has_data = .false.
     end if
-    deallocate(combined_mask)
 
   end subroutine build_tree_by_category
 
@@ -264,7 +269,7 @@ module m_datasets
     select type(this)
       class is (t_layerdata)
         do i=1, this%grid%n
-          if ((this%values(class_idx,i) /= NODATA).and.(this%category(i)==cat)) then
+          if ((this%values(class_idx,i) /= NODATA).and.((this%category(i) == cat) .or. (this%category(i) == CAT_ALL))) then
             cat_idx(nidx) = i
             nidx = nidx + 1
           end if

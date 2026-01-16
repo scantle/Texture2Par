@@ -1,9 +1,11 @@
 module m_categories
-  use m_vstring, only: t_vstring, vstring_toupper, vstring_new
+  use m_vstring, only: t_vstring, vstring_equals, vstring_toupper, vstring_new
   use m_vstringlist
   implicit none
   
-  integer,parameter   :: DEFAULT_CATLIST_SIZE=10
+  integer,parameter       :: DEFAULT_CATLIST_SIZE=10
+  integer, parameter      :: CAT_ALL = -1
+  character(*), parameter :: CAT_ALL_KEY = "ALL"
 !-------------------------------------------------------------------------------------------------!
 
   type :: t_category
@@ -14,6 +16,7 @@ module m_categories
     integer,allocatable             :: catlist_glo(:) ! List of category values
     type(t_vstringlist),allocatable :: strlist(:)     ! Category values, but when string
     type(t_vstringlist)             :: strlist_glo    ! Category strings for ALL arrays
+    type(t_vstring)                 :: CAT_ALL_VKEY
     integer,allocatable             :: lay2arr(:)     ! Translation from layer to array
     integer,allocatable             :: array(:,:)     ! Arrays of category values (nvalues, narr)
     integer,allocatable             :: arrncat(:)     ! Number of categories per array
@@ -59,6 +62,7 @@ module m_categories
       do i=1, narr
         call vstrlist_new(this%strlist(i))
       end do
+      call vstring_new(this%CAT_ALL_VKEY, CAT_ALL_KEY)
     end if
     
     ! By Default
@@ -318,6 +322,7 @@ module m_categories
   
   function get_id_char(this, value) result(index)
     ! Gets strlist index of pass character category
+    ! Returns zero if not found
     implicit none
     class(t_category), intent(inout) :: this
     character(*),intent(in)          :: value
@@ -326,6 +331,14 @@ module m_categories
 
     call vstring_new (valupp, trim(value))
     valupp = vstring_toupper(valupp)
+    
+    ! Reserved wildcard CAT_ALL_KEY?
+    if (vstring_equals(valupp, this%CAT_ALL_VKEY)) then   ! whatever your vstring -> char accessor is
+      index = CAT_ALL
+      return ! early return
+    end if
+    
+    ! Otherwise, is it a stored category?
     index = vstrlist_search(this%strlist_glo, valupp)
   
   end function get_id_char
