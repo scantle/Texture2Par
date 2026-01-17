@@ -132,4 +132,37 @@ function to_upper(strIn) result(strOut)
 end function to_upper
 
 !-------------------------------------------------------------------------------------------------!
+
+  integer function span2int(line, l, r, ios) result(v)
+    implicit none
+    character(*), intent(in) :: line
+    integer, intent(in) :: l, r
+    integer, intent(out) :: ios
+    v = 0
+    read(line(l:r), *, iostat=ios) v
+  end function
+
+!-------------------------------------------------------------------------------------------------!
+
+  real function span2real(line, l, r, ios) result(v)
+    implicit none
+    character(*), intent(in) :: line
+    integer, intent(in) :: l, r
+    integer, intent(out) :: ios
+    v = 0.0
+    read(line(l:r), *, iostat=ios) v
+  end function
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine span2char(line, l, r, out)
+    implicit none
+    character(*), intent(in) :: line
+    integer, intent(in) :: l, r
+    character(*), intent(out) :: out
+    out = adjustl(line(l:r))
+  end subroutine
+
+!-------------------------------------------------------------------------------------------------!
+
 end module str_module

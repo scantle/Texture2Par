@@ -2,6 +2,7 @@ module m_read_datasets
   use m_global ,only: NODATA, log
 !  use m_datasets
   use m_T2P, only: t_t2p
+  use str_module, only: multisplit, span2int, span2real, span2char
   use m_vstring, only: t_vstring, vstring_is, vstring_match
   use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_length,vstrlist_index
   use m_file_io, only: t_file_reader, open_file_reader, item2int, item2char
@@ -10,8 +11,19 @@ module m_read_datasets
   use m_data_transformer, only: t_data_transformer
   use m_subsidence, only: accumulate_interbeds, reset_interbeds, build_interbed_mask, is_interbed_interval
   implicit none
-
+  
+  ! Data structure to keep track of where data is
+  type :: t_dataset_colmap
+    integer  :: nsets, maxcol
+    integer, allocatable :: class_ids(:)  ! Global ID number for each class (in order) (nsets)
+    integer, allocatable :: col_val(:)    ! Class value columns (nsets)
+    integer, allocatable :: col_var(:)    ! Class variance columns (nsets)
+    integer, allocatable :: col_hsu(:)    ! HSU columns (nlayers)
+  end type
+  
+  ! Module variables
   type(t_file_reader), pointer :: reader
+  type(t_dataset_colmap)       :: colmap
 
   contains
 
@@ -42,8 +54,8 @@ module m_read_datasets
     character(2048)               :: line
     character(20)                 :: tmp,tmp2
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof, hsu_id
-    integer                       :: idx, idx_offset, iint, prev_idx, prev_iint, fmodel_loc, didx
-    integer,allocatable           :: cids(:), all_count(:)
+    integer                       :: idx, idx_offset, iint, prev_idx, prev_iint, fmodel_loc, didx, ios
+    integer,allocatable           :: cids(:), all_count(:), lw(:), rw(:)
     real                          :: x, y, z, fmodel_z, depth0, depth, intv_top, intv_bot, frac_thick
     real    ,allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:), wvariance(:), var_accumulator(:,:)
     real    ,allocatable          :: all_sum(:), all_depth(:)
@@ -81,7 +93,7 @@ module m_read_datasets
 
       ! Read in header
       call reader%next_item(eof, strings)
-      call process_header(t2p, file, strings, nsets, didx, cids)
+      call process_header(t2p, file, strings, nsets, didx, cids, colmap)
 
       ! Allocate for reading
       allocate(wvalues      (nsets))
@@ -93,6 +105,7 @@ module m_read_datasets
       allocate(wv_accumulator (nsets,t2p%fmodel%nlayers))
       allocate(var_accumulator(nsets,t2p%fmodel%nlayers))
       allocate(hsus(ncats))
+      allocate(rw(colmap%maxcol), lw(colmap%maxcol))
       
       var_accumulator = 0.0
       wvariance = 0.0
@@ -157,18 +170,43 @@ module m_read_datasets
       do j=1, nlines
         write(tmp, '(i)') j+1
         read(reader%unit, "(A)", iostat=reader%ioerr, iomsg=iomsg) line
+        call reader%iomsg_handler(iomsg)
+        call multisplit(ios, colmap%maxcol, lw, rw, line)
+        if (ios /= 0) call error_handler(1,file,"Too few columns on line "//adjustl(trim(tmp)))
+        !read(line, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth0, depth
+        ! --- First 8 fixed columns
+        call span2char(line, lw(1), rw(1), name)
+        idx   = span2int (line, lw(2), rw(2), ios); if (ios/=0) call error_handler(1,file,"Bad location id on line "//adjustl(trim(tmp)))
+        iint  = span2int (line, lw(3), rw(3), ios); if (ios/=0) call error_handler(1,file,"Bad interval id on line "//adjustl(trim(tmp)))
+        x     = span2real(line, lw(4), rw(4), ios); if (ios/=0) call error_handler(1,file,"Bad X on line "//adjustl(trim(tmp)))
+        y     = span2real(line, lw(5), rw(5), ios); if (ios/=0) call error_handler(1,file,"Bad Y on line "//adjustl(trim(tmp)))
+        z     = span2real(line, lw(6), rw(6), ios); if (ios/=0) call error_handler(1,file,"Bad Z on line "//adjustl(trim(tmp)))
+        depth0= span2real(line, lw(7), rw(7), ios); if (ios/=0) call error_handler(1,file,"Bad top depth on line "//adjustl(trim(tmp)))
+        depth = span2real(line, lw(8), rw(8), ios); if (ios/=0) call error_handler(1,file,"Bad bot depth on line "//adjustl(trim(tmp)))
+        ! Then the data columns
+        do l = 1, colmap%nsets
+          wvalues(l) = span2real(line, lw(colmap%col_val(l)), rw(colmap%col_val(l)), ios)
+          if (ios /= 0) call error_handler(1,file,"Bad class value on line "//adjustl(trim(tmp)))
+        end do
         if (t2p%opt%KVME) then
-          read(line, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth0, depth, wvalues(1:nsets), wvariance(1:nsets), hsus(1:ncats)
-        else
-          read(line, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth0, depth, wvalues(1:nsets), hsus(1:ncats)
+          do l = 1, colmap%nsets
+            wvariance(l) = span2real(line, lw(colmap%col_var(l)), rw(colmap%col_var(l)), ios)
+            if (ios /= 0) call error_handler(1,file,"Bad class variance on line "//adjustl(trim(tmp)))
+          end do
         end if
-	      call reader%iomsg_handler(iomsg)
+        ! Then the HSUS
+        if (t2p%has_hsus) then
+          do k = 1, ncats
+            call span2char(line, lw(colmap%col_hsu(k)), rw(colmap%col_hsu(k)), hsus(k))
+          end do
+        end if
+
         if ((.not. t2p%opt%NO_TEX_BOUNDS).and.didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
         all_depth = all_depth + depth
 
         if (iint==1) then
           idx = idx - idx_offset
-          if (idx <= prev_idx) call error_handler(1,file,"Well IDs must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
+          if (idx <= prev_idx) call error_handler(1,file,"Loc IDs must be sequential - Check Loc "//trim(name)//" on line "//adjustl(trim(tmp)))
           ! Check for duplicate well locations
           do k = 1, idx-1
             if (x==grid%coords(1,k).and.y==grid%coords(2,k)) then
@@ -241,11 +279,10 @@ module m_read_datasets
           fmodel_z = local_elevs(0)
           if (t2p%opt%USE_MODEL_GSE) intv_top = fmodel_z
           prev_idx = idx
-        else
-          ! Some data checking
-          if (iint <= prev_iint) call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
-          if (depth0 >= depth)  call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp))//new_line("")//trim(line)//new_line(""))
+        else if (iint <= prev_iint) then
+          call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
         end if  ! End of new log handling
+        if (depth0 >= depth)  call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp))//new_line("")//trim(line)//new_line(""))
         
         if (t2p%opt%USE_MODEL_GSE) then
           intv_top = fmodel_z - depth0
@@ -308,7 +345,7 @@ module m_read_datasets
       end do
 
       ! Cleanup loop variables
-      deallocate(wvalues, wvariance, all_count, all_sum, all_depth, total_thick, wv_accumulator, var_accumulator, hsus)
+      deallocate(wvalues, wvariance, all_count, all_sum, all_depth, total_thick, wv_accumulator, var_accumulator, hsus, rw, lw)
       if (allocated(interbed_mask)) deallocate(interbed_mask)
     end do
     if (allocated(kbed_run)) deallocate(kbed_run)
@@ -321,14 +358,15 @@ module m_read_datasets
     implicit none
     class(t_T2P), intent(inout)   :: t2p
     type(t_vstringlist)           :: strings
+    character(2048)               :: line
     character(200)                :: file, name
     character(30),allocatable     :: hsus(:)
     character(256)                :: iomsg
     character(20)                 :: tmp
-    integer                       :: i, j, k, l, nlines, npoints, nsets, ncats, eof, idx_offset
+    integer                       :: i, j, k, l, nlines, npoints, nsets, ncats, eof, idx_offset, ios
     integer                       :: idx, iint, ipoint, prev_idx, prev_iint, fmodel_loc, didx, resized_intervals
     integer                       :: all_count
-    integer,allocatable           :: cids(:)
+    integer,allocatable           :: cids(:), lw(:), rw(:)
     real                          :: x, y, z, depth0, depth, re_depth, thick, fmodel_z, intv_top, intv_bot
     real    ,allocatable          :: wvalues(:), local_elevs(:), all_thick(:), all_sum(:), wvariance(:)
     type(t_grid),pointer          :: grid, interbed_grid
@@ -366,7 +404,7 @@ module m_read_datasets
 
       ! Read in header
       call reader%next_item(eof, strings)
-      call process_header(t2p, file, strings, nsets, didx, cids)
+      call process_header(t2p, file, strings, nsets, didx, cids, colmap)
 
       ! Allocate for reading
       allocate(wvalues      (nsets))
@@ -374,6 +412,8 @@ module m_read_datasets
       allocate(all_sum      (nsets))
       allocate(all_thick    (nsets))
       allocate(hsus(ncats))
+      allocate(rw(colmap%maxcol), lw(colmap%maxcol))
+      
       wvariance = 0.0
       if (.not. allocated(local_elevs)) allocate(local_elevs(0:t2p%fmodel%nlayers))
       nlines = 0
@@ -443,15 +483,39 @@ module m_read_datasets
       ipoint = 1
       do j=1, nlines
         write(tmp, '(i)') j+1
-        !write(*,*) tmp // " / ", nlines
+        read(reader%unit, "(A)", iostat=reader%ioerr, iomsg=iomsg) line
+        call reader%iomsg_handler(iomsg)
+        call multisplit(ios, colmap%maxcol, lw, rw, line)
+        if (ios /= 0) call error_handler(1,file,"Too few columns on line "//adjustl(trim(tmp)))
+        !read(line, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth0, depth
+        ! --- First 8 fixed columns
+        call span2char(line, lw(1), rw(1), name)
+        idx   = span2int (line, lw(2), rw(2), ios); if (ios/=0) call error_handler(1,file,"Bad location id on line "//adjustl(trim(tmp)))
+        iint  = span2int (line, lw(3), rw(3), ios); if (ios/=0) call error_handler(1,file,"Bad interval id on line "//adjustl(trim(tmp)))
+        x     = span2real(line, lw(4), rw(4), ios); if (ios/=0) call error_handler(1,file,"Bad X on line "//adjustl(trim(tmp)))
+        y     = span2real(line, lw(5), rw(5), ios); if (ios/=0) call error_handler(1,file,"Bad Y on line "//adjustl(trim(tmp)))
+        z     = span2real(line, lw(6), rw(6), ios); if (ios/=0) call error_handler(1,file,"Bad Z on line "//adjustl(trim(tmp)))
+        depth0= span2real(line, lw(7), rw(7), ios); if (ios/=0) call error_handler(1,file,"Bad top depth on line "//adjustl(trim(tmp)))
+        depth = span2real(line, lw(8), rw(8), ios); if (ios/=0) call error_handler(1,file,"Bad bot depth on line "//adjustl(trim(tmp)))
+        ! Then the data columns
+        do l = 1, colmap%nsets
+          wvalues(l) = span2real(line, lw(colmap%col_val(l)), rw(colmap%col_val(l)), ios)
+          if (ios /= 0) call error_handler(1,file,"Bad class value on line "//adjustl(trim(tmp)))
+        end do
         if (t2p%opt%KVME) then
-          read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth0, depth, wvalues(1:nsets), wvariance(1:nsets), hsus(1:ncats)
-        else
-          read(reader%unit, *, iostat=reader%ioerr, iomsg=iomsg) name, idx, iint, x, y, z, depth0, depth, wvalues(1:nsets), hsus(1:ncats)
+          do l = 1, colmap%nsets
+            wvariance(l) = span2real(line, lw(colmap%col_var(l)), rw(colmap%col_var(l)), ios)
+            if (ios /= 0) call error_handler(1,file,"Bad class variance on line "//adjustl(trim(tmp)))
+          end do
         end if
-	      call reader%iomsg_handler(iomsg)
+        ! Then the HSUS
+        if (t2p%has_hsus) then
+          do k = 1, ncats
+            call span2char(line, lw(colmap%col_hsu(k)), rw(colmap%col_hsu(k)), hsus(k))
+          end do
+        end if
+        
         if ((.not. t2p%opt%NO_TEX_BOUNDS).and.didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
-        if (iint <= prev_iint) call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
         if (iint==1) then
           idx = idx - idx_offset
           if (idx <= prev_idx) call error_handler(1,file,"Well IDs must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
@@ -481,6 +545,8 @@ module m_read_datasets
             if (j>1) call reset_interbeds(prev_idx, kbed_open, kbed_run, t2p%interbed_thick)
           end if
           prev_idx = idx
+        else if (iint <= prev_iint) then
+          call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
         end if  ! End new well if
         if (depth0 >= depth) call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp)))
 
@@ -529,6 +595,7 @@ module m_read_datasets
         end do
 
         if (depth>0) all_count = all_count + 1
+        prev_iint = iint
       end do
       
       ! Store/close open interbeds...
@@ -544,7 +611,7 @@ module m_read_datasets
       end do
 
       ! Cleanup loop variables
-      deallocate(wvalues, all_sum, all_thick, hsus, wvariance)
+      deallocate(wvalues, all_sum, all_thick, hsus, wvariance, rw, lw)
       if (allocated(interbed_mask)) deallocate(interbed_mask)
     end do
     if (allocated(kbed_run)) deallocate(kbed_run)
@@ -553,78 +620,144 @@ module m_read_datasets
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine process_header(t2p, file, header, nsets, dataset_idx, class_ids)
+  subroutine process_header(t2p, file, header, nsets, dataset_idx, class_ids, colmap)
     implicit none
-    class(t_T2P), intent(inout)        :: t2p
-    character(*),intent(in)            :: file
-    type(t_vstringlist),intent(in)     :: header
-    integer,intent(out)                :: nsets, dataset_idx
-    integer,allocatable                :: temp(:)
-    integer,allocatable,intent(out)    :: class_ids(:)
-    integer                            :: i, count, nhead
-    character(30)                      :: badclass
-    character(5)                       :: cint
+    class(t_T2P), intent(inout)           :: t2p
+    character(*),intent(in)               :: file
+    type(t_vstringlist),intent(in)        :: header
+    integer,intent(out)                   :: nsets, dataset_idx
+    integer,allocatable,intent(out)       :: class_ids(:)
+    type(t_dataset_colmap), intent(inout) :: colmap
+    integer,allocatable                   :: tmp_ids(:), tmp_cols(:)
+    integer                               :: i, count, nhead, ncol, cid, nactive, idx_var, idx_hsu
+    character(64) :: cname
+    character(30)                         :: badclass
+    character(5)                          :: cint
 
-    ! Columns of header should be Location ID n X Y Zland DepthTop DepthBot followed by class data, then layer groups
+    ! Columns of header should be Location ID n X Y Zland DepthTop DepthBot followed by data
     !                             1        2  3 4 5 6     7        8
     nhead = 8
-    nsets = vstrlist_length(header) - nhead
-    if (t2p%has_hsus) nsets = nsets - t2p%fmodel%nlayers
-    if (t2p%opt%KVME) nsets = nsets - t2p%get_active_texture_classes()  ! one per texture class
-    if (nsets < 1) then
+    ncol = vstrlist_length(header)
+    if ((ncol - nhead) < 1) then
        call error_handler(1,file,"Invalid number of entries in dataset header")
     end if
-
-    allocate(temp(nsets))
+    
+    allocate(tmp_ids(ncol - nhead))
+    allocate(tmp_cols(ncol - nhead))
+    tmp_ids  = 0
+    tmp_cols = 0
     count = 0
 
-    do i=1, nsets
-      temp(i) = t2p%get_class_id(vstrlist_index(header,nhead+i))
-      if (temp(i)==0) then
-        if (t2p%opt%KVME) then
-          ! If KVME, then the end of classes will start with var_
-          if (vstring_match(vstrlist_index(header,7+i), "var_*", nocase=.TRUE.)>1) exit
-        else if (vstring_is(vstrlist_index(header,7+i),'integer')) then
-          ! Assumption - an integer indicates this is an (unused) HSU zone == done with classes
-          write(cint,'(i5)') count
-          call warning_handler("Encountered integer in header for "//trim(file)//" - assuming "//trim(adjustl(cint))//" classes in file")
-          exit
+    ! Scan ALL columns after nhead and pick those that match known classes.
+    ! This makes class columns order-independent and tolerant to extra columns.
+    do i = nhead+1, ncol
+      cid = t2p%get_class_id(vstrlist_index(header, i))
+      if (cid > 0) then
+        if (any(tmp_ids(1:count) == cid)) then
+          call item2char(header, i, cname)
+          call error_handler(1,file,"Duplicate class column in header: "//trim(cname))
         end if
-        call item2char(header,7+i,badclass)
-        call error_handler(1,file,"Bad class name = " // badclass)
+        count = count + 1
+        tmp_ids(count)  = cid
+        tmp_cols(count) = i
       end if
-      count = count + 1
     end do
 
-    ! Move to output variables
+    if (count < 1) then
+      call error_handler(1,file,"No recognizable data class columns found after location columns")
+    end if
+
     nsets = count
     allocate(class_ids(nsets))
-    class_ids(:) = temp(1:nsets)
-    deallocate(temp)
+    class_ids(:) = tmp_ids(1:nsets)
 
-    ! Validate datasets either (1) are all the primary datasets or (2) are a secondary dataset
-    ! Return index of t2p dataset object to store them in
-    if (maxval(class_ids) <= t2p%get_active_texture_classes()) then
-      ! is primary...
-      if (nsets==t2p%get_active_texture_classes()) then
+    ! Allocate/Init colmap
+    colmap%nsets = nsets
+    if (allocated(colmap%class_ids)) deallocate(colmap%class_ids)
+    if (allocated(colmap%col_val)) deallocate(colmap%col_val)
+    allocate(colmap%class_ids(nsets))
+    allocate(colmap%col_val(nsets))
+    colmap%class_ids(:)  = class_ids(:)
+    colmap%col_val(:)    = tmp_cols(1:nsets)
+    colmap%maxcol = maxval(colmap%col_val)
+
+    deallocate(tmp_ids, tmp_cols)
+
+    ! Validate primary/secondary dataset classes
+    nactive = t2p%get_active_texture_classes()
+
+    if (maxval(class_ids) <= nactive) then
+      ! Primary dataset: must include all active texture classes in one file
+      if (nsets == nactive) then
         dataset_idx = 1
         t2p%class_dataset(class_ids) = dataset_idx
       else
         call error_handler(1,file,"All primary datasets must be in same dataset file")
       end if
     else
-      ! Secondary: we adjust all indexes relative to the secondary datasets
-      ! secondary_dataset_idx = class_id - n_active_primary_ids + 1
-      ! (i.e., the secondary_class_id + 1 for all the primary data being stored in one dataset)
-      ! (Each in their own dataset)
-      if (nsets==1) then
+      ! Secondary dataset: only one class per file
+      if (nsets == 1) then
         dataset_idx = class_ids(1) - t2p%ntexclasses + 1
         t2p%class_dataset(class_ids(1)) = dataset_idx
-        class_ids(:) = 1
+        class_ids(1) = 1
+        colmap%class_ids(1) = 1
       else
         call error_handler(1,file,"Each secondary dataset must have their own dataset file")
       end if
     end if
+
+    ! KVME variance columns: locate var_<classname> for each class column
+    if (t2p%opt%KVME) then
+      if (allocated(colmap%col_var)) deallocate(colmap%col_var)
+      allocate(colmap%col_var(nsets))
+      colmap%col_var = 0
+
+      do i = 1, nsets
+        call item2char(header, colmap%col_val(i), cname)
+        idx_var = vstrlist_search(header, "var_"//trim(cname), first=nhead+1)
+        if (idx_var == 0) then
+          call error_handler(1,file,"KVME on: missing variance column 'var_"//trim(cname)//"'")
+        end if
+        colmap%col_var(i) = idx_var
+      end do
+      colmap%maxcol = max(colmap%maxcol, maxval(colmap%col_var))
+    else
+      if (allocated(colmap%col_var)) deallocate(colmap%col_var)
+    end if
+
+    ! HSU columns (if enabled)
+    if (t2p%has_hsus) then
+      if (allocated(colmap%col_hsu)) deallocate(colmap%col_hsu)
+      allocate(colmap%col_hsu(t2p%fmodel%nlayers))
+      colmap%col_hsu = 0
+
+      ! Prefer explicit header names: hsu1..hsuN
+      do i = 1, t2p%fmodel%nlayers
+        write(cname,'("hsu",i0)') i
+        idx_hsu = vstrlist_search(header, trim(cname), first=nhead+1)
+        if (idx_hsu /= 0) colmap%col_hsu(i) = idx_hsu
+      end do
+
+      if (any(colmap%col_hsu /= 0)) then
+        ! If user uses hsu# naming, require ALL layers to be present
+        if (any(colmap%col_hsu == 0)) then
+          call error_handler(1,file,"HSU columns: found some 'hsu#' headers but not all 1..N. Use hsu1..hsuN for all layers or none.")
+        end if
+
+      else
+        ! Fallback: assume HSUs are the last nlayers columns
+        if (ncol < nhead + t2p%fmodel%nlayers) then
+          call error_handler(1,file,"HSUs expected but header does not have enough columns to contain all layers")
+        end if
+        do i = 1, t2p%fmodel%nlayers
+          colmap%col_hsu(i) = ncol - t2p%fmodel%nlayers + i
+        end do
+      end if
+      colmap%maxcol = max(colmap%maxcol, maxval(colmap%col_hsu))
+    else
+      if (allocated(colmap%col_hsu)) deallocate(colmap%col_hsu)
+    end if
+    
   end subroutine process_header
 
 !-------------------------------------------------------------------------------------------------!
