@@ -56,6 +56,7 @@ module m_flow_model
     logical                        :: structured              ! T/F Structured (row/col) model
     logical,allocatable            :: lay_aqtard(:)           ! Tracks whether layer is an aquitard
     logical,allocatable            :: pparr_aqtard(:)         ! Tracks if a *pilot_point* array is an aquitard
+    logical,allocatable            :: lay_exist(:)            ! Tracks whether layer has thickness > 0.00 (primarily for IWFM) (layer)
     logical,allocatable            :: active_nodes_bylay(:,:) ! T/F for each node if it is active in the flow model (primarily for MODFLOW) (node,layer)
     logical,allocatable            :: active_nodes_flat(:)    ! Same as above, but flat (T if active in *any* layer) (used for PP interp)
 
@@ -132,7 +133,6 @@ module m_flow_model
     integer,allocatable       :: elemnnodes(:)  ! Number of nodes forming each element
     integer,allocatable       :: nodenelem(:)   ! Number of elements that include each node
     integer,allocatable       :: node2elem(:,:) ! Elements that include each node (elemid,nodes)
-    logical,allocatable       :: lay_exist(:)   ! Tracks whether layer has thickness > 0.00
 
   contains
     procedure,public          :: initialize => init_iwfm
@@ -141,7 +141,6 @@ module m_flow_model
     procedure,public          :: get_elev_at_point =>  get_elev_at_point_elem
     procedure,public          :: get_layer_id => get_layer_id_iwfm
     procedure,public          :: get_layer_no => get_layer_no_iwfm
-    procedure,public          :: is_active_layer => is_active_layer_iwfm
     procedure,public          :: is_aquitard_layer => is_aquitard_layer_iwfm
     !procedure,public          :: get_active_ppzones => get_active_ppzones_iwfm
     procedure,public          :: write_fmodel_input => write_fmodel_input_iwfm
@@ -330,10 +329,12 @@ module m_flow_model
     allocate(this%nnodes  (0:this%nlayers), &
              this%lay2grid(  this%nlayers), &
              this%grid    (  this%ngrids ), &
-             this%lay_aqtard(this%nlayers)  )
-
+             this%lay_aqtard(this%nlayers), &
+             this%lay_exist (this%nlayers)  )
+             
     this%lay2grid = lay2grid
     this%lay_aqtard = .false.
+    this%lay_exist = .true.
 
   end subroutine alloc_layers
 
@@ -497,10 +498,10 @@ module m_flow_model
     logical,allocatable     :: not_used(:)
 
     ! Read ppzones file
-    call this%ppzones%read_file(this%ppzone_file, this%nlayers, this%nnodes(1), 0, this%lay_aqtard, this%pparr_aqtard)
+    call this%ppzones%read_file(this%ppzone_file, this%nlayers, this%nnodes(1), 0, this%lay_exist, this%lay_aqtard, this%pparr_aqtard)
 
     ! Read hsus file
-    call this%hsus%read_file(this%hsu_file, this%nlayers, this%nnodes(1), 1, this%lay_aqtard, not_used)
+    call this%hsus%read_file(this%hsu_file, this%nlayers, this%nnodes(1), 1, this%lay_exist, this%lay_aqtard, not_used)
 
   end subroutine read_category_files
 
@@ -513,7 +514,7 @@ module m_flow_model
     integer,intent(in)      :: k
     logical                 :: is_active_layer
 
-    is_active_layer = .true.
+    is_active_layer = this%lay_exist(k)
 
   end function is_active_layer
 
@@ -971,9 +972,6 @@ module m_flow_model
     class(t_iwfm_model)       :: this
     integer                   :: i, lay2grid(this%nlayers)
 
-    allocate(this%lay_exist (this%nlayers))
-    this%lay_exist = .true.
-
     ! Call super
     call alloc_layers(this, lay2grid)
 
@@ -1107,7 +1105,7 @@ module m_flow_model
     this%nodebyid = -1
 
     ! Fill array
-    do i=1, this%nnodes(i)
+    do i=1, this%nnodes(1)
       this%nodebyid(this%nodeid(i)) = i
     end do
 
@@ -1127,23 +1125,7 @@ module m_flow_model
     ! See if any of these are aquitard layers and exist
     this%has_aquitards = any(this%lay_aqtard .and. this%lay_exist)
 
-    ! Correct lay_aqtard flags if layers do not exist (screws up ppzone array reading)
-    this%lay_aqtard = this%lay_aqtard .and. this%lay_exist
-
   end subroutine process_iwfm_layers
-
-!-------------------------------------------------------------------------------------------------!
-
-  function is_active_layer_iwfm(this, k)
-    ! To be overloaded where necessary (IWFM has zero-thickness layers, typically aquitards)
-    implicit none
-    class(t_iwfm_model)     :: this
-    integer,intent(in)      :: k
-    logical                 :: is_active_layer_iwfm
-
-    is_active_layer_iwfm = this%lay_exist(k)
-
-  end function is_active_layer_iwfm
 
 !-------------------------------------------------------------------------------------------------!
 

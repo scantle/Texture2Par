@@ -1453,8 +1453,7 @@ module m_T2P
     integer,intent(in)      :: prime
     integer,allocatable     :: connlist(:)
 
-    if (allocated(connlist)) deallocate(connlist)
-    allocate(connlist(this%nsecondary_by_id(prime)))
+    allocate(connlist(1+this%nsecondary_by_id(prime)))
     connlist = this%connections(1:1+this%nsecondary_by_id(prime),prime)
     return
   end function

@@ -206,14 +206,14 @@ module m_categories
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine read_file(this, file, nlayers, nnodes, datatype, lay_aquitard_flag, arr_aquitard_flag)
+  subroutine read_file(this, file, nlayers, nnodes, datatype, layer_exists, lay_aquitard_flag, arr_aquitard_flag)
     use m_file_io, only: t_file_reader, open_file_reader, item2int, item2char
     use m_error_handler, only: error_handler
     implicit none
     class(t_category), intent(inout) :: this
     character(*), intent(in)         :: file
     integer,intent(in)               :: datatype, nlayers, nnodes
-    logical,intent(in)               :: lay_aquitard_flag(nlayers)
+    logical,intent(in)               :: lay_aquitard_flag(nlayers), layer_exists(nlayers)
     logical,allocatable,intent(out)  :: arr_aquitard_flag(:)
     type(t_file_reader), pointer     :: reader
     type(t_vstringlist)              :: strings
@@ -270,6 +270,7 @@ module m_categories
     
     ! Check for re-use of arrays between aquifers and aquitards
     do i = 1, nlayers
+      if (.not. layer_exists(i)) cycle  ! ignore layers that don't exist (e.g., no thickness, inactive...)
       if (lay_aquitard_flag(i) .and. .not. arr_aquitard_flag(lay2arr(i))) then
         arr_aquitard_flag(lay2arr(i)) = .true.
       elseif (.not. lay_aquitard_flag(i) .and. arr_aquitard_flag(lay2arr(i))) then
