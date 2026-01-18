@@ -10,16 +10,9 @@ module m_read_datasets
   use m_grid, only: t_grid, create_grid_object
   use m_data_transformer, only: t_data_transformer
   use m_subsidence, only: accumulate_interbeds, reset_interbeds, build_interbed_mask, is_interbed_interval
+  use m_log, only: write_colmap
+  use m_colmap, only: t_dataset_colmap
   implicit none
-  
-  ! Data structure to keep track of where data is
-  type :: t_dataset_colmap
-    integer  :: nsets, maxcol
-    integer, allocatable :: class_ids(:)  ! Global ID number for each class (in order) (nsets)
-    integer, allocatable :: col_val(:)    ! Class value columns (nsets)
-    integer, allocatable :: col_var(:)    ! Class variance columns (nsets)
-    integer, allocatable :: col_hsu(:)    ! HSU columns (nlayers)
-  end type
   
   ! Module variables
   type(t_file_reader), pointer :: reader
@@ -93,7 +86,8 @@ module m_read_datasets
 
       ! Read in header
       call reader%next_item(eof, strings)
-      call process_header(t2p, file, strings, nsets, didx, cids, colmap)
+      call process_header(t2p, file, strings, nsets, didx, cids, colmap, t2p%dataset_colmap(i))
+      call write_colmap(log, colmap, t2p, t2p%dataset_colmap(i)%nsets>0)
 
       ! Allocate for reading
       allocate(wvalues      (nsets))
@@ -404,7 +398,8 @@ module m_read_datasets
 
       ! Read in header
       call reader%next_item(eof, strings)
-      call process_header(t2p, file, strings, nsets, didx, cids, colmap)
+      call process_header(t2p, file, strings, nsets, didx, cids, colmap, t2p%dataset_colmap(i))
+      call write_colmap(log, colmap, t2p, t2p%dataset_colmap(i)%nsets>0)
 
       ! Allocate for reading
       allocate(wvalues      (nsets))
@@ -620,7 +615,7 @@ module m_read_datasets
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine process_header(t2p, file, header, nsets, dataset_idx, class_ids, colmap)
+  subroutine process_header(t2p, file, header, nsets, dataset_idx, class_ids, colmap, colmap_user)
     implicit none
     class(t_T2P), intent(inout)           :: t2p
     character(*),intent(in)               :: file
@@ -628,6 +623,7 @@ module m_read_datasets
     integer,intent(out)                   :: nsets, dataset_idx
     integer,allocatable,intent(out)       :: class_ids(:)
     type(t_dataset_colmap), intent(inout) :: colmap
+    type(t_dataset_colmap), intent(in)    :: colmap_user
     integer,allocatable                   :: tmp_ids(:), tmp_cols(:)
     integer                               :: i, count, nhead, ncol, cid, nactive, idx_var, idx_hsu
     character(64) :: cname
@@ -642,48 +638,137 @@ module m_read_datasets
        call error_handler(1,file,"Invalid number of entries in dataset header")
     end if
     
-    allocate(tmp_ids(ncol - nhead))
-    allocate(tmp_cols(ncol - nhead))
-    tmp_ids  = 0
-    tmp_cols = 0
-    count = 0
-
-    ! Scan ALL columns after nhead and pick those that match known classes.
-    ! This makes class columns order-independent and tolerant to extra columns.
-    do i = nhead+1, ncol
-      cid = t2p%get_class_id(vstrlist_index(header, i))
-      if (cid > 0) then
-        if (any(tmp_ids(1:count) == cid)) then
-          call item2char(header, i, cname)
-          call error_handler(1,file,"Duplicate class column in header: "//trim(cname))
-        end if
-        count = count + 1
-        tmp_ids(count)  = cid
-        tmp_cols(count) = i
+    ! If the user colmap is set, we can just do a little validation and then get out
+    if (colmap_user%nsets>0) then
+      
+      ! Move it over!
+      colmap = colmap_user
+      
+      ! Set some varibles we use outside
+      nsets = colmap_user%nsets
+      class_ids = colmap_user%class_ids
+            
+      if (colmap%maxcol > ncol) then
+        call error_handler(1,file,"Explicit column mapping refers to column beyond header length")
       end if
-    end do
+      
+      ! The only thing we couldn't verify during specified colmap read was HSUs
+      ! Also, if they only passed one and there are multiple layers, that means they passed the first column
+      if (t2p%has_hsus) then
+        if (size(colmap%col_hsu)>1) then
+          if (size(colmap%col_hsu)/=t2p%fmodel%nlayers) then
+            call error_handler(2,opt_msg="DATASET explicit column mapping does not list all HSU columns (needs either first, or one for each layer)")
+          end if
+        else ! It's only one long
+          if (t2p%fmodel%nlayers>1) then ! Assume sequential
+            allocate(tmp_cols(t2p%fmodel%nlayers))
+            do i=1, t2p%fmodel%nlayers
+              tmp_cols(i) = colmap%col_hsu(1) + (i-1)
+            end do
+            ! and replace
+            colmap%col_hsu = tmp_cols
+            colmap%maxcol = max(colmap%maxcol,maxval(colmap%col_hsu))
+          end if
+        end if
+      end if
+        
+    else ! Autoread
+    
+      allocate(tmp_ids(ncol - nhead))
+      allocate(tmp_cols(ncol - nhead))
+      tmp_ids  = 0
+      tmp_cols = 0
+      count = 0
 
-    if (count < 1) then
-      call error_handler(1,file,"No recognizable data class columns found after location columns")
-    end if
+      ! Scan ALL columns after nhead and pick those that match known classes.
+      ! This makes class columns order-independent and tolerant to extra columns.
+      do i = nhead+1, ncol
+        cid = t2p%get_class_id(vstrlist_index(header, i))
+        if (cid > 0) then
+          if (any(tmp_ids(1:count) == cid)) then
+            call item2char(header, i, cname)
+            call error_handler(1,file,"Duplicate class column in header: "//trim(cname))
+          end if
+          count = count + 1
+          tmp_ids(count)  = cid
+          tmp_cols(count) = i
+        end if
+      end do
 
-    nsets = count
-    allocate(class_ids(nsets))
-    class_ids(:) = tmp_ids(1:nsets)
+      if (count < 1) then
+        call error_handler(1,file,"No recognizable data class columns found after location columns")
+      end if
 
-    ! Allocate/Init colmap
-    colmap%nsets = nsets
-    if (allocated(colmap%class_ids)) deallocate(colmap%class_ids)
-    if (allocated(colmap%col_val)) deallocate(colmap%col_val)
-    allocate(colmap%class_ids(nsets))
-    allocate(colmap%col_val(nsets))
-    colmap%class_ids(:)  = class_ids(:)
-    colmap%col_val(:)    = tmp_cols(1:nsets)
-    colmap%maxcol = maxval(colmap%col_val)
+      nsets = count
+      allocate(class_ids(nsets))
+      class_ids(:) = tmp_ids(1:nsets)
 
-    deallocate(tmp_ids, tmp_cols)
+      ! Allocate/Init colmap
+      colmap%nsets = nsets
+      if (allocated(colmap%class_ids)) deallocate(colmap%class_ids)
+      if (allocated(colmap%col_val)) deallocate(colmap%col_val)
+      allocate(colmap%class_ids(nsets))
+      allocate(colmap%col_val(nsets))
+      colmap%class_ids(:)  = class_ids(:)
+      colmap%col_val(:)    = tmp_cols(1:nsets)
+      colmap%maxcol = maxval(colmap%col_val)
 
-    ! Validate primary/secondary dataset classes
+      deallocate(tmp_ids, tmp_cols)
+
+      ! KVME variance columns: locate var_<classname> for each class column
+      if (t2p%opt%KVME) then
+        if (allocated(colmap%col_var)) deallocate(colmap%col_var)
+        allocate(colmap%col_var(nsets))
+        colmap%col_var = 0
+
+        do i = 1, nsets
+          call item2char(header, colmap%col_val(i), cname)
+          idx_var = vstrlist_search(header, "var_"//trim(cname), first=nhead+1)
+          if (idx_var == 0) then
+            call error_handler(1,file,"KVME on: missing variance column 'var_"//trim(cname)//"'")
+          end if
+          colmap%col_var(i) = idx_var
+        end do
+        colmap%maxcol = max(colmap%maxcol, maxval(colmap%col_var))
+      else
+        if (allocated(colmap%col_var)) deallocate(colmap%col_var)
+      end if
+
+      ! HSU columns (if enabled)
+      if (t2p%has_hsus) then
+        if (allocated(colmap%col_hsu)) deallocate(colmap%col_hsu)
+        allocate(colmap%col_hsu(t2p%fmodel%nlayers))
+        colmap%col_hsu = 0
+
+        ! Prefer explicit header names: hsu1..hsuN
+        do i = 1, t2p%fmodel%nlayers
+          write(cname,'("hsu",i0)') i
+          idx_hsu = vstrlist_search(header, trim(cname), first=nhead+1)
+          if (idx_hsu /= 0) colmap%col_hsu(i) = idx_hsu
+        end do
+
+        if (any(colmap%col_hsu /= 0)) then
+          ! If user uses hsu# naming, require ALL layers to be present
+          if (any(colmap%col_hsu == 0)) then
+            call error_handler(1,file,"HSU columns: found some 'hsu#' headers but not all 1..N. Use hsu1..hsuN for all layers or none.")
+          end if
+
+        else
+          ! Fallback: assume HSUs are the last nlayers columns
+          if (ncol < nhead + t2p%fmodel%nlayers) then
+            call error_handler(1,file,"HSUs expected but header does not have enough columns to contain all layers")
+          end if
+          do i = 1, t2p%fmodel%nlayers
+            colmap%col_hsu(i) = ncol - t2p%fmodel%nlayers + i
+          end do
+        end if
+        colmap%maxcol = max(colmap%maxcol, maxval(colmap%col_hsu))
+      else
+        if (allocated(colmap%col_hsu)) deallocate(colmap%col_hsu)
+      end if
+    end if ! end of user passed or not if
+    
+    ! Validate primary/secondary dataset classes, regardless of user/auto colmap
     nactive = t2p%get_active_texture_classes()
 
     if (maxval(class_ids) <= nactive) then
@@ -700,62 +785,10 @@ module m_read_datasets
         dataset_idx = class_ids(1) - t2p%ntexclasses + 1
         t2p%class_dataset(class_ids(1)) = dataset_idx
         class_ids(1) = 1
-        colmap%class_ids(1) = 1
+        !colmap%class_ids(1) = 1  colmap needs global class id!
       else
         call error_handler(1,file,"Each secondary dataset must have their own dataset file")
       end if
-    end if
-
-    ! KVME variance columns: locate var_<classname> for each class column
-    if (t2p%opt%KVME) then
-      if (allocated(colmap%col_var)) deallocate(colmap%col_var)
-      allocate(colmap%col_var(nsets))
-      colmap%col_var = 0
-
-      do i = 1, nsets
-        call item2char(header, colmap%col_val(i), cname)
-        idx_var = vstrlist_search(header, "var_"//trim(cname), first=nhead+1)
-        if (idx_var == 0) then
-          call error_handler(1,file,"KVME on: missing variance column 'var_"//trim(cname)//"'")
-        end if
-        colmap%col_var(i) = idx_var
-      end do
-      colmap%maxcol = max(colmap%maxcol, maxval(colmap%col_var))
-    else
-      if (allocated(colmap%col_var)) deallocate(colmap%col_var)
-    end if
-
-    ! HSU columns (if enabled)
-    if (t2p%has_hsus) then
-      if (allocated(colmap%col_hsu)) deallocate(colmap%col_hsu)
-      allocate(colmap%col_hsu(t2p%fmodel%nlayers))
-      colmap%col_hsu = 0
-
-      ! Prefer explicit header names: hsu1..hsuN
-      do i = 1, t2p%fmodel%nlayers
-        write(cname,'("hsu",i0)') i
-        idx_hsu = vstrlist_search(header, trim(cname), first=nhead+1)
-        if (idx_hsu /= 0) colmap%col_hsu(i) = idx_hsu
-      end do
-
-      if (any(colmap%col_hsu /= 0)) then
-        ! If user uses hsu# naming, require ALL layers to be present
-        if (any(colmap%col_hsu == 0)) then
-          call error_handler(1,file,"HSU columns: found some 'hsu#' headers but not all 1..N. Use hsu1..hsuN for all layers or none.")
-        end if
-
-      else
-        ! Fallback: assume HSUs are the last nlayers columns
-        if (ncol < nhead + t2p%fmodel%nlayers) then
-          call error_handler(1,file,"HSUs expected but header does not have enough columns to contain all layers")
-        end if
-        do i = 1, t2p%fmodel%nlayers
-          colmap%col_hsu(i) = ncol - t2p%fmodel%nlayers + i
-        end do
-      end if
-      colmap%maxcol = max(colmap%maxcol, maxval(colmap%col_hsu))
-    else
-      if (allocated(colmap%col_hsu)) deallocate(colmap%col_hsu)
     end if
     
   end subroutine process_header

@@ -14,6 +14,7 @@ module m_T2P
   use m_vario, only: t_vgm
   use m_grid, only: t_grid, create_grid_object
   use m_subsidence, only: interp_ib, check_subsidence_inputs
+  use m_colmap, only: t_dataset_colmap
 !-------------------------------------------------------------------------------------------------!
 
 #ifdef __INTEL_COMPILER
@@ -23,44 +24,45 @@ module m_T2P
 #endif
 
   type t_T2P
-    type(t_options)                  :: opt  ! avoid conflict with Fortran intrinsic 'options'
-    class(t_flow_model),pointer      :: fmodel      => null()
-    class(t_interpolator),pointer    :: interp_data => null()
-    class(t_interpolator),pointer    :: interp_pp   => null()
-    type(t_layerdata),pointer        :: datasets(:,:)           ! Datasets (dataset, layer) (1+nsecondary, layer)
-    type(t_layerdata),pointer        :: dset_intermediate(:,:)  ! texture or parameters data interpolated to model grid (nsets, nlayers)
-    type(t_layerdata),pointer        :: par(:)                  ! Final model hydraulic parameters (nlayers)&values(npar, npoints)
-    type(t_layerdata),pointer        :: interbed_count(:)       ! interbed counts by (layer) with %values(1,:) of counts by location
-    type(t_layerdata),pointer        :: interbed_thick(:)       ! interbed thickness by (layer) with %values(2,:) (thicknesses, squared thicknesses)
-    type(t_layerdata),pointer        :: interbed_final(:)       ! Where the kriged interbed ararys are stored %values(3,:) (count, thick, thick^2)
-    type(t_pilotpoints),pointer      :: pilot_points
-    type(t_pilotpoints),pointer      :: pilot_points_aquitard
-
-    ! Counters
-    integer                          :: npar        ! Kh, Kv, Ss, Sy
-    integer                          :: nclasses    ! Number of data classes
-    integer                          :: ntexclasses ! Texture datasets (for which hydraulic properties exist) (one may be inferred)
-    integer                          :: nprimary    ! Number of active primary datasets for kriging (texture or parameter, see opt%INTERP_ORDER)
-    integer                          :: nsecondary  ! Number of covariate data classes
-    integer                          :: ndatasets   ! Number of dataset objects (one for primary datasets, n for secondary)
-    integer                          :: nvario      ! Number of variograms, eventually passed to interpolator (if kriging)
-    integer                          :: ndatafiles  ! Number of data files to read in
-    integer                          :: nhsus       ! Number of Hydrostratigraphic Units (HSUs)
-                                                    ! (Formerly "geologic zones")
-
-    ! Trackers
-    type(t_vstringlist),pointer      :: class_names           ! Data class names
-    type(t_vstringlist)              :: parnames              ! Names of output parameters calculated
-    type(t_vstringlist)              :: ibparnames            ! Names of subsidence interbed parameters calculated
-    integer,pointer                  :: nsecondary_by_id(:)=>null() ! Connections (covariates) per [class, hyd property]
-    integer,pointer                  :: connections(:,:)   =>null() ! (connections, [classes or hyd properties])
-    integer,allocatable              :: class_dataset(:)      ! Translation from class id to dataset_id, ie datasets(dataset_id, layer)
-    type(t_vstringlist)              :: dataset_files         ! dataset filenames
-    type(t_vstringlist)              :: dataset_trans         ! dataset transformations (same order as filenames)
-    type(t_vstringlist)              :: dataset_trans_params  ! dataset transformation parameters (same order as filenames) (unimplemented)
-    type(t_category),pointer         :: dataset_ppzones       ! Pilot point zone dataset grid arrays & tracking (when INTERP_ORDER=AFTER)
-    integer,allocatable              :: fine_classes(:)       ! Fine classes (for subsidence)
-    integer,allocatable              :: coarse_classes(:)     ! Coarse classes (all classes not in fine_classes). Needed for SskeC.
+    type(t_options)                    :: opt  ! avoid conflict with Fortran intrinsic 'options'
+    class(t_flow_model),pointer        :: fmodel      => null()
+    class(t_interpolator),pointer      :: interp_data => null()
+    class(t_interpolator),pointer      :: interp_pp   => null()
+    type(t_layerdata),pointer          :: datasets(:,:)           ! Datasets (dataset, layer) (1+nsecondary, layer)
+    type(t_layerdata),pointer          :: dset_intermediate(:,:)  ! texture or parameters data interpolated to model grid (nsets, nlayers)
+    type(t_layerdata),pointer          :: par(:)                  ! Final model hydraulic parameters (nlayers)&values(npar, npoints)
+    type(t_layerdata),pointer          :: interbed_count(:)       ! interbed counts by (layer) with %values(1,:) of counts by location
+    type(t_layerdata),pointer          :: interbed_thick(:)       ! interbed thickness by (layer) with %values(2,:) (thicknesses, squared thicknesses)
+    type(t_layerdata),pointer          :: interbed_final(:)       ! Where the kriged interbed ararys are stored %values(3,:) (count, thick, thick^2)
+    type(t_pilotpoints),pointer        :: pilot_points
+    type(t_pilotpoints),pointer        :: pilot_points_aquitard
+                                       
+    ! Counters                         
+    integer                            :: npar        ! Kh, Kv, Ss, Sy
+    integer                            :: nclasses    ! Number of data classes
+    integer                            :: ntexclasses ! Texture datasets (for which hydraulic properties exist) (one may be inferred)
+    integer                            :: nprimary    ! Number of active primary datasets for kriging (texture or parameter, see opt%INTERP_ORDER)
+    integer                            :: nsecondary  ! Number of covariate data classes
+    integer                            :: ndatasets   ! Number of dataset objects (one for primary datasets, n for secondary)
+    integer                            :: nvario      ! Number of variograms, eventually passed to interpolator (if kriging)
+    integer                            :: ndatafiles  ! Number of data files to read in
+    integer                            :: nhsus       ! Number of Hydrostratigraphic Units (HSUs)
+                                                      ! (Formerly "geologic zones")
+                                       
+    ! Trackers                         
+    type(t_vstringlist),pointer        :: class_names           ! Data class names
+    type(t_vstringlist)                :: parnames              ! Names of output parameters calculated
+    type(t_vstringlist)                :: ibparnames            ! Names of subsidence interbed parameters calculated
+    integer,pointer                    :: nsecondary_by_id(:)=>null() ! Connections (covariates) per [class, hyd property]
+    integer,pointer                    :: connections(:,:)   =>null() ! (connections, [classes or hyd properties])
+    integer,allocatable                :: class_dataset(:)      ! Translation from class id to dataset_id, ie datasets(dataset_id, layer)
+    type(t_vstringlist)                :: dataset_files         ! dataset filenames
+    type(t_vstringlist)                :: dataset_trans         ! dataset transformations (same order as filenames)
+    type(t_vstringlist)                :: dataset_trans_params  ! dataset transformation parameters (same order as filenames) (unimplemented)
+    type(t_dataset_colmap),allocatable :: dataset_colmap(:)     ! User-input column mappings for datasets (same order as filenames)
+    type(t_category),pointer           :: dataset_ppzones       ! Pilot point zone dataset grid arrays & tracking (when INTERP_ORDER=AFTER)
+    integer,allocatable                :: fine_classes(:)       ! Fine classes (for subsidence)
+    integer,allocatable                :: coarse_classes(:)     ! Coarse classes (all classes not in fine_classes). Needed for SskeC.
 
     ! Read trackers - used to check if a block has been read (and make sure it exists)
     logical                          :: has_opt

@@ -58,6 +58,7 @@ module m_read_main_input
       case("COVARIATES")
         CALL read_covariates_block(t2p, reader)
       case("DATASET")
+        call pre_block_read_check(t2p, id)
         CALL read_dataset_block(t2p, reader)
       case("VARIOGRAMS")
         CALL read_variogram_block(t2p, reader)
@@ -92,6 +93,8 @@ module m_read_main_input
     select case(trim(block_id))
       case("CLASSES")
         if (.not. t2p%has_opt) call error_handler(2,reader%file,"OPTIONS block must be declared before CLASSES")
+      case("DATASET")
+        if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before DATASETS")
       case("COVARIATES")
         if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before COVARIATES")
         if (t2p%has_vario) call error_handler(2,reader%file,"COVARIATES block cannot be declared after VARIOGRAMS")
@@ -296,6 +299,7 @@ module m_read_main_input
 !-------------------------------------------------------------------------------------------------!
 
 subroutine read_dataset_block(t2p, reader)
+  use m_colmap, only: t_dataset_colmap, append_colmap
   implicit none
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
@@ -308,9 +312,19 @@ subroutine read_dataset_block(t2p, reader)
   ! Sub variables
   logical                    :: fname_set
   type(t_vstring)            :: fname, ftrans
+  integer                    :: i, cid, nactive
+  type(t_vstringlist)        :: classes
+  integer, allocatable       :: valcols(:), varcols(:), hsucols(:), cids(:)
+  type(t_dataset_colmap)     :: cm
 
   ! Default values
+  fname_set = .false.
   call vstring_new (ftrans , "NONE" )
+  call vstrlist_new(classes)
+  cm%nsets = 0
+  
+  ! For checks
+  nactive = t2p%get_active_texture_classes()
 
   ! Loop until end of block or end of file
   do
@@ -322,6 +336,42 @@ subroutine read_dataset_block(t2p, reader)
         fname_set = .true.
       case("TRANSFORM")
         ftrans = vstring_toupper(vstrlist_index(strings , 2))
+      case("CLASSES")
+        ! Assumption: everything after "CLASSES" is a class
+        cm%nsets = length-1
+        allocate(cids(cm%nsets), valcols(cm%nsets), varcols(cm%nsets))
+        cids = 0
+        valcols = 0
+        varcols = 0
+        do i=2, length
+          cids(i-1) = t2p%get_class_id(vstrlist_index(strings, i), adjust_for_infer=.false.)
+          if (cids(i-1)==0) then
+            call item2char(strings, i, tmp)
+            call error_handler(1,reader%file,"Invalid data class in DATASET CLASSES: "//tmp)
+          else if (t2p%opt%INFER_LAST_CLASS.and.(cids(i-1)==t2p%ntexclasses)) then
+            call item2char(strings, i, tmp)
+            call error_handler(1,reader%file,"Inferred Class in DATASET CLASSES: "//tmp)
+          end if
+        end do
+      case("VALUES")
+        if (.not. allocated(cids)) call error_handler(2,reader%file,"In DATSET explicit column mapping, CLASSES must be declared before VALUES")
+        if ((length-1) /= cm%nsets) call error_handler(2,reader%file,"VALUES must provide one column per class listed in CLASSES")
+        do i=2,length
+          valcols(i-1) = item2int(strings,i)
+        end do
+      case("VARIANCES")
+        if (.not. allocated(cids)) call error_handler(2,reader%file,"In DATSET explicit column mapping, CLASSES must be declared before VARIANCES")
+        if ((length-1) /= cm%nsets) call error_handler(2,reader%file,"VARIANCES must provide one column per class listed in CLASSES")
+        do i=2,length
+          varcols(i-1) = item2int(strings,i)
+        end do
+      case("HSUS")
+        allocate(hsucols(length-1))
+        ! Huh, flow model hasn't been read yet, so we don't know how many layers! We'll have to take their word for it.
+        ! If only one item is passed, we assume it's the index of the first column
+        do i=2, length
+          hsucols(i-1) = item2int(strings,i)
+        end do
       case DEFAULT
         call error_handler(1,reader%file,"Unknown Dataset option: " // trim(id))
     end select
@@ -331,11 +381,33 @@ subroutine read_dataset_block(t2p, reader)
   if (.not. fname_set ) then
     call error_handler(2,reader%file,"Dataset Block must include a FILE")
   end if
+  
+  ! Were explicit columns provided?
+  if (cm%nsets>0) then
+    if (.not. allocated(valcols)) call error_handler(2,reader%file,"Explicit mapping requires VALUES when CLASSES is provided")
+    allocate(cm%class_ids(cm%nsets), cm%col_val(cm%nsets))
+    cm%class_ids = cids
+    cm%col_val   = valcols
+    cm%maxcol    = maxval(cm%col_val)
+    if (t2p%opt%KVME) then
+      if (.not. allocated(varcols)) call error_handler(2,reader%file,"KVME is ON: explicit mapping requires VARIANCES")
+      allocate(cm%col_var(cm%nsets))
+      cm%col_var = varcols
+      cm%maxcol  = max(cm%maxcol, maxval(cm%col_var))
+    end if
+    ! Can't be sure yet if HSUs are active (model block may be unread)
+    if (allocated(hsucols)) then
+      allocate(cm%col_hsu(size(hsucols)))
+      cm%col_hsu = hsucols
+      cm%maxcol  = max(cm%maxcol, maxval(cm%col_hsu))
+    end if
+  end if
 
   ! Add to T2P
   t2p%ndatafiles = t2p%ndatafiles + 1
   call vstrlist_append(t2p%dataset_files, fname)
   call vstrlist_append(t2p%dataset_trans, ftrans)
+  call append_colmap(t2p%dataset_colmap, cm)  ! Added regardless of if empty; use nsets>0 to check if filled
 
   ! No Hook (yet) for datasets
   t2p%has_datafiles = .true.
