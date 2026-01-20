@@ -24,13 +24,18 @@ module m_read_datasets
   subroutine read_datasets(t2p)
     implicit none
     class(t_T2P), intent(inout)   :: t2p
-
-    if (t2p%opt%INTERP_DIM==2) then
-      call read_datasets_2D(t2p)
-    else if (t2p%opt%INTERP_DIM==3) then
-      call read_datasets_3D(t2p)
+    
+    if (t2p%opt%READ_GRID) then ! Data already interpolated
+      call read_gridded_data(t2p)
     else
-      ! Shouldn't ever reach here, input checked during m_options::read_options() subroutine
+      ! Business as usual
+      if (t2p%opt%INTERP_DIM==2) then
+        call read_datasets_2D(t2p)
+      else if (t2p%opt%INTERP_DIM==3) then
+        call read_datasets_3D(t2p)
+      else
+        ! Shouldn't ever reach here, input checked during m_options::read_options() subroutine
+      end if
     end if
 
   end subroutine read_datasets
@@ -792,6 +797,194 @@ module m_read_datasets
     end if
     
   end subroutine process_header
+
+!-------------------------------------------------------------------------------------------------!
+  
+  subroutine read_gridded_data(t2p)
+  use m_global ,only: NODATA, log
+  use str_module, only: multisplit, span2real
+  use m_vstringlist, only: t_vstringlist, vstrlist_length, vstrlist_index
+  use m_file_io, only: t_file_reader, open_file_reader, item2char
+  use m_error_handler, only: error_handler, warning_handler
+  implicit none
+  class(t_T2P), intent(inout) :: t2p
+
+  type(t_vstringlist)        :: header
+  character(200)             :: file
+  character(2048)            :: line
+  character(256)             :: iomsg
+  character(64)              :: cname
+  character(20)              :: tmp
+  integer                    :: eof, ios
+  integer                    :: ncol, nhead, nlines, nactive
+  integer                    :: i, j, k
+  integer                    :: cid
+  integer                    :: lay, node, nval
+  integer, allocatable       :: lw(:), rw(:)
+  integer, allocatable       :: col(:), cidx(:)   ! mapped class columns -> primary index
+  integer, allocatable       :: seen(:)
+  integer                    :: nfound, nn, total_expected, total_read
+  real                       :: v
+
+  ! Enforce: only one dataset file (no secondary data supported)
+  if (t2p%ndatafiles /= 1) then
+    write(tmp,'(i0)') t2p%ndatafiles
+    call error_handler(1, opt_msg="Only one dataset file can be present when using READ_GRID "//trim(tmp))
+  end if
+
+  call item2char(t2p%dataset_files, 1, file)
+  reader => open_file_reader(file)
+
+  ! Header + column mapping
+  call reader%next_item(eof, header)
+  if (eof /= 0) call error_handler(1, file, "Empty gridded dataset file")
+
+  ncol  = vstrlist_length(header)
+  nhead = 1 + t2p%opt%INTERP_DIM   ! node id + (x,y[,z])
+
+  if (ncol <= nhead) then
+    call error_handler(1, file, "Gridded dataset header has no data columns after node/coords")
+  end if
+
+  allocate(lw(ncol), rw(ncol))
+  allocate(col(ncol), cidx(ncol))
+  col  = 0
+  cidx = 0
+  nfound = 0
+
+  ! Track presence of each primary class in header
+  nactive = t2p%get_active_texture_classes()
+  allocate(seen(t2p%nprimary))
+  seen = 0
+
+  do i = nhead+1, ncol
+    call item2char(header, i, cname)
+    cid = t2p%get_class_id(vstrlist_index(header, i), adjust_for_infer=.false.)
+    if (cid > 0) then
+      if (cid > nactive) then
+        call error_handler(1, file, "Secondary/inferred class column not allowed: "//trim(cname))
+      end if
+      if (seen(cid) == 1) then
+        call error_handler(1, file, "Duplicate primary class column in header: "//trim(cname))
+      end if
+      nfound = nfound + 1
+      col(nfound)  = i
+      cidx(nfound) = cid
+      seen(cid)    = 1
+    end if
+  end do
+
+  if (nfound < 1) then
+    call error_handler(1, file, "No recognizable primary texture class columns found in gridded dataset header")
+  end if
+
+  ! If not inferring last class, require all primaries present
+  if (.not. t2p%opt%INFER_LAST_CLASS) then
+    if (any(seen == 0)) then
+      call error_handler(1, file, "READ_GRID: missing one or more primary texture class columns in header")
+    end if
+  end if
+
+  deallocate(seen)
+
+  ! Allocate output: dset_intermediate(1, nlayers)
+  allocate(t2p%dset_intermediate(1, t2p%fmodel%nlayers))
+
+  do k = 1, t2p%fmodel%nlayers
+    nn = t2p%fmodel%nnodes(k)
+    if (t2p%opt%INFER_LAST_CLASS) then
+      call t2p%dset_intermediate(1,k)%initialize(nn, t2p%nprimary+1, default_value=NODATA)
+    else
+      call t2p%dset_intermediate(1,k)%initialize(nn, t2p%nprimary, default_value=NODATA)
+    end if
+    t2p%dset_intermediate(1,k)%grid => t2p%fmodel%grid(t2p%fmodel%lay2grid(k))%ptrgrid
+    t2p%dset_intermediate(1,k)%id   = 1
+  end do
+
+  ! Read body: sequentially fill (layer,node) assuming perfect order
+  nlines = reader%get_data_len(rewind_to_last_line=.true.) + 1
+
+  rewind(reader%unit)
+  call reader%skip(1, eof)  ! skip header
+
+  lay = 1
+  node = 1
+  total_read = 0
+  total_expected = 0
+  do k=1, t2p%fmodel%nlayers
+    if (t2p%fmodel%is_active_layer(k)) then
+      total_expected = total_expected + t2p%fmodel%nnodes(k)
+    else
+      if (lay==k) lay = k+1  ! find minimum active layer
+    end if
+  end do
+
+  do j = 1, nlines
+    write(tmp, '(i)') j+1
+    read(reader%unit, "(A)", iostat=reader%ioerr, iomsg=iomsg) line
+    if (reader%ioerr /= 0) exit
+    call reader%iomsg_handler(iomsg)
+
+    call multisplit(ios, ncol, lw, rw, line)
+    if (ios /= 0) call error_handler(1, file, "Too few columns on line "//adjustl(trim(tmp)))
+    ! Stop if we've already filled the full model
+    if (lay > t2p%fmodel%nlayers) exit
+
+    ! Fill only recognized class columns; ignore everything else
+    do i = 1, nfound
+      v = span2real(line, lw(col(i)), rw(col(i)), ios)
+      if (ios /= 0) call error_handler(1, file, "Bad class value on line "//adjustl(trim(tmp)))
+      t2p%dset_intermediate(1,lay)%values(cidx(i), node) = v
+    end do
+
+    total_read = total_read + 1
+
+    ! Advance node/layer
+    node = node + 1
+    if (node > t2p%fmodel%nnodes(lay)) then
+      lay = lay + 1
+      ! Make sure it's an active layer
+      do
+        if (lay > t2p%fmodel%nlayers) exit
+        if (.not.t2p%fmodel%is_active_layer(lay)) then
+          lay = lay + 1
+        else
+          exit
+        end if
+      end do
+      node = 1
+    end if
+  end do
+
+  ! Post-processing: bounds, infer last class, inactive -> NODATA, means
+  do k = 1, t2p%fmodel%nlayers
+    if (.not. t2p%fmodel%is_active_layer(k)) cycle
+    nval = size(t2p%dset_intermediate(1,k)%values, dim=1)
+
+    if (.not. t2p%opt%NO_TEX_BOUNDS) then
+      where(t2p%dset_intermediate(1,k)%values < 0.0) t2p%dset_intermediate(1,k)%values = 0.0
+      where(t2p%dset_intermediate(1,k)%values > 1.0) t2p%dset_intermediate(1,k)%values = 1.0
+    end if
+
+    if (t2p%opt%INFER_LAST_CLASS) then
+      do node = 1, size(t2p%dset_intermediate(1,k)%values, dim=2)
+        if (t2p%fmodel%active_nodes_bylay(node,k)) then
+          t2p%dset_intermediate(1,k)%values(t2p%nprimary+1, node) = 1.0 - sum(t2p%dset_intermediate(1,k)%values(1:t2p%nprimary, node), dim=1)
+        end if
+      end do
+    end if
+
+    ! Inactive to NODATA
+    do node = 1, size(t2p%dset_intermediate(1,k)%values, dim=2)
+      if (.not. t2p%fmodel%active_nodes_bylay(node,k)) then
+        t2p%dset_intermediate(1,k)%values(:, node) = NODATA
+      end if
+    end do
+  end do
+
+  deallocate(lw, rw, col, cidx)
+
+end subroutine read_gridded_data
 
 !-------------------------------------------------------------------------------------------------!
 

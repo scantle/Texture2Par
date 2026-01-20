@@ -226,6 +226,11 @@ module m_T2P
       this%opt%WRITE_NODE_FILES = .true.
       this%opt%WRITE_NONE = .true.
     end if
+    
+    ! Enforce READ_GRID
+    if (this%opt%READ_GRID) then
+      this%opt%WRITE_DATASET_FILES = .false.
+    end if
 
     ! Invalid combinations...
     if (this%opt%INTERP_ORDER=="AFTER") then
@@ -252,6 +257,10 @@ module m_T2P
 
     if (this%opt%READ_GRID_WEIGHTS.and.this%opt%WRITE_VARIANCE) then
       call error_handler(1,opt_msg='Cannot WRITE_VARIANCE while reusing weights from READ_GRID_WEIGHTS')
+    end if
+    
+    if (this%opt%READ_GRID.and.this%opt%ONLY_TEXTURE) then
+      call error_handler(1,opt_msg='Cannot do ONLY_TEXTURE when skipping texture interpolation (READ_GRID')
     end if
 
     ! Some warnings
@@ -333,6 +342,7 @@ module m_T2P
     integer :: nlayers, nnodes, i, j, idx
 
     ! Initialize...
+    if (.not. associated(this%dataset_ppzones)) allocate(this%dataset_ppzones)
     call this%dataset_ppzones%initialize(this%fmodel%ppzones%narr, this%fmodel%nlayers, this%fmodel%nnodes(1), 0)
 
     ! Copy over all categories
@@ -375,50 +385,55 @@ module m_T2P
     ! Initialize
     vidx = 0  ! Start variogram index counter
     vario_map = 0  ! Initialize to zero (unassigned)
+    
+    ! If we're not kriging the texture/secondary data, then only a pilot point variogram is needed
+    if (.not. this%opt%READ_GRID) then
 
-    ! Loop over each primary dataset
-    do i = 1, this%nprimary
-      ! Variogram for the primary dataset itself
-      vidx = vidx + 1
-      vario_map(i, i) = vidx  ! Assign variogram index
+      ! Loop over each primary dataset
+      do i = 1, this%nprimary
+        ! Variogram for the primary dataset itself
+        vidx = vidx + 1
+        vario_map(i, i) = vidx  ! Assign variogram index
 
-      if (associated(this%connections)) then  ! has covariates
-        ! Loop over datasets connected to this primary
-        do j = 1, this%nsecondary_by_id(i)+1
-          k = this%connections(j, i)  ! Connected dataset ID
-          if (this%opt%ASYMMETRIC_COV) then
-            ! Assign asymmetric variograms for i -> k
-            if (vario_map(i, k) == 0) then
-              vidx = vidx + 1
-              vario_map(i, k) = vidx
+        if (associated(this%connections)) then  ! has covariates
+          ! Loop over datasets connected to this primary
+          do j = 1, this%nsecondary_by_id(i)+1
+            k = this%connections(j, i)  ! Connected dataset ID
+            if (this%opt%ASYMMETRIC_COV) then
+              ! Assign asymmetric variograms for i -> k
+              if (vario_map(i, k) == 0) then
+                vidx = vidx + 1
+                vario_map(i, k) = vidx
+              end if
+            else
+              ! Assign symmetric variograms for i <-> k
+              if (vario_map(i, k) == 0) then
+                vidx = vidx + 1
+                vario_map(i, k) = vidx
+                vario_map(k, i) = vidx  ! Enforce symmetry
+              end if
             end if
-          else
-            ! Assign symmetric variograms for i <-> k
-            if (vario_map(i, k) == 0) then
-              vidx = vidx + 1
-              vario_map(i, k) = vidx
-              vario_map(k, i) = vidx  ! Enforce symmetry
-            end if
-          end if
-        end do
-      end if
-    end do
-
-    ! Loop over secondary-secondary pairs (assumed always symmetric)
-    do i = 1, this%nsecondary
-      k = this%ntexclasses + i  ! Secondary datasets start after primaries
-      vidx = vidx + 1
-      vario_map(k, k) = vidx  ! Self-variogram for secondary
-
-      do j = i + 1, this%nsecondary  ! Only consider i < j to avoid duplicates
-        k = this%ntexclasses + j
-        if (vario_map(i, k) == 0) then
-          vidx = vidx + 1
-          vario_map(i, k) = vidx
-          vario_map(k, i) = vidx  ! Enforce symmetry
+          end do
         end if
       end do
-    end do
+
+      ! Loop over secondary-secondary pairs (assumed always symmetric)
+      do i = 1, this%nsecondary
+        k = this%ntexclasses + i  ! Secondary datasets start after primaries
+        vidx = vidx + 1
+        vario_map(k, k) = vidx  ! Self-variogram for secondary
+
+        do j = i + 1, this%nsecondary  ! Only consider i < j to avoid duplicates
+          k = this%ntexclasses + j
+          if (vario_map(i, k) == 0) then
+            vidx = vidx + 1
+            vario_map(i, k) = vidx
+            vario_map(k, i) = vidx  ! Enforce symmetry
+          end if
+        end do
+      end do
+      
+    end if  ! end of READ_GRID check
 
     ! Add Pilot Point Variogram (if used/kriging)
     if (.not. this%opt%ONLY_TEXTURE) then
@@ -698,7 +713,7 @@ module m_T2P
     if (this%opt%INTERP_ORDER=="BEFORE") then
       call this%write_status("Interpolating Pilot Point Parameters to "//trim(this%fmodel%name)//" Grid")
       ! T2P 1.0 Default Method
-      allocate(this%dset_intermediate(1,this%fmodel%nlayers))
+      if (.not.this%opt%READ_GRID) allocate(this%dset_intermediate(1,this%fmodel%nlayers))
       allocate(active_to(this%fmodel%grid(1)%ptrgrid%n))
       ! Uses layer 1 grid
       pp_to => this%fmodel%grid(1)%ptrgrid
@@ -727,22 +742,29 @@ module m_T2P
       call this%write_status("Interpolating Interbed Parameters to "//trim(this%fmodel%name)//" Grid")
       call this%interpolate_ib(ib_to, this%fmodel%hsus, this%fmodel%active_nodes_flat, this%interbed_final)
     end if
-
-    if (this%opt%INTERP_ORDER=="BEFORE") then
-      ! Krige textures to fmodel grid
-      call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid", nblank)
-      call this%interpolate_model(this%datasets, this%dset_intermediate)
-      ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
+    
+    if (this%opt%READ_GRID) then ! read in pre-interpolated data on fmodel grid
+      
       call this%write_status("Calculating Hydraulic Parameters", nblank)
       call this%calc_block_parameters(pp_intermediate, this%dset_intermediate, this%par)
+      
+    else  ! Do interpolation
+      if (this%opt%INTERP_ORDER=="BEFORE") then
+        ! Krige textures to fmodel grid
+        call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid", nblank)
+        call this%interpolate_model(this%datasets, this%dset_intermediate)
+        ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
+        call this%write_status("Calculating Hydraulic Parameters", nblank)
+        call this%calc_block_parameters(pp_intermediate, this%dset_intermediate, this%par)
 
-    else if (this%opt%INTERP_ORDER=="AFTER") then
-      ! Calc parameters at data locations
-      call this%write_status("Calculating Hydraulic Parameters", nblank)
-      call this%calc_block_parameters(pp_intermediate, this%datasets, this%dset_intermediate)
-      ! Krige parameters to fmodel grid
-      call this%write_status("Interpolating Hydraulic Parameters to "//trim(this%fmodel%name)//" Grid")
-      call this%interpolate_model(this%dset_intermediate, this%par)
+      else if (this%opt%INTERP_ORDER=="AFTER") then
+        ! Calc parameters at data locations
+        call this%write_status("Calculating Hydraulic Parameters", nblank)
+        call this%calc_block_parameters(pp_intermediate, this%datasets, this%dset_intermediate)
+        ! Krige parameters to fmodel grid
+        call this%write_status("Interpolating Hydraulic Parameters to "//trim(this%fmodel%name)//" Grid")
+        call this%interpolate_model(this%dset_intermediate, this%par)
+      end if
     end if
     call this%write_status("Calculations finished!", nblank)
 
@@ -1123,7 +1145,7 @@ module m_T2P
     implicit none
     class(t_T2P), intent(inout)   :: this
     type(t_layerdata),pointer     :: p(:)
-
+    
     call this%write_status("Writing output files")
 
     ! Write parameters by node/cell, and if texture was kriged, textures by node/cell
@@ -1534,9 +1556,9 @@ module m_T2P
 
     ! Trackers
     if(allocated(this%class_dataset    )) deallocate(this%class_dataset   )
-    if(associated(this%class_names     )) deallocate(this%class_names     )
     if(associated(this%nsecondary_by_id)) deallocate(this%nsecondary_by_id)
-    if(associated(this%connections     )) deallocate(this%connections     )
+    if(associated(this%class_names     )) nullify(this%class_names     )
+    if(associated(this%connections     )) nullify(this%connections     )
     if(associated(this%dataset_ppzones )) deallocate(this%dataset_ppzones )
 
     ! close overwrite unit

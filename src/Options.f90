@@ -32,6 +32,7 @@ module m_options
     logical                  :: SILENT_MODE           ! UNIMPLMENTED
     logical                  :: DEBUG_MODE            ! UNIMPLMENTED
     logical                  :: ONLY_TEXTURE          ! Stops after calculating texture
+    logical                  :: READ_GRID             ! Skips texture interpolation, reads file of gridded texture
     logical                  :: WRITE_MATRIX          ! Writes kriging matrices to log
     logical                  :: WRITE_VARIANCE        ! Write kriging variance
     logical                  :: WRITE_PP_WEIGHTS      ! Write pilot point weights for reuse
@@ -103,6 +104,7 @@ module m_options
     this%SILENT_MODE          = .false.
     this%DEBUG_MODE           = .false.
     this%ONLY_TEXTURE         = .false.
+    this%READ_GRID            = .false.
     this%WRITE_MATRIX         = .false.
     this%WRITE_VARIANCE       = .false.
     this%WRITE_PP_WEIGHTS     = .false.
@@ -200,6 +202,8 @@ subroutine read_options(this, reader)
         this%DEBUG_MODE           = .true.
       case("ONLY_TEXTURE")
         this%ONLY_TEXTURE         = .true.
+      case("READ_GRID")
+        this%READ_GRID            = .true.
       case("WRITE_MATRIX")
         this%WRITE_MATRIX         = .true.
       case("WRITE_VARIANCE")
@@ -330,6 +334,7 @@ subroutine write_input_summary(this)
     if (this%SILENT_MODE        ) logic_true = trim(logic_true) // "SILENT_MODE"         // ","
     if (this%DEBUG_MODE         ) logic_true = trim(logic_true) // "DEBUG_MODE"          // ","
     if (this%ONLY_TEXTURE       ) logic_true = trim(logic_true) // "ONLY_TEXTURE"        // ","
+    if (this%READ_GRID          ) logic_true = trim(logic_true) // "READ_GRID"           // ","
     if (this%WRITE_MATRIX       ) logic_true = trim(logic_true) // "WRITE_MATRIX"        // ","
     if (this%WRITE_VARIANCE     ) logic_true = trim(logic_true) // "WRITE_VARIANCE"      // ","
     if (this%WRITE_PP_WEIGHTS   ) logic_true = trim(logic_true) // "WRITE_PP_WEIGHTS"    // ","
