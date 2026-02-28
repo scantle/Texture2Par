@@ -455,6 +455,10 @@ subroutine read_to_next_iwfm_line(this, eof, skipped)
       ! Comment line based on specific second character criteria
       i = i + 1
       cycle
+    else if (line(1:1) == '#') then
+      ! Always taken as a comment
+      i = i + 1
+      cycle
     else
       ! Non-comment data line, backspace and exit
       backspace(this%unit)

@@ -46,6 +46,8 @@ module m_flow_model
     character(3)                   :: grd_file_type           ! Character string of grid file type (GSF, ...)
     character(100)                 :: grd_file                ! Grid specification file for grid type or MODFLOW-USG
     character(100)                 :: output_file             ! File where aquifer parameters are written
+    character(100)                 :: out_sub_file            ! File where subsidence parameters are written (if active)
+    character(100)                 :: tmp_sub_file            ! File copied for subsidence output (out_sub_file)
     character(60)                  :: projectname             ! project name from T2P, used as output prefix
     real    , allocatable          :: elev(:,:)               ! Bottom Elevations for each layer (node, layer) (indexed from zero = model top)
     type(t_grid_arr),allocatable   :: grid(:)                 ! xy grids for layers
@@ -274,6 +276,8 @@ module m_flow_model
     this%hsu_file      = ''
     this%template_file = ''
     this%output_file   = ''
+    this%out_sub_file  = ''
+    this%tmp_sub_file  = ''
     this%grd_file      = ''
     this%has_aquitards = .false.
 
@@ -1302,6 +1306,17 @@ module m_flow_model
     call item2char(strings, 1, value)
     call fpath_join(path, value, this%output_file)
     call reader%close_file()                   ! Close Simulation file
+    
+    ! GW file, if subsidence
+    if (opt%SUBSIDENCE_ON) then
+      reader => open_file_reader(this%template_file)
+      call reader%read_to_next_iwfm_line(eof)
+      call reader%skip(3, eof)                   ! BCFL, TDFL, PUMPFL
+      call reader%next_item(eof, strings)        ! GW File
+      call item2char(strings, 1, value)
+      call fpath_join(path, value, this%out_sub_file)
+      call reader%close_file()                   ! Close GW file
+    end if
 
   end subroutine read_iwfm
 

@@ -27,7 +27,7 @@
 			<Tool Name="VFPostBuildEventTool"/>
 			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
 		</Configuration>
-		<Configuration Name="Debug|x64" UseCompiler="ifxCompiler" IntermediateDirectory=".\build\$(PlatformName)\$(ConfigurationName)">
+		<Configuration Name="Debug|x64" UseCompiler="ifortCompiler" IntermediateDirectory=".\build\$(PlatformName)\$(ConfigurationName)">
 			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" WarnInterfaces="true" RealKIND="realKIND8" LocalSavedScalarsZero="true" Traceback="true" RuntimeChecks="rtChecksAll" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
 			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
 			<Tool Name="VFResourceCompilerTool"/>
@@ -118,8 +118,7 @@
 				<File RelativePath=".\src\time.f90"/>
 				<File RelativePath=".\src\Tools.f90"/>
 			</Filter>
-			<File RelativePath=".\src\global.f90">
-			</File>
+			<File RelativePath=".\src\global.f90"/>
 			<File RelativePath=".\src\sgemv.f"/>
 			<File RelativePath=".\src\Texture2Par.f90"/>
 			<File RelativePath=".\version.f90"/>

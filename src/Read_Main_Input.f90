@@ -753,7 +753,6 @@ end subroutine read_ppparm_block
 !-------------------------------------------------------------------------------------------------!
 
   subroutine read_SUBSIDENCE_block(t2p, reader)
-    use m_flow_model, only: t_flow_model, create_flow_model_object, check_id_validity
     use m_subsidence, only: interbed_cutoff, setup_ib_variogram, has_ib_classes
     use m_vario, only: t_vgm, get_vgm_from_line
     implicit none
@@ -785,6 +784,8 @@ end subroutine read_ppparm_block
           has_ib_classes = .true.
         case("INTERBED_CUTOFF")
           interbed_cutoff = item2real(strings,2)
+        case("TEMPLATE_FILE")
+          call item2char(strings,2,t2p%fmodel%tmp_sub_file)  ! Requires flow model to be created first? Could move to m_subsidence
         case('VARIOGRAM','VARIO')
           ! Loop and read in structures
           do
