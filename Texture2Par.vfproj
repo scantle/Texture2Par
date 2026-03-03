@@ -28,7 +28,7 @@
 			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
 		</Configuration>
 		<Configuration Name="Debug|x64" UseCompiler="ifortCompiler" IntermediateDirectory=".\build\$(PlatformName)\$(ConfigurationName)">
-			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" WarnInterfaces="true" RealKIND="realKIND8" LocalSavedScalarsZero="true" Traceback="true" RuntimeChecks="rtChecksAll" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
+			<Tool Name="VFFortranCompilerTool" AdditionalOptions="/Qdiag-disable:10448" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" WarnInterfaces="true" RealKIND="realKIND8" LocalSavedScalarsZero="true" Traceback="true" RuntimeChecks="rtChecksAll" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
 			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
 			<Tool Name="VFResourceCompilerTool"/>
 			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
@@ -103,7 +103,8 @@
 				<File RelativePath=".\src\cellblocks.f90"/>
 				<File RelativePath=".\src\ColMap.f90"/>
 				<File RelativePath=".\src\DataSets.f90"/>
-				<File RelativePath=".\src\FlowModel.f90"/>
+				<File RelativePath=".\src\FlowModel.f90">
+				</File>
 				<File RelativePath=".\src\Options.f90"/>
 				<File RelativePath=".\src\PilotPoints.f90"/>
 				<File RelativePath=".\src\T2P.f90"/>

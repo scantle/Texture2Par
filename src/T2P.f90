@@ -633,6 +633,8 @@ module m_T2P
     call vstrlist_append (this%parnames, "SSKVF" )
     call vstrlist_append (this%parnames, "KVF" )
     call vstrlist_append (this%parnames, "IB_THK" )
+    call vstrlist_append (this%parnames, "BEQ" )
+    call vstrlist_append (this%parnames, "NEQ" )
     this%npar = vstrlist_length(this%parnames)
 
   end subroutine setup_subsidence
@@ -1114,9 +1116,14 @@ module m_T2P
             ! KvF
             par_out(k)%values(7,i) = DOT_PRODUCT(KvD(i,this%fine_classes)**pp_obj(r)%values(i, KVp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, KVp, 1))
             ! IB_thk
-            par_out(k)%values(8,i) = wf_sum * thk(i)
+            !par_out(k)%values(8,i) = wf_sum * thk(i)  ! not this one
+            par_out(k)%values(8,i) = this%interbed_final(k)%values(2,i)
+            ! B equivalent (BEQ) sqrt(1/N * sum (b^2))
+            par_out(k)%values(9,i) = sqrt(this%interbed_final(k)%values(3,i) / this%interbed_final(k)%values(1,i))
+            ! N equivalent (NEQ) sum(b) / BEQ
+            par_out(k)%values(10,i) = this%interbed_final(k)%values(2,i) / par_out(k)%values(9,i)
           else
-            par_out(k)%values(5:8,i) = 0.0
+            par_out(k)%values(5:10,i) = 0.0
           end if
         else
           ! Ss
@@ -1179,7 +1186,7 @@ module m_T2P
     if (.not. this%opt%WRITE_NONE) then
       ! Write out flow model input files
       call this%write_minor_status("Writing "//trim(this%fmodel%name)//" Input Files")
-      call this%fmodel%write_fmodel_input(this%par)
+      call this%fmodel%write_fmodel_input(this%par, this%opt)
     end if
 
     call this%write_minor_status('Done Writing.')

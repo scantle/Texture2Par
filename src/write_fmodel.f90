@@ -1,5 +1,5 @@
 module m_write_fmodel
-  
+  use m_error_handler, only: error_handler
 
   contains
 !-----------------------------------------------------------------------------!
@@ -97,6 +97,118 @@ subroutine writeIWFMgwfile(gwtemp, gwfile, par, nlayers, nnodes, nodeid, is_aqui
   call fwrite%close_file()
 
 end subroutine writeIWFMgwfile
+
+!-----------------------------------------------------------------------------!
+
+subroutine writeIWFMsubfile(subtemp, subfile, par, nlayers, nnodes, nodeid, is_aquitard, is_active_layer)
+  use m_file_io, only: t_file_reader, t_file_writer, open_file_reader, open_file_writer
+  use m_datasets, only: t_layerdata
+  implicit none
+
+  character(100),intent(in)  :: subtemp, subfile
+  integer,intent(in)         :: nlayers, nnodes
+  integer,intent(in)         :: nodeid(nnodes)
+  type(t_layerdata),pointer  :: par(:)            ! 
+  logical,intent(in)         :: is_aquitard(nlayers), is_active_layer(nlayers)
+  integer                    :: i, k, vid, ierr, nouth, noutf, ngroup, ru, wu, tmp_i
+  character(256)             :: cerr
+  character(1000)            :: line
+  real                       :: tmp_r, tmp_dcmin, tmp_hc, tmp_head
+  type(t_file_reader),pointer:: fread
+  type(t_file_writer),pointer:: fwrite
+  
+  fread  => open_file_reader(subtemp)
+  ru = fread%unit
+  fwrite => open_file_writer(subfile)
+  wu = fwrite%unit
+  
+  ! Read/Copy Section Number
+  !call CopySettingsSection(ru, wu, 1)
+  read(ru, '(a1000)', iostat = ierr) line
+  write(wu,'(a)') trim(line)
+  select case (trim(line(2:2)))
+    case('4')
+      vid = 4
+    case('5')
+      vid = 5
+    case DEFAULT
+      call error_handler(1,subtemp,opt_msg="Invalid IWFM Subsidence File Version: " // trim(line(2:2)))
+  end select
+  ! Copy over the file header / Input and Output Data File Names
+  call CopyCommentSection(ru, wu)
+  call CopySettingsSection(ru, wu)
+  ! Copy Subsidence Output Data
+  call CopyCommentSection(ru, wu)
+  call CopySettingsSection(ru, wu)
+  ! Copy Subsidence print info
+  call CopyCommentSection(ru, wu)
+  call CopySettingsSection(ru, wu)
+  ! Handle NGROUP setting (in Subsidence Parameters)
+  call CopyCommentSection(ru, wu)
+  read(ru, '(a1000)', iostat = ierr) line
+  write(wu,'(a)') trim(line)
+  read(line, *) ngroup
+  if (ngroup > 0) then
+    write(*,'(a)') 'ERROR - NGROUP > 0 in Subsidence file (parametric grid)'
+    write(*,'(a)') 'Only NGROUP = 0 is supported (node parameters)'
+    stop
+  end if
+  ! Conversion Factors (ensure all we are writing are set to 1.0)
+  call CopyCommentSection(ru, wu)
+  if (vid==4) then
+    read(ru, *) tmp_r, tmp_r, tmp_r, tmp_r, tmp_dcmin, tmp_hc
+    write(wu, '(6f10.4)') 1., 1., 1., 1., tmp_dcmin, tmp_hc
+  else if (vid==5) then
+    read(ru, *) tmp_r, tmp_r, tmp_r, tmp_r, tmp_dcmin, tmp_hc
+    write(wu, '(7f10.4)') 1., 1., 1., 1., tmp_dcmin, tmp_hc, 1.
+  end if
+  ! Unless the parameteric grid lines aren't properly commented out (*)
+  ! This should be the last section of comments
+  call CopyCommentSection(ru, wu)
+  ! DCMIN, HC, & interbed head (for v5) will be read/written from the existing file
+  ! relevant par ids
+  !  5 - Sskef
+  !  6 - SskvF
+  !  7 - KvF
+  !  8 - interbed thickness
+  !  9 - BEQ
+  ! 10 - NEQ
+  if (vid==4) then
+    do i=1, nnodes
+      do k = 2, nlayers, 2  ! Aquitards are setup as layers on top of each aquifer layer
+        if (k.eq.2) then  ! nodeid, Sskef, Sskvf, BEQ, DCMIN, HC
+          read(ru, *) tmp_i, tmp_r, tmp_r, tmp_r, tmp_dcmin, tmp_hc
+          write(wu,'(i10,5es15.5)') nodeid(i), par(k)%values(5:6,i), par(k)%values(9,i), tmp_dcmin, tmp_hc
+        else
+          read(ru, *) tmp_r, tmp_r, tmp_r, tmp_dcmin, tmp_hc
+          write(wu,'(10x,5es15.5)') par(k)%values(5:6,i), par(k)%values(9,i), tmp_dcmin, tmp_hc
+        end if
+      end do
+    end do
+  else if (vid==5) then
+    do i=1, nnodes
+      do k = 2, nlayers, 2  ! Aquitards are setup as layers on top of each aquifer layer
+        if (k.eq.2) then  ! nodeid, Sskef, Sskvf, BEQ, DCMIN, HC, KvF, NEQ
+          read(ru, *) tmp_i, tmp_r, tmp_r, tmp_r, tmp_dcmin, tmp_hc
+          write(wu,'(i10,6es15.5,i5)') nodeid(i), par(k)%values(5:6,i), par(k)%values(9,i), tmp_dcmin, tmp_hc, par(k)%values(7,i), nint(par(k)%values(10,i)*1.0)
+        else
+          read(ru, *) tmp_r, tmp_r, tmp_r, tmp_dcmin, tmp_hc
+          write(wu,'(10x,6es15.5,i5)') par(k)%values(5:6,i), par(k)%values(9,i), tmp_dcmin, tmp_hc, par(k)%values(7,i), nint(par(k)%values(10,i)*1.0)
+        end if
+      end do
+    end do
+  ! v5 has an initial interbed heads section to copy (the rest of the file)
+    do
+      read(ru, '(a1000)', iostat = ierr) line
+      if (ierr /= 0) exit
+      write(wu,'(a)') adjustl(trim(line))
+    end do
+  end if
+  
+  call fread%close_file()
+  call fwrite%close_file()
+  
+end subroutine writeIWFMsubfile
 
 !-----------------------------------------------------------------------------!
 ! IWFM File copying subroutines

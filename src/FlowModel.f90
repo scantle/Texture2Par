@@ -537,12 +537,13 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine write_fmodel_input(this, par)
+  subroutine write_fmodel_input(this, par, opt)
     ! Base class method, should not be run
     use m_datasets, only: t_layerdata
     implicit none
-    class(t_flow_model)        :: this
-    type(t_layerdata),pointer  :: par(:)
+    class(t_flow_model)         :: this
+    type(t_layerdata),pointer   :: par(:)
+    class(t_options),intent(in) :: opt
 
   end subroutine write_fmodel_input
 
@@ -1372,15 +1373,20 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine write_fmodel_input_iwfm(this, par)
-    use m_write_fmodel, only: writeIWFMgwfile
+  subroutine write_fmodel_input_iwfm(this, par, opt)
+    use m_write_fmodel, only: writeIWFMgwfile, writeIWFMsubfile
     use m_datasets, only: t_layerdata
     implicit none
-    class(t_iwfm_model)        :: this
-    type(t_layerdata),pointer  :: par(:)
+    class(t_iwfm_model)         :: this
+    type(t_layerdata),pointer   :: par(:)
+    class(t_options),intent(in) :: opt
 
     ! External for now
     call writeIWFMgwfile(this%template_file, this%output_file, par, this%nlayers, this%nnodes(1), this%nodeid, this%lay_aqtard, this%lay_exist)
+    
+    if (opt%SUBSIDENCE_ON) then  ! (subtemp, subfile, par, nlayers, nnodes, nodeid, is_aquitard, is_active_layer)
+      call writeIWFMsubfile(this%tmp_sub_file, this%out_sub_file, par, this%nlayers, this%nnodes(1), this%nodeid, this%lay_aqtard, this%lay_exist)
+    end if
 
   end subroutine write_fmodel_input_iwfm
 
@@ -1689,13 +1695,14 @@ module m_flow_model
 
 !-------------------------------------------------------------------------------------------------!
 
- subroutine write_fdgrid_out(this, par)
+ subroutine write_fdgrid_out(this, par, opt)
     use m_datasets, only: t_layerdata
     use m_file_io, only: t_file_reader, t_file_writer, open_file_reader, open_file_writer
     use m_write_fmodel
     implicit none
     class(t_flow_fdgrid)         :: this
     type(t_layerdata),pointer    :: par(:)
+    class(t_options),intent(in)  :: opt
     type(t_file_writer),pointer  :: fwrite
     integer                      :: ierr
     character(500)               :: fname
@@ -2046,19 +2053,20 @@ module m_flow_model
 
   end subroutine write_node_file_mf
 !-------------------------------------------------------------------------------------------------!
-  subroutine write_fmodel_input_mf(this, par)
+  subroutine write_fmodel_input_mf(this, par, opt)
     use GLOBAL, ONLY:IUNIT
     use m_datasets, only: t_layerdata
     use m_file_io, only: t_file_reader, t_file_writer, open_file_reader, open_file_writer
     use m_write_fmodel
     implicit none
-    class(t_modflow_model)     :: this
-    type(t_layerdata),pointer  :: par(:)
-  type(t_file_reader),pointer  :: fread
-  type(t_file_writer),pointer  :: fwrite
-    integer                    :: ierr, upwflag
-    character(500)             :: fname
-    logical                    :: lop
+    class(t_modflow_model)       :: this
+    type(t_layerdata),pointer    :: par(:)
+    class(t_options),intent(in)  :: opt
+    type(t_file_reader),pointer  :: fread
+    type(t_file_writer),pointer  :: fwrite
+    integer                      :: ierr, upwflag
+    character(500)               :: fname
+    logical                      :: lop
 
     !write(*,'(2x,2(a,3a))') 'Reading temp ', this%gwftyp, ', writing new ', this%gwftyp
 
