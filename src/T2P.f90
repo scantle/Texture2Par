@@ -598,7 +598,7 @@ module m_T2P
 
     ! Setup arrays to track which classes (by id) are fine and coarse
     nfine = vstrlist_length(fine_classes)
-    allocate(this%fine_classes(nfine), this%coarse_classes(this%nclasses - nfine))
+    allocate(this%fine_classes(nfine), this%coarse_classes(this%ntexclasses - nfine))
     this%fine_classes = 0
     do i=1, nfine
       class_id = this%get_class_id(vstrlist_index(fine_classes, i))

@@ -251,7 +251,7 @@ module m_read_datasets
           ! Store location
           do k=1, t2p%fmodel%nlayers
             t2p%datasets(didx,k)%fmodel_loc(idx) = fmodel_loc
-            if (t2p%opt%SUBSIDENCE_ON) then
+            if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
               t2p%interbed_count(k)%fmodel_loc(idx) = fmodel_loc
               t2p%interbed_thick(k)%fmodel_loc(idx) = fmodel_loc
             end if
@@ -266,7 +266,7 @@ module m_read_datasets
           do k=1, ncats
             hsu_id = t2p%fmodel%hsus%get_id(hsus(k))
             t2p%datasets(didx,k)%category(idx) = hsu_id
-            if (t2p%opt%SUBSIDENCE_ON) then
+            if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
               t2p%interbed_count(k)%category(idx) = hsu_id
               t2p%interbed_thick(k)%category(idx) = hsu_id
             end if
@@ -530,7 +530,7 @@ module m_read_datasets
               end if
             end if
             call t2p%fmodel%get_elev_at_point([x,y], local_elevs(:), fmodel_loc)
-            if (t2p%opt%SUBSIDENCE_ON) then
+            if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
               do k=1, t2p%fmodel%nlayers
                 t2p%interbed_count(k)%fmodel_loc(idx) = fmodel_loc
                 t2p%interbed_thick(k)%fmodel_loc(idx) = fmodel_loc
