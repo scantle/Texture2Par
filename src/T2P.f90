@@ -1037,7 +1037,7 @@ module m_T2P
     type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !values([Kh, Kv, Ss, Sy], npoints) subsidence = [Kh, Kv, Sskec, Sy, Sskef, Sskvf, Kvf,BEQ,NEQ]
     integer                        :: i, k, r
     integer                        :: Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, Stp, Sske, Sskv
-    real                           :: wf_sum, wc_sum
+    real                           :: wf_sum, wc_sum, beq
     real    ,allocatable           :: depths(:),thk(:),KhD(:,:),KvD(:,:)
 
     ! Get parameter ids (indices in matrix, not the actual values)
@@ -1116,9 +1116,10 @@ module m_T2P
             ! KvF
             par_out(k)%values(7,i) = DOT_PRODUCT(KvD(i,this%fine_classes)**pp_obj(r)%values(i, KVp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, KVp, 1))
             ! B equivalent (BEQ) sqrt(1/N * sum (b^2)) -- min to prevent exceeding layer thickness
-            par_out(k)%values(8,i) = min(sqrt(this%interbed_final(k)%values(3,i) / this%interbed_final(k)%values(1,i)), thk(i))
+            beq = sqrt(this%interbed_final(k)%values(3,i) / this%interbed_final(k)%values(1,i))
+            par_out(k)%values(8,i) = min(beq, thk(i))
             ! N equivalent (NEQ) sum(b) / BEQ
-            par_out(k)%values(9,i) = this%interbed_final(k)%values(2,i) / par_out(k)%values(8,i)
+            par_out(k)%values(9,i) = this%interbed_final(k)%values(2,i) / beq
             
             ! If NEQ is going to be rounded to 0 or ib_thick is below a threshold, we just assign subsidence parameters to be 0
             if (par_out(k)%values(9,i) <= min_ib_n .or. this%interbed_final(k)%values(2,i) < min_ib_thick) then
