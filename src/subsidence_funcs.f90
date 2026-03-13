@@ -12,6 +12,8 @@ module m_subsidence
   implicit none
   
   real                             :: interbed_cutoff = 1.0
+  real,parameter                   :: min_ib_thick    = 1e-6
+  real,parameter                   :: min_ib_n        = 0.5
   class(t_interpolator),pointer    :: interp_ib => null()
   
   logical                          :: has_ib_variogram = .false.

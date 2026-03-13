@@ -170,18 +170,17 @@ subroutine writeIWFMsubfile(subtemp, subfile, par, nlayers, nnodes, nodeid, is_a
   !  5 - Sskef
   !  6 - SskvF
   !  7 - KvF
-  !  8 - interbed thickness
-  !  9 - BEQ
-  ! 10 - NEQ
+  !  8 - BEQ
+  !  9 - NEQ
   if (vid==4) then
     do i=1, nnodes
       do k = 2, nlayers, 2  ! Aquitards are setup as layers on top of each aquifer layer
         if (k.eq.2) then  ! nodeid, Sskef, Sskvf, BEQ, DCMIN, HC
           read(ru, *) tmp_i, tmp_r, tmp_r, tmp_r, tmp_dcmin, tmp_hc
-          write(wu,'(i10,5es15.5)') nodeid(i), par(k)%values(5:6,i), par(k)%values(9,i), tmp_dcmin, tmp_hc
+          write(wu,'(i10,5es15.5)') nodeid(i), par(k)%values(5:6,i), par(k)%values(8,i), tmp_dcmin, tmp_hc
         else
           read(ru, *) tmp_r, tmp_r, tmp_r, tmp_dcmin, tmp_hc
-          write(wu,'(10x,5es15.5)') par(k)%values(5:6,i), par(k)%values(9,i), tmp_dcmin, tmp_hc
+          write(wu,'(10x,5es15.5)') par(k)%values(5:6,i), par(k)%values(8,i), tmp_dcmin, tmp_hc
         end if
       end do
     end do
@@ -190,10 +189,10 @@ subroutine writeIWFMsubfile(subtemp, subfile, par, nlayers, nnodes, nodeid, is_a
       do k = 2, nlayers, 2  ! Aquitards are setup as layers on top of each aquifer layer
         if (k.eq.2) then  ! nodeid, Sskef, Sskvf, BEQ, DCMIN, HC, KvF, NEQ
           read(ru, *) tmp_i, tmp_r, tmp_r, tmp_r, tmp_dcmin, tmp_hc
-          write(wu,'(i10,6es15.5,i5)') nodeid(i), par(k)%values(5:6,i), par(k)%values(9,i), tmp_dcmin, tmp_hc, par(k)%values(7,i), nint(par(k)%values(10,i)*1.0)
+          write(wu,'(i10,6es15.5,i5)') nodeid(i), par(k)%values(5:6,i), par(k)%values(8,i), tmp_dcmin, tmp_hc, par(k)%values(7,i), nint(par(k)%values(9,i)*1.0)
         else
           read(ru, *) tmp_r, tmp_r, tmp_r, tmp_dcmin, tmp_hc
-          write(wu,'(10x,6es15.5,i5)') par(k)%values(5:6,i), par(k)%values(9,i), tmp_dcmin, tmp_hc, par(k)%values(7,i), nint(par(k)%values(10,i)*1.0)
+          write(wu,'(10x,6es15.5,i5)') par(k)%values(5:6,i), par(k)%values(8,i), tmp_dcmin, tmp_hc, par(k)%values(7,i), nint(par(k)%values(9,i)*1.0)
         end if
       end do
     end do

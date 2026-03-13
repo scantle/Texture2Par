@@ -632,7 +632,6 @@ module m_T2P
     call vstrlist_append (this%parnames, "SSKEF" )
     call vstrlist_append (this%parnames, "SSKVF" )
     call vstrlist_append (this%parnames, "KVF" )
-    call vstrlist_append (this%parnames, "IB_THK" )
     call vstrlist_append (this%parnames, "BEQ" )
     call vstrlist_append (this%parnames, "NEQ" )
     this%npar = vstrlist_length(this%parnames)
@@ -1030,17 +1029,18 @@ module m_T2P
 
   subroutine calc_block_parameters(this, pp_obj, tex_obs, par_out)
     use m_pilotpoints, only: propnames
+    use m_subsidence, only: min_ib_thick, min_ib_n
     implicit none
     class(t_T2P), intent(inout)    :: this
     type(t_pilotpoints),intent(in) :: pp_obj(this%fmodel%ppzones%narr) ! Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, STp
     type(t_layerdata),intent(inout):: tex_obs(this%fmodel%nlayers)  !  values(ntexclasses, npoints)
-    type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !values([Kh, Kv, Ss, Sy], npoints) subsidence = [Kh, Kv, Sskec, Sy, Sskef, Sskvf, Kvf, IB_thk]
+    type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !values([Kh, Kv, Ss, Sy], npoints) subsidence = [Kh, Kv, Sskec, Sy, Sskef, Sskvf, Kvf,BEQ,NEQ]
     integer                        :: i, k, r
     integer                        :: Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, Stp, Sske, Sskv
     real                           :: wf_sum, wc_sum
     real    ,allocatable           :: depths(:),thk(:),KhD(:,:),KvD(:,:)
 
-    ! Get parameter ids (indexes in matrix, not the actual values)
+    ! Get parameter ids (indices in matrix, not the actual values)
     Kmin  = vstrlist_search(propnames, 'Kmin')   ! 1
     Kmax  = vstrlist_search(propnames, 'Kmax')   ! 2
     Ss    = vstrlist_search(propnames, 'Ss')     ! 3
@@ -1115,15 +1115,18 @@ module m_T2P
             par_out(k)%values(6,i) = DOT_PRODUCT(pp_obj(r)%values(i,Sskv,this%fine_classes)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, STp, 1))
             ! KvF
             par_out(k)%values(7,i) = DOT_PRODUCT(KvD(i,this%fine_classes)**pp_obj(r)%values(i, KVp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, KVp, 1))
-            ! IB_thk
-            !par_out(k)%values(8,i) = wf_sum * thk(i)  ! not this one
-            par_out(k)%values(8,i) = this%interbed_final(k)%values(2,i)
-            ! B equivalent (BEQ) sqrt(1/N * sum (b^2))
-            par_out(k)%values(9,i) = sqrt(this%interbed_final(k)%values(3,i) / this%interbed_final(k)%values(1,i))
+            ! B equivalent (BEQ) sqrt(1/N * sum (b^2)) -- min to prevent exceeding layer thickness
+            par_out(k)%values(8,i) = min(sqrt(this%interbed_final(k)%values(3,i) / this%interbed_final(k)%values(1,i)), thk(i))
             ! N equivalent (NEQ) sum(b) / BEQ
-            par_out(k)%values(10,i) = this%interbed_final(k)%values(2,i) / par_out(k)%values(9,i)
+            par_out(k)%values(9,i) = this%interbed_final(k)%values(2,i) / par_out(k)%values(8,i)
+            
+            ! If NEQ is going to be rounded to 0 or ib_thick is below a threshold, we just assign subsidence parameters to be 0
+            if (par_out(k)%values(9,i) <= min_ib_n .or. this%interbed_final(k)%values(2,i) < min_ib_thick) then
+              par_out(k)%values(5:9,i) = 0.0
+            end if
           else
-            par_out(k)%values(5:10,i) = 0.0
+            ! zero out subsidence parameters
+            par_out(k)%values(5:9,i) = 0.0
           end if
         else
           ! Ss
