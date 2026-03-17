@@ -172,6 +172,7 @@ module m_T2P
     call vstrlist_new(this%ibparnames)
     call vstrlist_append (this%ibparnames, 'IB_COUNT')
     call vstrlist_append (this%ibparnames, 'IB_THICK')
+    call vstrlist_append (this%ibparnames, 'IB_THICKSQ')
 
     ! Intialize counters (useful to determine when a block is missing or has not been read yet)
     this%nclasses = 0
@@ -1232,7 +1233,7 @@ module m_T2P
     end do
 
     if (this%opt%SUBSIDENCE_ON) then
-      do i=1,2
+      do i=1,vstrlist_length(this%ibparnames)
         call item2char(this%ibparnames, i, temp)
         write(fname,'(3a)') trim(this%opt%PROJECT_NAME)//'_', trim(temp), trim(suffix(1))
         if (i==1) then
