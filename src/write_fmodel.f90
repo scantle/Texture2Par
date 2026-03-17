@@ -4,7 +4,7 @@ module m_write_fmodel
   contains
 !-----------------------------------------------------------------------------!
 ! IWFM File copying subroutines
-!-----------------------------------------------------------------------------!  
+!-----------------------------------------------------------------------------!
 subroutine writeIWFMgwfile(gwtemp, gwfile, par, nlayers, nnodes, nodeid, is_aquitard, is_active_layer)
   use m_file_io, only: t_file_reader, t_file_writer, open_file_reader, open_file_writer
   use m_datasets, only: t_layerdata
@@ -108,7 +108,7 @@ subroutine writeIWFMsubfile(subtemp, subfile, par, nlayers, nnodes, nodeid, is_a
   character(100),intent(in)  :: subtemp, subfile
   integer,intent(in)         :: nlayers, nnodes
   integer,intent(in)         :: nodeid(nnodes)
-  type(t_layerdata),pointer  :: par(:)            ! 
+  type(t_layerdata),pointer  :: par(:)            !
   logical,intent(in)         :: is_aquitard(nlayers), is_active_layer(nlayers)
   integer                    :: i, k, vid, ierr, nouth, noutf, ngroup, ru, wu, tmp_i
   character(256)             :: cerr
@@ -116,12 +116,12 @@ subroutine writeIWFMsubfile(subtemp, subfile, par, nlayers, nnodes, nodeid, is_a
   real                       :: tmp_r, tmp_dcmin, tmp_hc, tmp_head
   type(t_file_reader),pointer:: fread
   type(t_file_writer),pointer:: fwrite
-  
+
   fread  => open_file_reader(subtemp)
   ru = fread%unit
   fwrite => open_file_writer(subfile)
   wu = fwrite%unit
-  
+
   ! Read/Copy Section Number
   !call CopySettingsSection(ru, wu, 1)
   read(ru, '(a1000)', iostat = ierr) line
@@ -189,10 +189,10 @@ subroutine writeIWFMsubfile(subtemp, subfile, par, nlayers, nnodes, nodeid, is_a
       do k = 2, nlayers, 2  ! Aquitards are setup as layers on top of each aquifer layer
         if (k.eq.2) then  ! nodeid, Sskef, Sskvf, BEQ, DCMIN, HC, KvF, NEQ
           read(ru, *) tmp_i, tmp_r, tmp_r, tmp_r, tmp_dcmin, tmp_hc
-          write(wu,'(i10,6es15.5,i5)') nodeid(i), par(k)%values(5:6,i), par(k)%values(8,i), tmp_dcmin, tmp_hc, par(k)%values(7,i), nint(par(k)%values(9,i)*1.0)
+          write(wu,'(i10,7es15.5)') nodeid(i), par(k)%values(5:6,i), par(k)%values(8,i), tmp_dcmin, tmp_hc, par(k)%values(7,i), par(k)%values(9,i)
         else
           read(ru, *) tmp_r, tmp_r, tmp_r, tmp_dcmin, tmp_hc
-          write(wu,'(10x,6es15.5,i5)') par(k)%values(5:6,i), par(k)%values(8,i), tmp_dcmin, tmp_hc, par(k)%values(7,i), nint(par(k)%values(9,i)*1.0)
+          write(wu,'(10x,7es15.5)') par(k)%values(5:6,i), par(k)%values(8,i), tmp_dcmin, tmp_hc, par(k)%values(7,i), par(k)%values(9,i)
         end if
       end do
     end do
@@ -203,10 +203,10 @@ subroutine writeIWFMsubfile(subtemp, subfile, par, nlayers, nnodes, nodeid, is_a
       write(wu,'(a)') adjustl(trim(line))
     end do
   end if
-  
+
   call fread%close_file()
   call fwrite%close_file()
-  
+
 end subroutine writeIWFMsubfile
 
 !-----------------------------------------------------------------------------!
@@ -412,7 +412,7 @@ end subroutine
                             alpha,beta,sr,brook,BP,IBPN
 
       use m_datasets, only: t_layerdata
-                            
+
       ! Input
       integer,intent(in)   :: out
       type(t_layerdata),pointer  :: par(:)

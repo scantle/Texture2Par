@@ -36,8 +36,8 @@ module m_T2P
     type(t_layerdata),pointer          :: interbed_final(:)       ! Where the kriged interbed ararys are stored %values(3,:) (count, thick, thick^2)
     type(t_pilotpoints),pointer        :: pilot_points
     type(t_pilotpoints),pointer        :: pilot_points_aquitard
-                                       
-    ! Counters                         
+
+    ! Counters
     integer                            :: npar        ! Kh, Kv, Ss, Sy
     integer                            :: nclasses    ! Number of data classes
     integer                            :: ntexclasses ! Texture datasets (for which hydraulic properties exist) (one may be inferred)
@@ -48,8 +48,8 @@ module m_T2P
     integer                            :: ndatafiles  ! Number of data files to read in
     integer                            :: nhsus       ! Number of Hydrostratigraphic Units (HSUs)
                                                       ! (Formerly "geologic zones")
-                                       
-    ! Trackers                         
+
+    ! Trackers
     type(t_vstringlist),pointer        :: class_names           ! Data class names
     type(t_vstringlist)                :: parnames              ! Names of output parameters calculated
     type(t_vstringlist)                :: ibparnames            ! Names of subsidence interbed parameters calculated
@@ -167,7 +167,7 @@ module m_T2P
     call vstrlist_append (this%parnames, "SS" )
     call vstrlist_append (this%parnames, "SY" )
     this%npar = vstrlist_length(this%parnames)
-    
+
     ! Initialize interbed parameter list
     call vstrlist_new(this%ibparnames)
     call vstrlist_append (this%ibparnames, 'IB_COUNT')
@@ -226,7 +226,7 @@ module m_T2P
       this%opt%WRITE_NODE_FILES = .true.
       this%opt%WRITE_NONE = .true.
     end if
-    
+
     ! Enforce READ_GRID
     if (this%opt%READ_GRID) then
       this%opt%WRITE_DATASET_FILES = .false.
@@ -245,7 +245,7 @@ module m_T2P
     if (this%opt%WRITE_PP_WEIGHTS.and.this%opt%READ_PP_WEIGHTS) then
       call error_handler(1,opt_msg='Cannot both WRITE_PP_WEIGHTS and READ_PP_WEIGHTS - only one')
     end if
-    
+
     if (this%opt%WRITE_IB_WEIGHTS.and.this%opt%READ_IB_WEIGHTS) then
       call error_handler(1,opt_msg='Cannot both WRITE_IB_WEIGHTS and READ_IB_WEIGHTS - only one')
     end if
@@ -258,7 +258,7 @@ module m_T2P
     if (this%opt%READ_GRID_WEIGHTS.and.this%opt%WRITE_VARIANCE) then
       call error_handler(1,opt_msg='Cannot WRITE_VARIANCE while reusing weights from READ_GRID_WEIGHTS')
     end if
-    
+
     if (this%opt%READ_GRID.and.this%opt%ONLY_TEXTURE) then
       call error_handler(1,opt_msg='Cannot do ONLY_TEXTURE when skipping texture interpolation (READ_GRID')
     end if
@@ -385,7 +385,7 @@ module m_T2P
     ! Initialize
     vidx = 0  ! Start variogram index counter
     vario_map = 0  ! Initialize to zero (unassigned)
-    
+
     ! If we're not kriging the texture/secondary data, then only a pilot point variogram is needed
     if (.not. this%opt%READ_GRID) then
 
@@ -432,7 +432,7 @@ module m_T2P
           end if
         end do
       end do
-      
+
     end if  ! end of READ_GRID check
 
     ! Add Pilot Point Variogram (if used/kriging)
@@ -678,7 +678,7 @@ module m_T2P
         call error_handler(1,opt_msg="Mismatch in aquitard existance between Pilot Points and Model")
       end if
     end if
-    
+
     if (this%opt%SUBSIDENCE_ON) call check_subsidence_inputs(this%opt)
 
   end subroutine check_major_inputs
@@ -734,7 +734,7 @@ module m_T2P
 
     ! Interpolate PP to PPTO_grid
     call this%interpolate_pp(pp_to, cat_to, active_to, pp_intermediate)
-    
+
     ! If subsidence is on, interpolate interbed counts/thicknesses
     ! These always go to the model grid: they are grid-scale properties
     if (this%opt%SUBSIDENCE_ON) then
@@ -743,12 +743,12 @@ module m_T2P
       call this%write_status("Interpolating Interbed Parameters to "//trim(this%fmodel%name)//" Grid")
       call this%interpolate_ib(ib_to, this%fmodel%hsus, this%fmodel%active_nodes_flat, this%interbed_final)
     end if
-    
+
     if (this%opt%READ_GRID) then ! read in pre-interpolated data on fmodel grid
-      
+
       call this%write_status("Calculating Hydraulic Parameters", nblank)
       call this%calc_block_parameters(pp_intermediate, this%dset_intermediate, this%par)
-      
+
     else  ! Do interpolation
       if (this%opt%INTERP_ORDER=="BEFORE") then
         ! Krige textures to fmodel grid
@@ -952,7 +952,7 @@ module m_T2P
 
   end subroutine
 
-!-------------------------------------------------------------------------------------------------!  
+!-------------------------------------------------------------------------------------------------!
 
   subroutine interpolate_ib(this, to_grid, to_categories, to_active, results)
     use m_grid, only: t_grid
@@ -985,7 +985,7 @@ module m_T2P
       ! Initialize weights & results for this array
       call weights%initialize(this%interbed_count(1)%grid%n, to_grid%n)  !input_n, output_n
       call results(k)%initialize(this%fmodel%grid(1)%ptrgrid%n, 3, default_value=NODATA)
-      
+
       ! Check if layer is active (generally IWFM: means it has thickness)
       if (.not. this%fmodel%is_active_layer(k)) cycle
 
@@ -1029,7 +1029,6 @@ module m_T2P
 
   subroutine calc_block_parameters(this, pp_obj, tex_obs, par_out)
     use m_pilotpoints, only: propnames
-    use m_subsidence, only: min_ib_thick, min_ib_n
     implicit none
     class(t_T2P), intent(inout)    :: this
     type(t_pilotpoints),intent(in) :: pp_obj(this%fmodel%ppzones%narr) ! Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, STp
@@ -1037,7 +1036,7 @@ module m_T2P
     type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !values([Kh, Kv, Ss, Sy], npoints) subsidence = [Kh, Kv, Sskec, Sy, Sskef, Sskvf, Kvf,BEQ,NEQ]
     integer                        :: i, k, r
     integer                        :: Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, Stp, Sske, Sskv
-    real                           :: wf_sum, wc_sum, beq
+    real                           :: wf_sum, wc_sum, beq, thk_adj, thk_sf, n_adj
     real    ,allocatable           :: depths(:),thk(:),KhD(:,:),KvD(:,:)
 
     ! Get parameter ids (indices in matrix, not the actual values)
@@ -1108,23 +1107,22 @@ module m_T2P
           else
             par_out(k)%values(3,i) = 0.0
           end if
-          if (wf_sum > 0.0) then
+          if (wf_sum > 0.0                                                .and. &
+              this%interbed_final(k)%values(1,i) >= this%opt%MIN_IB_COUNT .and. &
+              this%interbed_final(k)%values(2,i) >= this%opt%MIN_IB_THICK) then
             ! SskeF
             par_out(k)%values(5,i) = DOT_PRODUCT(pp_obj(r)%values(i,Sske,this%fine_classes)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, STp, 1))
             ! SskvF
             par_out(k)%values(6,i) = DOT_PRODUCT(pp_obj(r)%values(i,Sskv,this%fine_classes)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, STp, 1))
             ! KvF
             par_out(k)%values(7,i) = DOT_PRODUCT(KvD(i,this%fine_classes)**pp_obj(r)%values(i, KVp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, KVp, 1))
-            ! B equivalent (BEQ) sqrt(1/N * sum (b^2)) -- min to prevent exceeding layer thickness
-            beq = sqrt(this%interbed_final(k)%values(3,i) / this%interbed_final(k)%values(1,i))
-            par_out(k)%values(8,i) = min(beq, thk(i))
-            ! N equivalent (NEQ) sum(b) / BEQ
-            par_out(k)%values(9,i) = this%interbed_final(k)%values(2,i) / beq
-            
-            ! If NEQ is going to be rounded to 0 or ib_thick is below a threshold, we just assign subsidence parameters to be 0
-            if (par_out(k)%values(9,i) <= min_ib_n .or. this%interbed_final(k)%values(2,i) < min_ib_thick) then
-              par_out(k)%values(5:9,i) = 0.0
-            end if
+            ! B equivalent (BEQ) and N equivalent (NEQ) calculations
+            thk_adj = min(thk(i)*0.999, this%interbed_final(k)%values(2,i))     ! prevent interbed thicness exceeding layer thickness
+            thk_sf = thk_adj / this%interbed_final(k)%values(2,i)               ! scaling factor to adjust interpolated interbed thickness to layer thickness
+            n_adj   = max(this%interbed_final(k)%values(1,i), 1.0)              ! make sure the interbed count is larger than 1 to prevent inflating Beq
+            beq = thk_sf * sqrt(this%interbed_final(k)%values(3,i) / n_adj )    ! B equivalent (BEQ) sqrt(1/N * sum (b^2))
+            par_out(k)%values(8,i) = min(beq, thk_adj)                          ! limit BEQ to thickness
+            par_out(k)%values(9,i) = thk_adj / par_out(k)%values(8,i)           ! N equivalent (NEQ) sum(b) / BEQ
           else
             ! zero out subsidence parameters
             par_out(k)%values(5:9,i) = 0.0
@@ -1156,7 +1154,7 @@ module m_T2P
     implicit none
     class(t_T2P), intent(inout)   :: this
     type(t_layerdata),pointer     :: p(:)
-    
+
     call this%write_status("Writing output files")
 
     ! Write parameters by node/cell, and if texture was kriged, textures by node/cell
@@ -1232,7 +1230,7 @@ module m_T2P
       p=>this%datasets(1+i,:)
       call this%write_dataset_file(fname, p,1)
     end do
-    
+
     if (this%opt%SUBSIDENCE_ON) then
       do i=1,2
         call item2char(this%ibparnames, i, temp)
@@ -1535,7 +1533,7 @@ module m_T2P
   end function get_active_texture_classes
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   function is_inferred_class_fine(this) result (inferred_fine)  ! specific, no?
     implicit none
     class(t_T2P)            :: this
@@ -1549,7 +1547,7 @@ module m_T2P
     end if
     return
   end function
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine finalize(this)

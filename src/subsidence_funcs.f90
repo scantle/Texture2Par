@@ -8,37 +8,35 @@ module m_subsidence
   use m_options, only: t_options
   use m_error_handler, only: error_handler
   use m_grid, only: t_grid
-  
+
   implicit none
-  
+
   real                             :: interbed_cutoff = 1.0
-  real,parameter                   :: min_ib_thick    = 1e-6
-  real,parameter                   :: min_ib_n        = 0.5
   class(t_interpolator),pointer    :: interp_ib => null()
-  
+
   logical                          :: has_ib_variogram = .false.
   logical                          :: has_ib_classes   = .false.
-  
+
   contains
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine build_interbed_mask(nsets, interbed_class_ids, file_class_ids, interbed_mask)
     implicit none
     integer,intent(in)    :: nsets, interbed_class_ids(:), file_class_ids(nsets)
     logical,intent(out)   :: interbed_mask(nsets)
     integer               :: i, j
-    
+
     interbed_mask = .false.
-    
+
     do i=1, size(file_class_ids)
       do j=1, size(interbed_class_ids)
         if (file_class_ids(i)==interbed_class_ids(j)) interbed_mask(i) = .true.
       end do
     end do
-  
+
   end subroutine
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine setup_ib_variogram(variograms, nnear, nstruct, opt)
@@ -47,7 +45,7 @@ module m_subsidence
     type(t_vgm),pointer           :: variograms(:,:)
     class(*),pointer              :: p
     type(t_options),intent(in)    :: opt
-    
+
     ! Handle Interpolation Method
     select case (opt%INTERP_METHOD)
       case("OK","SK")
@@ -69,9 +67,9 @@ module m_subsidence
 
     has_ib_variogram = .true.
   end subroutine setup_ib_variogram
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine check_subsidence_inputs(opt)
     ! Run in main Texture2Par file, currently before datasets are read but after fmodel/categories
     implicit none
@@ -84,14 +82,14 @@ module m_subsidence
     end if
 
   end subroutine check_subsidence_inputs
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
 logical function is_interbed_interval(wvalues, nsets, interbed_mask, inferred_fine)
   implicit none
   real   , intent(in) :: wvalues(:)
   integer, intent(in) :: nsets
-  logical, intent(in) :: interbed_mask(:)   ! size >= nsets, marks which texture columns “count” as interbed
+  logical, intent(in) :: interbed_mask(:)   ! size >= nsets, marks which texture columns count as interbed
   logical, intent(in) :: inferred_fine      ! when true, count (1 - sum(known)) as a candidate interbed class
   integer :: i
   real :: s_known, s_interbed, inferred
@@ -110,9 +108,9 @@ logical function is_interbed_interval(wvalues, nsets, interbed_mask, inferred_fi
   end if
   is_interbed_interval = (s_interbed >= interbed_cutoff)
 end function is_interbed_interval
-  
+
 !-------------------------------------------------------------------------------------------------!
-  
+
 subroutine accumulate_interbeds(local_elevs, intv_top, intv_bot, is_interbed, kbed_open, kbed_run, iw, interbed_count, interbed_thick)
   implicit none
   real   , intent(in)               :: local_elevs(0:)    ! layer tops: 0..nlayers
@@ -154,7 +152,7 @@ subroutine accumulate_interbeds(local_elevs, intv_top, intv_bot, is_interbed, kb
     end if
   end do
 end subroutine accumulate_interbeds
-  
+
 !-------------------------------------------------------------------------------------------------!
 
 subroutine reset_interbeds(iw, kbed_open, kbed_run, interbed_thick)
@@ -175,5 +173,5 @@ subroutine reset_interbeds(iw, kbed_open, kbed_run, interbed_thick)
 end subroutine reset_interbeds
 
 !-------------------------------------------------------------------------------------------------!
-  
+
 end module m_subsidence

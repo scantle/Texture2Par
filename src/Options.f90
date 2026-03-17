@@ -63,6 +63,8 @@ module m_options
     logical                  :: GRID_WEIGHTS_TEXT     ! Write grid weight file as text file
     logical                  :: IB_WEIGHTS_TEXT       ! Write interbed weight file as text file
     logical                  :: SUBSIDENCE_ON         ! Tracks if in subsidence mode (inelastic, elastic storage split)
+    real                     :: MIN_IB_COUNT          ! Minimum number of interbeds to delineate subsidence (between 0 and 1)
+    real                     :: MIN_IB_THICK          ! Minimum thickness of interbeds to delineate subsidence (default is 0, which means any non-zero thickness counts)
     integer                  :: BLOCK_KRIGE           ! Block kriging active (>1) type (1- gaus. quad. 2- custom points,weights) (set by fmodel read)
 
     contains
@@ -134,6 +136,8 @@ module m_options
     this%IB_WEIGHTS_TEXT      = .false.
     this%SUBSIDENCE_ON        = .false.
     this%BLOCK_KRIGE          = 0
+    this%MIN_IB_COUNT         = 0.5
+    this%MIN_IB_THICK         = 0.0
   end subroutine initialize
 
 !-------------------------------------------------------------------------------------------------!
@@ -196,6 +200,10 @@ subroutine read_options(this, reader)
         this%MAX_OUTSIDE_DIST     = item2real(strings, 2)
       case("MAX_LOG_LENGTH")
         this%MAX_LOG_LENGTH       = item2real(strings, 2)
+      case("MIN_IB_COUNT")
+        this%MIN_IB_COUNT         = item2real(strings, 2)
+      case("MIN_IB_THICK")
+        this%MIN_IB_THICK         = item2real(strings, 2)
       case("SILENT_MODE")
         this%SILENT_MODE          = .true.
       case("DEBUG_MODE")
