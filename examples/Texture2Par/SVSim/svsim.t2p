@@ -12,7 +12,7 @@ END OPTIONS
 BEGIN FLOW_MODEL
   TYPE IWFM
   SIM_FILE      SVSim.in
-  PREPROC_FILE  ../Preprocessor/SVSim_Preprocessor.in
+  PREPROC_FILE  Preprocessor/SVSim_Preprocessor.in
   TEMPLATE_FILE Groundwater/SVSim_Groundwater1973Orig.dat
   PP_ZONE_FILE  ppzones.dat
 END FLOW_MODEL
