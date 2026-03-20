@@ -250,7 +250,7 @@ module m_categories
       this%lay2arr = lay2arr
     else
       this%from_file = .false.
-      has_aquitard = any(lay_aquitard_flag)
+      has_aquitard = any(lay_aquitard_flag .and. layer_exists)
       narr = 1 + merge(1, 0, has_aquitard)  ! narr = 2 if there's any aquitard, otherwise 1
       call this%initialize(narr, nlayers, nnodes, datatype)
       call this%no_category_setup()
