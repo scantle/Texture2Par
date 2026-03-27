@@ -49,6 +49,7 @@ end type t_vgm
     integer, intent(in)              :: struct_id, interp_dim
     integer, intent(out)             :: maxread
     class(t_vgm), intent(inout)      :: vgm
+    real                             :: hmin
 
     ! allocate(vgm)
     maxread = 0
@@ -86,6 +87,15 @@ end type t_vgm
 
     vgm%ndim = interp_dim
     ! TODO - more parameters for search ellipsoid? Read elsewhere?
+
+    ! Sanity check parameters here
+    hmin = min(vgm%a_hmax, vgm%a_hmin, vgm%a_vert)
+    if (vgm%nugget < 0.0 .or. vgm%sill<=0.0 .or. hmin<0.0) then
+      call error_handler(1,"Invalid variogram parameters - nugget must be non-negative and sill, ranges must be positive")
+    end if
+    if (vgm%a_hmax < vgm%a_hmin) then
+      call error_handler(1,"Invalid variogram parameters - a_hmax must be greater than a_hmin")
+    end if
 
     ! initialize
     call vgm%initialize(struct_id)
@@ -152,7 +162,7 @@ end type t_vgm
       rotmat(:,1) = [this%a_hmax/this%a_hmin, 0.0, 0.0]
       rotmat(:,2) = [0.0, 1.0, 0.0]
       rotmat(:,3) = [0.0, 0.0, this%a_hmax/this%a_vert]
-        
+
       ! rotate around Y axis
       if (ABS(this%ang3)>EPSLON) then
         alpha =  -this%ang3 * DEG2RAD
@@ -163,7 +173,7 @@ end type t_vgm
         tmp(:,3) = [-sina, 0.0, cosa]
         rotmat = MATMUL(rotmat, tmp)
       end if
-    
+
       ! rotate around X axis
       if (ABS(this%ang2)>EPSLON) then
         alpha =  this%ang2 * DEG2RAD
@@ -174,7 +184,7 @@ end type t_vgm
         tmp(:,3) = [0.0, -sina, cosa]
         rotmat = MATMUL(rotmat, tmp)
       end if
-    
+
       ! rotate around Z axis
       if (ABS(this%ang1)>EPSLON) then
         alpha = this%ang1 * DEG2RAD
@@ -185,7 +195,7 @@ end type t_vgm
         tmp(:,3) = [ 0.0 , 0.0 , 1.0]
         rotmat = MATMUL(rotmat, tmp)
       end if
-      
+
       this%rotmat = rotmat
 !
 ! Return to calling program:
@@ -345,7 +355,7 @@ end type t_vgm
 
   end function cov_vec
 !-------------------------------------------------------------------------------------------------!
-  
+
   function write_variogram(this) result(line)
     implicit none
     class(t_vgm), intent(in) :: this
