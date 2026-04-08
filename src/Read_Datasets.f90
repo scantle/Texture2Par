@@ -13,7 +13,7 @@ module m_read_datasets
   use m_log, only: write_colmap
   use m_colmap, only: t_dataset_colmap
   implicit none
-  
+
   ! Module variables
   type(t_file_reader), pointer :: reader
   type(t_dataset_colmap)       :: colmap
@@ -24,7 +24,7 @@ module m_read_datasets
   subroutine read_datasets(t2p)
     implicit none
     class(t_T2P), intent(inout)   :: t2p
-    
+
     if (t2p%opt%READ_GRID) then ! Data already interpolated
       call read_gridded_data(t2p)
     else
@@ -105,7 +105,7 @@ module m_read_datasets
       allocate(var_accumulator(nsets,t2p%fmodel%nlayers))
       allocate(hsus(ncats))
       allocate(rw(colmap%maxcol), lw(colmap%maxcol))
-      
+
       var_accumulator = 0.0
       wvariance = 0.0
       if (.not. allocated(local_elevs)) allocate(local_elevs(0:t2p%fmodel%nlayers))
@@ -118,7 +118,7 @@ module m_read_datasets
       kbed_run = 0.0
       kbed_open = .false.
       inferred_fine = .false.
-      
+
       if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
         ! Handle interbed mask
         allocate(interbed_mask(nsets))
@@ -282,15 +282,15 @@ module m_read_datasets
           call error_handler(1,file,"Well intervals must be sequential - Check Well "//trim(name)//" on line "//adjustl(trim(tmp)))
         end if  ! End of new log handling
         if (depth0 >= depth)  call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp))//new_line("")//trim(line)//new_line(""))
-        
+
         if (t2p%opt%USE_MODEL_GSE) then
           intv_top = fmodel_z - depth0
           intv_bot = fmodel_z - depth
         else
           intv_top = z - depth0
           intv_bot = z - depth
-        end if  
-        
+        end if
+
         ! Interbed thickness accumulator...
         if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
           is_interbed = is_interbed_interval(wvalues, nsets, interbed_mask, inferred_fine)
@@ -300,7 +300,7 @@ module m_read_datasets
         ! Start of accumulator
         ! Transform values
         if (minval(wvalues)>NODATA) call data_transformer%apply(wvalues)
-        
+
         ! Accumulate wvalues * interval values for averaging... by layer. It's fun.
         do k=1, t2p%fmodel%nlayers
           if ((intv_top >= local_elevs(k)).and.(intv_bot <= local_elevs(k-1))) then
@@ -330,7 +330,7 @@ module m_read_datasets
           end if
         end do
       end do
-      
+
       ! Store/close open interbeds...
       if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
         call reset_interbeds(prev_idx, kbed_open, kbed_run, t2p%interbed_thick)
@@ -362,7 +362,7 @@ module m_read_datasets
     character(30),allocatable     :: hsus(:)
     character(256)                :: iomsg
     character(20)                 :: tmp
-    integer                       :: i, j, k, l, nlines, npoints, nsets, ncats, eof, idx_offset, ios
+    integer                       :: i, j, k, l, nlines, npoints, nsets, ncats, eof, idx_offset, ios, hsu_id
     integer                       :: idx, iint, ipoint, prev_idx, prev_iint, fmodel_loc, didx, resized_intervals
     integer                       :: all_count
     integer,allocatable           :: cids(:), lw(:), rw(:)
@@ -387,7 +387,7 @@ module m_read_datasets
     ! Setup for HSUs - if a HSU file was given/read, then they are expected in the dataset files
     ! Should we skip if ncat is 1???
     if (t2p%fmodel%hsus%from_file) then
-      ncats = t2p%fmodel%nlayers
+      ncats = 1
     else
       ncats = 0
     end if
@@ -413,7 +413,7 @@ module m_read_datasets
       allocate(all_thick    (nsets))
       allocate(hsus(ncats))
       allocate(rw(colmap%maxcol), lw(colmap%maxcol))
-      
+
       wvariance = 0.0
       if (.not. allocated(local_elevs)) allocate(local_elevs(0:t2p%fmodel%nlayers))
       nlines = 0
@@ -427,7 +427,7 @@ module m_read_datasets
       kbed_run = 0.0
       kbed_open = .false.
       inferred_fine = .false.
-      
+
       if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
         ! Handle interbed mask
         allocate(interbed_mask(nsets))
@@ -468,7 +468,7 @@ module m_read_datasets
           t2p%interbed_thick(k)%id = didx
         end do
       end if
-      
+
       ! For texture classes, if opt%INTERP_ORDER=AFTER we need to store ppzones for these points, too!
       if (didx==1.and.t2p%opt%INTERP_ORDER=="AFTER") then
         call t2p%setup_dataset_ppzones()
@@ -514,7 +514,7 @@ module m_read_datasets
             call span2char(line, lw(colmap%col_hsu(k)), rw(colmap%col_hsu(k)), hsus(k))
           end do
         end if
-        
+
         if ((.not. t2p%opt%NO_TEX_BOUNDS).and.didx==1.and.any(wvalues > 1.0)) call error_handler(1,file,"Texture observations cannot be > 1.0, see line: "//adjustl(trim(tmp)))
         if (iint==1) then
           idx = idx - idx_offset
@@ -561,7 +561,7 @@ module m_read_datasets
           intv_top = z - depth0
           intv_bot = z - depth
         end if
-            
+
         ! Interbed handling
         if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
           is_interbed = is_interbed_interval(wvalues, nsets, interbed_mask, inferred_fine)
@@ -578,6 +578,8 @@ module m_read_datasets
           end if
         end do
 
+        ! Store HSU category for this interval - if multiple HSUs, we just take the first one, but this can be expanded in the future if needed
+        hsu_id = t2p%fmodel%hsus%get_id(hsus(1))
         do k=1, resized_intervals
           grid%coords(1, ipoint) = x
           grid%coords(2, ipoint) = y
@@ -588,6 +590,7 @@ module m_read_datasets
             grid%coords(3, ipoint) = z - re_depth
           end if
           t2p%datasets(didx,1)%values(:, ipoint) = wvalues(1:nsets)
+          t2p%datasets(didx,1)%category(ipoint) = hsu_id
           if (t2p%opt%KVME) t2p%datasets(didx,1)%variance(:, ipoint) = wvariance(1:nsets) * resized_intervals
           ! Store location
           t2p%datasets(didx,1)%fmodel_loc(ipoint) = fmodel_loc
@@ -597,7 +600,7 @@ module m_read_datasets
         if (depth>0) all_count = all_count + 1
         prev_iint = iint
       end do
-      
+
       ! Store/close open interbeds...
       if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
         call reset_interbeds(prev_idx, kbed_open, kbed_run, t2p%interbed_thick)
@@ -642,21 +645,21 @@ module m_read_datasets
     if ((ncol - nhead) < 1) then
        call error_handler(1,file,"Invalid number of entries in dataset header")
     end if
-    
+
     ! If the user colmap is set, we can just do a little validation and then get out
     if (colmap_user%nsets>0) then
-      
+
       ! Move it over!
       colmap = colmap_user
-      
+
       ! Set some varibles we use outside
       nsets = colmap_user%nsets
       class_ids = colmap_user%class_ids
-            
+
       if (colmap%maxcol > ncol) then
         call error_handler(1,file,"Explicit column mapping refers to column beyond header length")
       end if
-      
+
       ! The only thing we couldn't verify during specified colmap read was HSUs
       ! Also, if they only passed one and there are multiple layers, that means they passed the first column
       if (t2p%has_hsus) then
@@ -676,9 +679,9 @@ module m_read_datasets
           end if
         end if
       end if
-        
+
     else ! Autoread
-    
+
       allocate(tmp_ids(ncol - nhead))
       allocate(tmp_cols(ncol - nhead))
       tmp_ids  = 0
@@ -760,8 +763,9 @@ module m_read_datasets
 
         else
           ! Fallback: assume HSUs are the last nlayers columns
-          if (ncol < nhead + t2p%fmodel%nlayers) then
-            call error_handler(1,file,"HSUs expected but header does not have enough columns to contain all layers")
+          if (ncol < nhead + nsets + 1) then
+            write(cname,'(i0)') ncol
+            call error_handler(1,file,"HSUs expected but header does not have enough columns to contain all layers. "//trim(cname)//" columns found")
           end if
           do i = 1, t2p%fmodel%nlayers
             colmap%col_hsu(i) = ncol - t2p%fmodel%nlayers + i
@@ -772,7 +776,7 @@ module m_read_datasets
         if (allocated(colmap%col_hsu)) deallocate(colmap%col_hsu)
       end if
     end if ! end of user passed or not if
-    
+
     ! Validate primary/secondary dataset classes, regardless of user/auto colmap
     nactive = t2p%get_active_texture_classes()
 
@@ -795,11 +799,11 @@ module m_read_datasets
         call error_handler(1,file,"Each secondary dataset must have their own dataset file")
       end if
     end if
-    
+
   end subroutine process_header
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine read_gridded_data(t2p)
   use m_global ,only: NODATA, log
   use str_module, only: multisplit, span2real
