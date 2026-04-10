@@ -55,7 +55,7 @@ module m_file_io
                                             ! (notably, this is not the maximum units allowed open)
   integer                     :: log_unit   ! Unit the log file is open on
                                             ! (so IO errors can be written to it)
-  character(500)              :: line       ! For reading in lines from files
+  character(:), allocatable   :: line       ! For reading in lines from files
   character(500)              :: basename   ! basename of main input file (for log/output files)
   INTEGER, PARAMETER          :: dp = SELECTED_REAL_KIND(15,307)  ! 64-bit real
   integer, parameter          :: log_width=38
@@ -366,6 +366,37 @@ module m_file_io
 
 !-------------------------------------------------------------------------------------------------!
 
+  subroutine read_line(funit, iostat, linestring)
+    implicit none
+    integer, intent(in)  :: funit
+    integer, intent(out) :: iostat
+    character(len=:), intent(out), allocatable :: linestring
+
+    ! local
+    integer, parameter     :: bufsize=1024
+    integer                :: size_read, ibuf
+    character(len=bufsize) :: buffer
+
+    linestring = ""
+    ibuf = 0
+    do
+      read(funit, '(A)', advance='no', size=size_read, iostat=iostat) buffer
+      ibuf = ibuf + 1
+      ! Append buffer
+      if (ibuf ==1) then
+        linestring = buffer
+      else
+        linestring = linestring // buffer(1:size_read)
+      end if
+      if (size_read < bufsize) exit
+    end do
+    if (linestring /= "") then
+      iostat = 0 ! reset iostat values if there is content in the current line
+    end if
+  end subroutine read_line
+
+!-------------------------------------------------------------------------------------------------!
+
 !-------------------------------------------------------------------------------------------------!
 ! READER TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -380,6 +411,7 @@ module m_file_io
     type(t_vstring)                   :: line_string
     type(t_vstringlist)               :: strings
     character(len=500)                :: ext_file
+    character(len=2000)               :: tmp_line
 
     ! For line splitting
     integer             :: left(2), right(2)
@@ -387,8 +419,8 @@ module m_file_io
     eof = 0
     i = 0
     do while (eof == 0)
-      read(this%unit, '(a500)', iostat=ierr) line
-      line = adjustl(line)
+      read(this%unit, "(A)", iostat=ierr) tmp_line
+      line = adjustl(tmp_line)
       ! Handle EOF
       if (IS_IOSTAT_END(ierr)) then
         call this%handle_eof(eof)
@@ -429,15 +461,15 @@ subroutine read_to_next_iwfm_line(this, eof, skipped)
   integer                           :: i, ierr
   integer, intent(out)              :: eof
   integer, intent(inout), optional  :: skipped
-  character(len=500)                :: line
   character(len=1)                  :: first_char
   character(len=1)                  :: second_char
+  character(len=2000)               :: tmp_line
 
   eof = 0
   i = 0
   do while (eof == 0)
-    read(this%unit, '(a500)', iostat=ierr) line
-    line = adjustl(line)
+    read(this%unit, "(A)", iostat=ierr) tmp_line
+    line = adjustl(tmp_line)
     first_char = line(1:1)
     second_char = ' '
 
@@ -497,7 +529,6 @@ end subroutine
     class(t_file_reader)     :: this
     type(list_node)        :: prev
     integer, intent(inout) :: eof
-
     if (this%backstack%size > 0) then
       close(this%unit)
       prev = this%backstack%pop()
@@ -525,7 +556,7 @@ end subroutine
     if (eof == 0) then
 
       ! Read string
-      read(this%unit, '(a500)', iostat=ierr) line
+      call read_line(this%unit, ierr, line)
       call TABREM(trim(adjustl(line)))
       line = replace_line(line)
       call vstring_new(line_string, trim(adjustl(line)))
@@ -550,7 +581,7 @@ end subroutine
     if (eof == 0) then
       do i=1, nlines
         ! Read empty
-        read(this%unit, '(a500)', iostat=ierr)
+        read(this%unit, '(a1)', iostat=ierr)
       end do
     else
       ! End of file - just return
@@ -636,7 +667,7 @@ end subroutine
     do while (status == 0)
       block_len = block_len + 1
       call this%read_to_next_line(eof, skipped=skipped)
-      read(this%unit, '(a500)', iostat=ierr) line
+      call read_line(this%unit, ierr, line)
       total_skipped = total_skipped + skipped + 1
       if (index(line, "END") > 0.or.eof < 0) status = 1
     end do
@@ -694,7 +725,6 @@ end subroutine
     implicit none
     class(t_file_reader), intent(in) :: this
     integer                         :: i, data_len, eof, ierr
-    character(200)                  :: line
     logical, optional               :: rewind_to_last_line
 
     data_len = 0
@@ -703,7 +733,7 @@ end subroutine
     call this%read_to_next_line(eof)
     do while (eof == 0)
       !call this%read_to_next_line(eof)  ! Inconsistent with how data files are usually read
-      read(this%unit, '(a)', iostat=ierr) line
+      call read_line(this%unit, ierr, line)
       if (IS_IOSTAT_END(ierr)) then
         eof = 1
       else if (trim(adjustl(line)) /= '') then
