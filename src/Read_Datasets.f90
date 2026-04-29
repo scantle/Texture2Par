@@ -393,7 +393,7 @@ module m_read_datasets
     end if
 
     ! Loop over files
-    do i=1, t2p%ndatafiles
+    fileloop: do i=1, t2p%ndatafiles
       call item2char(t2p%dataset_files, i, file)
       reader => open_file_reader(file)
 
@@ -443,7 +443,7 @@ module m_read_datasets
         if (nlines==1) idx_offset = idx - 1
         ! How many points will this interval become?
         npoints = npoints + ceiling((depth - depth0) / t2p%opt%MAX_LOG_LENGTH)
-        !write(*,*) nlines
+        ! write(*,*) nlines, npoints
       end do
 
       ! Initialize, setup
@@ -481,7 +481,8 @@ module m_read_datasets
 
       ! The real work begins
       ipoint = 1
-      do j=1, nlines
+      hsu_id = 1
+      lineloop: do j=1, nlines
         write(tmp, '(i)') j+1
         read(reader%unit, "(A)", iostat=reader%ioerr, iomsg=iomsg) line
         call reader%iomsg_handler(iomsg)
@@ -579,11 +580,13 @@ module m_read_datasets
         end do
 
         ! Store HSU category for this interval - if multiple HSUs, we just take the first one, but this can be expanded in the future if needed
-        hsu_id = t2p%fmodel%hsus%get_id(hsus(1))
+        if (t2p%has_hsus) then
+          hsu_id = t2p%fmodel%hsus%get_id(hsus(1))
+        end if
         do k=1, resized_intervals
           grid%coords(1, ipoint) = x
           grid%coords(2, ipoint) = y
-          re_depth = depth0+(thick/resized_intervals)*(k-1) + ((thick/resized_intervals)/2)
+          re_depth = depth0+(thick/resized_intervals)*(k-0.5)
           if (t2p%opt%USE_MODEL_GSE) then
             grid%coords(3, ipoint) = fmodel_z - re_depth
           else
@@ -599,7 +602,7 @@ module m_read_datasets
 
         if (depth>0) all_count = all_count + 1
         prev_iint = iint
-      end do
+      end do lineloop
 
       ! Store/close open interbeds...
       if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
@@ -616,7 +619,7 @@ module m_read_datasets
       ! Cleanup loop variables
       deallocate(wvalues, all_sum, all_thick, hsus, wvariance, rw, lw)
       if (allocated(interbed_mask)) deallocate(interbed_mask)
-    end do
+    end do fileloop
     if (allocated(kbed_run)) deallocate(kbed_run)
     if (allocated(kbed_open)) deallocate(kbed_open)
   end subroutine read_datasets_3D

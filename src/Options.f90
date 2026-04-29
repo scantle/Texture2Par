@@ -93,7 +93,7 @@ module m_options
     this%MAX_PRIMARY_DIST     = -999.0
     this%MAX_SECONDARY_DIST   = 0.0                   ! Default is overwritten in filter_near_points
     this%MAX_OUTSIDE_DIST     = 0.0
-    this%MAX_LOG_LENGTH       = HUGE(0.0)
+    this%MAX_LOG_LENGTH       = 1e7
     this%INTERP_DIM           = 2
     this%NSIM                 = 0
     this%SEED                 = 0

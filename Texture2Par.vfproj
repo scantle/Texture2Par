@@ -6,7 +6,7 @@
 	</Platforms>
 	<Configurations>
 		<Configuration Name="Debug|Win32" UseCompiler="ifortCompiler">
-			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\Debug\" WarnInterfaces="true" RealKIND="realKIND8" Traceback="true" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\Debug\" WarnUnalignedData="false" RealKIND="realKIND8" Traceback="true" RuntimeChecks="rtChecksNone" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
 			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
 			<Tool Name="VFResourceCompilerTool"/>
 			<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
@@ -28,7 +28,7 @@
 			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
 		</Configuration>
 		<Configuration Name="Debug|x64" UseCompiler="ifortCompiler" IntermediateDirectory=".\build\$(PlatformName)\$(ConfigurationName)">
-			<Tool Name="VFFortranCompilerTool" AdditionalOptions="/Qdiag-disable:10448" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" WarnInterfaces="true" RealKIND="realKIND8" LocalSavedScalarsZero="true" Traceback="true" RuntimeChecks="rtChecksAll" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
+			<Tool Name="VFFortranCompilerTool" AdditionalOptions="/Qdiag-disable:10448" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" WarnUnalignedData="false" RealKIND="realKIND8" LocalSavedScalarsZero="true" Traceback="true" RuntimeChecks="rtChecksNone" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
 			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
 			<Tool Name="VFResourceCompilerTool"/>
 			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
@@ -87,14 +87,17 @@
 			<Filter Name="File IO">
 				<File RelativePath=".\src\FileIO.f90"/>
 				<File RelativePath=".\src\fpath.f90"/>
-				<File RelativePath=".\src\Read_Datasets.f90"/>
+				<File RelativePath=".\src\Read_Datasets.f90">
+				</File>
 				<File RelativePath=".\src\Read_Main_Input.f90"/>
 				<File RelativePath=".\src\t2p_log.f90"/>
 				<File RelativePath=".\src\write_fmodel.f90"/>
 			</Filter>
 			<Filter Name="Interpolators">
-				<File RelativePath=".\src\Interpolators.f90"/>
-				<File RelativePath=".\src\kriging.f90"/>
+				<File RelativePath=".\src\Interpolators.f90">
+				</File>
+				<File RelativePath=".\src\kriging.f90">
+				</File>
 				<File RelativePath=".\src\sgsim.f90"/>
 				<File RelativePath=".\src\variogram.f90"/>
 			</Filter>
@@ -103,7 +106,8 @@
 				<File RelativePath=".\src\cellblocks.f90"/>
 				<File RelativePath=".\src\ColMap.f90"/>
 				<File RelativePath=".\src\DataSets.f90"/>
-				<File RelativePath=".\src\FlowModel.f90"/>
+				<File RelativePath=".\src\FlowModel.f90">
+				</File>
 				<File RelativePath=".\src\Options.f90"/>
 				<File RelativePath=".\src\PilotPoints.f90"/>
 				<File RelativePath=".\src\T2P.f90"/>
