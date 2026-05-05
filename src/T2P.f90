@@ -627,6 +627,10 @@ module m_T2P
     call vstrlist_replace(aquifer_propnames, 'Ss', 'Sske')
     i = vstrlist_search(aquifer_propnames, 'Sske')
     call add_pilotpoint_aquifer_parameter('Sskv', before=i+1)
+    
+    ! Add KvI parameter (interbed Kv)
+    i = vstrlist_search(aquifer_propnames, 'Kmax')
+    call add_pilotpoint_aquifer_parameter('KvI', before=i+1)
 
     ! Add output parameters as well
     call vstrlist_replace(this%parnames, 'SS', 'SSKEC')
@@ -1036,7 +1040,7 @@ module m_T2P
     type(t_layerdata),intent(inout):: tex_obs(this%fmodel%nlayers)  !  values(ntexclasses, npoints)
     type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !values([Kh, Kv, Ss, Sy], npoints) subsidence = [Kh, Kv, Sskec, Sy, Sskef, Sskvf, Kvf,BEQ,NEQ]
     integer                        :: i, k, r
-    integer                        :: Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, Stp, Sske, Sskv
+    integer                        :: Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, Stp, Sske, Sskv, KvI
     real                           :: wf_sum, wc_sum, beq, thk_adj, thk_sf, n_adj
     real    ,allocatable           :: depths(:),thk(:),KhD(:,:),KvD(:,:)
 
@@ -1051,6 +1055,7 @@ module m_T2P
     KVp   = vstrlist_search(propnames, 'KVp')    ! 8
     STp   = vstrlist_search(propnames, 'STp')    ! 9
     if (this%opt%SUBSIDENCE_ON) then
+      KvI  = vstrlist_search(propnames, 'KvI')
       Sske = vstrlist_search(propnames, 'Sske')
       Sskv = vstrlist_search(propnames, 'Sskv')
     end if
@@ -1115,8 +1120,9 @@ module m_T2P
             par_out(k)%values(5,i) = DOT_PRODUCT(pp_obj(r)%values(i,Sske,this%fine_classes)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, STp, 1))
             ! SskvF
             par_out(k)%values(6,i) = DOT_PRODUCT(pp_obj(r)%values(i,Sskv,this%fine_classes)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, STp, 1))
-            ! KvF
-            par_out(k)%values(7,i) = DOT_PRODUCT(KvD(i,this%fine_classes)**pp_obj(r)%values(i, KVp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, KVp, 1))
+            ! KvI
+            !LS par_out(k)%values(7,i) = DOT_PRODUCT(KvD(i,this%fine_classes)**pp_obj(r)%values(i, KVp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, KVp, 1))
+            par_out(k)%values(7,i) = DOT_PRODUCT(pp_obj(r)%values(i,KvI,this%fine_classes)**pp_obj(r)%values(i, KVp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, KVp, 1))
             ! B equivalent (BEQ) and N equivalent (NEQ) calculations
             thk_adj = min(thk(i)*0.999, this%interbed_final(k)%values(2,i))     ! prevent interbed thicness exceeding layer thickness
             thk_sf = thk_adj / this%interbed_final(k)%values(2,i)               ! scaling factor to adjust interpolated interbed thickness to layer thickness

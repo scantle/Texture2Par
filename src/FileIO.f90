@@ -383,9 +383,7 @@ module m_file_io
       read(funit, '(A)', advance='no', size=size_read, iostat=iostat) buffer
       ibuf = ibuf + 1
       ! Append buffer
-      if (ibuf ==1) then
-        linestring = buffer
-      else
+      if (size_read > 0) then
         linestring = linestring // buffer(1:size_read)
       end if
       if (size_read < bufsize) exit
