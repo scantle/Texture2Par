@@ -19,7 +19,7 @@ module m_options
     real                     :: MAX_PRIMARY_DIST      ! Maximum distance to include primary data in interpolation
     real                     :: MAX_SECONDARY_DIST    ! Maximum distance to include secondary data in interpolation
     real                     :: MAX_OUTSIDE_DIST      ! Maximum distance data can be outside of [model] domain
-    real                     :: MAX_LOG_LENGTH        ! Maximum interval length when reading 3D data, longer logs will be split
+    real                     :: MAX_LOG_LENGTH(999)   ! Maximum interval length when reading 3D data, longer logs will be split; can be defined separately for each dataset file
     integer                  :: INTERP_DIM            ! 2D, 3D, stored as integer, read as string
     integer                  :: NSIM                  ! number of sequential gaussian simulation; default is zero which is Kriging
     integer                  :: SEED                  ! seed number for generating random path and samples for SGSIM
@@ -150,7 +150,7 @@ subroutine read_options(this, reader)
   implicit none
   class(t_options)           :: this
   type(t_file_reader), pointer :: reader
-  integer                    :: status, length
+  integer                    :: i, status, length
   character(30)              :: id, temp
   type(t_vstringlist)        :: strings
 
@@ -199,7 +199,13 @@ subroutine read_options(this, reader)
       case("MAX_OUTSIDE_DIST")
         this%MAX_OUTSIDE_DIST     = item2real(strings, 2)
       case("MAX_LOG_LENGTH")
-        this%MAX_LOG_LENGTH       = item2real(strings, 2)
+        if (length==2) then
+          this%MAX_LOG_LENGTH       = item2real(strings, 2)
+        else
+          do i=1, length-1
+            this%MAX_LOG_LENGTH(i)  = item2real(strings, 1+i)
+          end do
+        end if
       case("MIN_IB_COUNT")
         this%MIN_IB_COUNT         = item2real(strings, 2)
       case("MIN_IB_THICK")

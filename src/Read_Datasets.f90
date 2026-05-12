@@ -442,7 +442,7 @@ module m_read_datasets
         nlines = nlines + 1
         if (nlines==1) idx_offset = idx - 1
         ! How many points will this interval become?
-        npoints = npoints + ceiling((depth - depth0) / t2p%opt%MAX_LOG_LENGTH)
+        npoints = npoints + ceiling((depth - depth0) / t2p%opt%MAX_LOG_LENGTH(i))
         ! write(*,*) nlines, npoints
       end do
 
@@ -552,7 +552,7 @@ module m_read_datasets
         if (depth0 >= depth) call error_handler(1,file,"Bad well depth: Well "//trim(name)//" on line "//adjustl(trim(tmp)))
 
         thick = (depth - depth0)
-        resized_intervals = ceiling(thick / t2p%opt%MAX_LOG_LENGTH)
+        resized_intervals = ceiling(thick / t2p%opt%MAX_LOG_LENGTH(i))
 
         ! Elevations
         if (t2p%opt%USE_MODEL_GSE) then
