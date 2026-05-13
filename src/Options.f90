@@ -298,10 +298,11 @@ end subroutine read_options
 
 !-------------------------------------------------------------------------------------------------!
 
-subroutine write_input_summary(this)
+subroutine write_input_summary(this, ndatafiles)
   use m_global, only: log
   implicit none
   class(t_options)           :: this
+  integer                    :: ndatafiles
   character(200)             :: logic_true, interp_text
   integer                    :: no_true_len
 
@@ -316,7 +317,7 @@ subroutine write_input_summary(this)
     end if
     call log%write_valueline('Max Secondary Data Dist:', this%MAX_SECONDARY_DIST)
     call log%write_valueline('Max Outside Bounds Dist:', this%MAX_OUTSIDE_DIST)
-    if (this%INTERP_DIM == 3) call log%write_valueline('Max Log Interval Length:', this%MAX_LOG_LENGTH)
+    if (this%INTERP_DIM == 3) call log%write_valueline('Max Log Interval Length:', this%MAX_LOG_LENGTH(1:ndatafiles))
     call log%write_valueline('Interpolation Dimensions:',this%INTERP_DIM)
     !call log%write_valueline('',this%INTERP_DIM)  ! unimplemented
     ! Going to do something a little nicer for the Interpolation Method

@@ -44,8 +44,8 @@ module m_file_io
     contains
       procedure,private     :: write_line_character, write_line_t_vstring
       generic,public        :: write_line => write_line_character, write_line_t_vstring
-      procedure,private     :: write_valueline_int, write_valueline_real, write_valueline_char
-      generic,public        :: write_valueline => write_valueline_int, write_valueline_real, write_valueline_char
+      procedure,private     :: write_valueline_int, write_valueline_real, write_valueline_char, write_valueline_reals
+      generic,public        :: write_valueline => write_valueline_int, write_valueline_real, write_valueline_char, write_valueline_reals
 
   end type t_file_writer
 
@@ -867,6 +867,32 @@ end subroutine
     write(this%unit, full_fmt) adjustl(line), value
 
   end subroutine write_valueline_real
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine write_valueline_reals(this, line, values, fmt)
+    implicit none
+    class(t_file_writer), intent(inout) :: this
+    character(*), intent(in)            :: line
+    real                                :: values(:)
+    character(*), optional              :: fmt
+    character(128)                      :: fmt_use,full_fmt
+    integer                             :: line_length, spaces
+
+    fmt_use = 'f8.2'
+    if (present(fmt)) then
+      fmt_use = trim(fmt)
+    else
+      if (any(abs(values)>=1e5)) fmt_use = 'es8.2'
+    end if
+    fmt_use = "*("//trim(fmt_use)//",x)"
+    line_length = len_trim(line)
+    spaces = log_width - line_length
+
+    write(full_fmt, '(2(a,i2),7a)') '(1x,a', line_length, ',', spaces, 'x,', trim(fmt_use), ')'
+    write(this%unit, full_fmt) adjustl(line), values
+
+  end subroutine write_valueline_reals
 
 !-------------------------------------------------------------------------------------------------!
 

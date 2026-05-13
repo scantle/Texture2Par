@@ -97,7 +97,7 @@ module m_log
     end if
 
     ! Options
-    call t2p%opt%write_input_summary() ! Move here?
+    call t2p%opt%write_input_summary(t2p%ndatafiles) ! Move here?
 
     ! Connections Array
     call t2p%write_connections()
@@ -136,7 +136,7 @@ module m_log
   end subroutine write_input_summary
 
 !-------------------------------------------------------------------------------------------------!
-  
+
 subroutine write_colmap(log, colmap, t2p, user_defined)
   use m_T2P,     only: t_t2p
   use m_colmap,  only: t_dataset_colmap
@@ -160,7 +160,7 @@ subroutine write_colmap(log, colmap, t2p, user_defined)
 
   have_var = allocated(colmap%col_var)
   have_hsu = allocated(colmap%col_hsu)
-  
+
   if (user_defined) then
     call log%write_line(' - (User-defined mapping) Columns Read:')
   else
@@ -243,7 +243,7 @@ subroutine write_colmap(log, colmap, t2p, user_defined)
   end if
 
 end subroutine write_colmap
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine write_warnings(log)
