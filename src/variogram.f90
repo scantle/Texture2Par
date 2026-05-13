@@ -379,7 +379,7 @@ end type t_vgm
       write(line, '(A,1X,F7.4,1X,F7.4,1X,ES12.4,1X,ES12.4,1X,F8.2)') &
           trim(model), this%nugget, this%sill, this%a_hmin, this%a_hmax, this%ang1
     else if (this%ndim == 3) then
-      write(line, '(A,1X,F7.4,1X,F7.4,1X,ES12.4,1X,ES12.4,1X,ES12.4,1X,F8.2,1X,F5.2,1X,F5.2)') &
+      write(line, '(A,1X,F7.4,1X,F7.4,1X,ES12.4,1X,ES12.4,1X,ES12.4,1X,F8.2,1X,F8.2,1X,F8.2)') &
           trim(model), this%nugget, this%sill, this%a_hmin, this%a_hmax, this%a_vert, this%ang1, this%ang2, this%ang3
     end if
   end function write_variogram

@@ -322,7 +322,7 @@ subroutine read_dataset_block(t2p, reader)
   call vstring_new (ftrans , "NONE" )
   call vstrlist_new(classes)
   cm%nsets = 0
-  
+
   ! For checks
   nactive = t2p%get_active_texture_classes()
 
@@ -381,7 +381,7 @@ subroutine read_dataset_block(t2p, reader)
   if (.not. fname_set ) then
     call error_handler(2,reader%file,"Dataset Block must include a FILE")
   end if
-  
+
   ! Were explicit columns provided?
   if (cm%nsets>0) then
     if (.not. allocated(valcols)) call error_handler(2,reader%file,"Explicit mapping requires VALUES when CLASSES is provided")
@@ -430,8 +430,8 @@ subroutine read_variogram_block(t2p, reader)
   type(t_vstringlist)        :: strings
 
   ! Sub variables
-  type(t_vgm),pointer        :: vgms(:,:), tmp(:,:)
-  integer,pointer            :: nnear(:), nstruct(:)
+  type(t_vgm),pointer        :: vgms(:,:), tmp_vgms(:,:)
+  integer,pointer            :: nnear(:), nstruct(:), tmp_nstruct(:)
   integer                    :: prime_id, prime_vidx, cross_id, vario_id, struct_id, vcount, maxread, hsu_id, dim
   logical                    :: iscross, ispp, ishsu
   type(t_vstring)            :: class_name, cross_name, hsu_name
@@ -440,7 +440,7 @@ subroutine read_variogram_block(t2p, reader)
 
   ! Allocate variograms
   ! nvario is currently set during the class block read, max structures in settings
-  allocate(vgms(t2p%opt%max_vstruct,t2p%nvario), nnear(t2p%nclasses+1), nstruct(t2p%nvario))
+  allocate(vgms(t2p%opt%max_vstruct,9999), nnear(t2p%nclasses+1), nstruct(9999))
   vcount = 0
   nnear = 0
   nstruct = 0
@@ -535,12 +535,6 @@ subroutine read_variogram_block(t2p, reader)
               end if
               if (ishsu) then
                 hsu_id = p%add_zonal_variogram(hsu_name, prime_vidx, cross_id, t2p%opt, t2p%nvario)
-                ! Resize nstruct & vgm from nvario update...
-                call expand_int_array(nstruct,t2p%nvario, init=0)
-                allocate(tmp(t2p%opt%max_vstruct,t2p%nvario))
-                tmp(:, 1:size(vgms)) = vgms
-                deallocate(vgms); nullify(vgms)
-                vgms => tmp
               else
                 hsu_id = 0
               end if
@@ -584,13 +578,13 @@ subroutine read_variogram_block(t2p, reader)
             end if
             vcount = vcount + 1
           end if
-          if (t2p%opt%ANISOTROPIC_SEARCH .and. struct_id>1) then
-            ! check anisotropy
-            if (any(vgms(struct_id,vario_id)%rotmat /= vgms(1,vario_id)%rotmat)) then
-              call t2p%write_status("Different anisotropy are used while anisotropic search is on."//new_line('1')//&
-                                    "  Only the first structure anisotropy will be used.")
-            end if
-          end if
+          ! if (t2p%opt%ANISOTROPIC_SEARCH .and. struct_id>1) then
+          !   ! check anisotropy
+          !   if (any(vgms(struct_id,vario_id)%rotmat /= vgms(1,vario_id)%rotmat)) then
+          !     call t2p%write_status("Different anisotropy are used while anisotropic search is on."//new_line('1')//&
+          !                           "  Only the first structure anisotropy will be used.")
+          !   end if
+          ! end if
         end do
         ! End of variogram structure reading, moves to next class variogram or end of block
       case DEFAULT
@@ -603,7 +597,9 @@ subroutine read_variogram_block(t2p, reader)
     write(msg, '(2(a,i3))') "Too Few Variograms, expected ", t2p%nvario, ", found: ", vcount
     call error_handler(2,reader%file,msg)
   end if
-  call t2p%setup_variograms(vgms, nnear, nstruct)  ! t2p%interp_pp, t2p%interp_data)
+  allocate(tmp_vgms   , source=vgms   (:,1:vcount))
+  allocate(tmp_nstruct, source=nstruct(  1:vcount))
+  call t2p%setup_variograms(tmp_vgms, nnear, tmp_nstruct)  ! t2p%interp_pp, t2p%interp_data)
 
 end subroutine read_variogram_block
 
@@ -763,13 +759,13 @@ end subroutine read_ppparm_block
     integer                    :: status, length
     character(30)              :: id, value
     type(t_vstringlist)        :: strings
-    
+
     ! Locals
     integer                    :: nfine, struct_id, dim, maxread
     type(t_vgm),pointer        :: vgms(:,:), tmp(:,:)
     integer,pointer            :: nnear(:), nstruct(:)
     character(100)             :: msg
-    
+
     allocate(vgms(t2p%opt%max_vstruct,1), nnear(1), nstruct(1))  ! single variogram (mult struct ok) for interbeds
     dim=2  ! Hardcoded, for now
 
@@ -814,17 +810,17 @@ end subroutine read_ppparm_block
             end if
           end do
           ! End of variogram structure reading
-          
+
           ! Pass to IB interp object
           call setup_ib_variogram(vgms, nnear, nstruct, t2p%opt)
-          
+
         case DEFAULT
           call error_handler(1,reader%file,"Unknown Subsidence option: " // trim(id))
       end select
     end do
-    
+
   end subroutine read_SUBSIDENCE_block
-          
+
 !-------------------------------------------------------------------------------------------------!
 
 end module m_read_main_input

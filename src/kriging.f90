@@ -443,7 +443,7 @@ subroutine write_summary_krige(this)
   implicit none
   class(t_krige),intent(inout)  :: this
   integer                       :: i,j
-  character(len=256)            :: line, struct
+  character(len=512)            :: line, struct
   integer, dimension(3)         :: idx
 
   do i=1, this%nvario
@@ -455,7 +455,7 @@ subroutine write_summary_krige(this)
         write(struct, '(i5,2x,a)') j, trim(adjustl(this%variograms(j,i)%write_variogram()))
         call log%write_line(trim(line) // ' - ' // trim(struct))
       else
-        write(struct, '(38x,i5,2x,a)') j, this%variograms(j,i)%write_variogram()
+        write(struct, '(41x,i5,2x,a)') j, this%variograms(j,i)%write_variogram()
         call log%write_line(trim(struct))
       end if
     end do
