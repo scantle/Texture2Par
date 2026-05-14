@@ -685,7 +685,7 @@ end subroutine write_summary_krige
       class_id = obs_idx(i)
       if (i>1) class_id = 1
       if (opt%ANISOTROPIC_SEARCH) then
-        vidx = this%vario_idx(1,i)
+        vidx = this%vario_idx(i,i)
         call obs_data(i)%build_tree_by_category(cat,class_id, rotmat=this%variograms(1,vidx)%rotmat(1:this%ndim,1:this%ndim), has_data=has_data)
       else
         call obs_data(i)%build_tree_by_category(cat,class_id, has_data=has_data)
