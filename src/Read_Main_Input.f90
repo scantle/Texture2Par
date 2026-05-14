@@ -430,20 +430,21 @@ subroutine read_variogram_block(t2p, reader)
   type(t_vstringlist)        :: strings
 
   ! Sub variables
-  type(t_vgm),pointer        :: vgms(:,:), tmp_vgms(:,:)
-  integer,pointer            :: nnear(:), nstruct(:), tmp_nstruct(:)
+  type(t_vgm),pointer        :: vgms(:,:), tmp(:,:)
+  integer,pointer            :: nnear(:), nstruct(:)
   integer                    :: prime_id, prime_vidx, cross_id, vario_id, struct_id, vcount, maxread, hsu_id, dim
-  logical                    :: iscross, ispp, ishsu
+  logical                    :: iscross, ispp, ishsu, pp_read
   type(t_vstring)            :: class_name, cross_name, hsu_name
   type(t_vstringlist)        :: class_temp
   character(100)             :: msg
 
   ! Allocate variograms
   ! nvario is currently set during the class block read, max structures in settings
-  allocate(vgms(t2p%opt%max_vstruct,9999), nnear(t2p%nclasses+1), nstruct(9999))
+  allocate(vgms(t2p%opt%max_vstruct,t2p%nvario), nnear(t2p%nclasses+1), nstruct(t2p%nvario))
   vcount = 0
   nnear = 0
   nstruct = 0
+  pp_read = .false.
 
   ! Loop until end of block or end of file
   status = 0
@@ -501,12 +502,15 @@ subroutine read_variogram_block(t2p, reader)
         ! Check for pilot point class
         if (vstring_match(class_name,"PilotPoints",nocase=.true.)) then
           ispp = .true.
+          pp_read = .true.
           vario_id = t2p%nvario  ! PP vario is max
           dim = 2
           !prime_id = size(nnear,1)
           prime_vidx = size(nnear,1)
-        else
-        ! Not PP
+        else ! Not PP
+          if (pp_read) then
+            call error_handler(2, reader%file, "PilotPoints variogram must be the last variogram in the VARIOGRAM block.")
+          end if
           dim = t2p%opt%INTERP_DIM
           select type(p => t2p%interp_data)
             class is(t_krige)
@@ -535,6 +539,13 @@ subroutine read_variogram_block(t2p, reader)
               end if
               if (ishsu) then
                 hsu_id = p%add_zonal_variogram(hsu_name, prime_vidx, cross_id, t2p%opt, t2p%nvario)
+                ! Resize nstruct & vgm from nvario update...
+                call expand_int_array(nstruct,t2p%nvario, init=0)
+                allocate(tmp(t2p%opt%max_vstruct,t2p%nvario))
+                tmp(:, 1:size(vgms,2)) = vgms
+                deallocate(vgms)
+                vgms => tmp
+                nullify(tmp)
               else
                 hsu_id = 0
               end if
@@ -555,13 +566,15 @@ subroutine read_variogram_block(t2p, reader)
             call reader%back(1)
             exit
           end if
+          
           ! Read structure
           struct_id = item2int(strings, 1)
           nstruct(vario_id) = struct_id
+          if (struct_id == 1) vcount = vcount+1
+          write(msg, '(2(a,i3))') 'variogram', vcount, ', structure', struct_id
+          if (struct_id>t2p%opt%MAX_VSTRUCT) call error_handler(2,reader%file,"Structure ID exceeds MAX_VSTRUCT Option - increase MAX_VSTRUCT and try again. "//msg)
 
-          !TODO validate struct_id
           ! Is the variogram line long enough?
-          write(msg, '(2(a,i3))') 'variogram', vcount+1, ', structure', struct_id
           if (dim==2 .and. length < 7) then
             call error_handler(2,reader%file,"Too few variogram parameters for 2D (7+ expected). See "//msg)
           else if (dim==3 .and. length < 10) then
@@ -569,14 +582,13 @@ subroutine read_variogram_block(t2p, reader)
           end if
           ! Get full variogram item from the rest of the line
           call get_vgm_from_line(vgms(struct_id,vario_id), strings, struct_id, dim, maxread)
-          ! NNear on first struct read, if not cross, advance vcount
+          ! NNear on first struct read, if not cross
           if (struct_id == 1) then
             if (iscross.or.ishsu) then
               ! Can't get n cross points...
             else
               nnear(prime_vidx) = item2int(strings, maxread+1)
             end if
-            vcount = vcount + 1
           end if
           ! if (t2p%opt%ANISOTROPIC_SEARCH .and. struct_id>1) then
           !   ! check anisotropy
@@ -597,9 +609,7 @@ subroutine read_variogram_block(t2p, reader)
     write(msg, '(2(a,i3))') "Too Few Variograms, expected ", t2p%nvario, ", found: ", vcount
     call error_handler(2,reader%file,msg)
   end if
-  allocate(tmp_vgms   , source=vgms   (:,1:vcount))
-  allocate(tmp_nstruct, source=nstruct(  1:vcount))
-  call t2p%setup_variograms(tmp_vgms, nnear, tmp_nstruct)  ! t2p%interp_pp, t2p%interp_data)
+  call t2p%setup_variograms(vgms, nnear, nstruct)  ! t2p%interp_pp, t2p%interp_data)
 
 end subroutine read_variogram_block
 
