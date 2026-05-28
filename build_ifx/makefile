@@ -1,8 +1,9 @@
 # compiler
 FC = ifx
+MAKEFLAGS += --no-builtin-rules
 
 # compile flags
-FCFLAGS = -traceback -heap-arrays -real-size:64 -O2 -fpe:0 -fpp -nologo -libs:static -Qopenmp
+FCFLAGS = -traceback -heap-arrays -O2 -fpe:0 -fpp -nologo -libs:static -Qopenmp
 #
 #TMPDIR := .temp
 #ifneq ($(TMPDIR),)
@@ -13,6 +14,10 @@ FCFLAGS = -traceback -heap-arrays -real-size:64 -O2 -fpe:0 -fpp -nologo -libs:st
 
 # link flags
 FLFLAGS = -Qopenmp
+
+# set src dir
+WINDRES = windres
+RESOBJ = Texture2Par.res.o
 
 # set src dir
 VPATH =                                \
@@ -139,12 +144,23 @@ all: $(PROGRAM)
 $(PROGRAM): $(objects)
 	$(FC) $(MODSWITCH) $(FLFLAGS) -o $@ $^
 
-$(objflibs): %.obj: %
+$(filter %.f90.obj,$(objflibs)): %.f90.obj: %.f90
 	$(FC) $(FCFLAGS) -c               -o $@ $<
 
-$(objother): %.obj: %
+$(filter %.F90.obj,$(objflibs)): %.F90.obj: %.F90
+	$(FC) $(FCFLAGS) -c               -o $@ $<
+
+$(filter %.f90.obj,$(objother)): %.f90.obj: %.f90
 	$(FC) $(FCFLAGS) -c -real-size:64 -o $@ $<
 
+$(filter %.F90.obj,$(objother)): %.F90.obj: %.F90
+	$(FC) $(FCFLAGS) -c -real-size:64 -o $@ $<
+
+$(filter %.f.obj,$(objother)): %.f.obj: %.f
+	$(FC) $(FCFLAGS) -c -real-size:64 -o $@ $<
+
+$(RESOBJ): Texture2Par.rc ../src/T2P.ico
+	$(WINDRES) Texture2Par.rc -O coff -o $@
 
 clean:
 	rm -rf *.mod

@@ -1,5 +1,6 @@
 # compiler
 FC = gfortran
+MAKEFLAGS += --no-builtin-rules
 
 # compile flags
 FCFLAGS =  -O2 -cpp -fbacktrace -ffree-line-length-none  -ffixed-line-length-none -fdec -fallow-argument-mismatch -fopenmp
@@ -12,6 +13,10 @@ FCFLAGS =  -O2 -cpp -fbacktrace -ffree-line-length-none  -ffixed-line-length-non
 
 # link flags
 FLFLAGS = -fopenmp
+
+# set src dir
+WINDRES = windres
+RESOBJ = Texture2Par.res.o
 
 # set src dir
 VPATH =                                \
@@ -131,19 +136,30 @@ all: $(PROGRAM)
 # $< -- The name of the first prerequisite.
 # $? -- The names of all the prerequisites that are newer than the target, with spaces between them.
 # $^ -- The names of all the prerequisites, with spaces between them.
-# $+ -- This is like ‘$^’, but prerequisites listed more than once are duplicated in the order they were listed in the makefile.
+# $+ -- This is like '$^', but prerequisites listed more than once are duplicated in the order they were listed in the makefile.
 # $| -- The names of all the order-only prerequisites, with spaces between them.
 # $* -- The stem with which an implicit rule matches
 
-$(PROGRAM): $(objects)
+$(PROGRAM): $(objects) $(RESOBJ)
 	$(FC) -static $(FLFLAGS) -o $@ $^
 
-$(objflibs): %.o: %
+$(filter %.f90.o,$(objflibs)): %.f90.o: %.f90
 	$(FC) $(FCFLAGS) -c                 -o $@ $<
 
-$(objother): %.o: %
+$(filter %.F90.o,$(objflibs)): %.F90.o: %.F90
+	$(FC) $(FCFLAGS) -c                 -o $@ $<
+
+$(filter %.f90.o,$(objother)): %.f90.o: %.f90
 	$(FC) $(FCFLAGS) -c -freal-4-real-8 -o $@ $<
 
+$(filter %.F90.o,$(objother)): %.F90.o: %.F90
+	$(FC) $(FCFLAGS) -c -freal-4-real-8 -o $@ $<
+
+$(filter %.f.o,$(objother)): %.f.o: %.f
+	$(FC) $(FCFLAGS) -c -freal-4-real-8 -o $@ $<
+
+$(RESOBJ): Texture2Par.rc ../src/T2P.ico
+	$(WINDRES) Texture2Par.rc -O coff -o $@
 
 clean:
 	rm -rf *.mod
