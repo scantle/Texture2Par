@@ -58,3 +58,5 @@ src/Libraries/*/Debug/**
 
 Example*
 x64/*
+training*
+*.pyc
