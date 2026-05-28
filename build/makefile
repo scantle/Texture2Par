@@ -2,7 +2,7 @@
 FC = gfortran
 
 # compile flags
-FCFLAGS =  -O2 -cpp -fbacktrace -ffree-line-length-none  -ffixed-line-length-none -fdec -fallow-argument-mismatch
+FCFLAGS =  -O2 -cpp -fbacktrace -ffree-line-length-none  -ffixed-line-length-none -fdec -fallow-argument-mismatch -fopenmp
 #
 #TMPDIR := .mod
 #ifneq ($(TMPDIR),)
@@ -11,7 +11,7 @@ FCFLAGS =  -O2 -cpp -fbacktrace -ffree-line-length-none  -ffixed-line-length-non
 #endif
 
 # link flags
-FLFLAGS =
+FLFLAGS = -fopenmp
 
 # set src dir
 VPATH =                                \
@@ -19,7 +19,8 @@ VPATH =                                \
     ../src/Libraries/flibs/src/strings/    \
     ../src/Libraries/mfUSGLib/Jan_23_2018/ \
     ../src/Libraries/mfUSGLib/             \
-    
+    ../                                   \
+
 # source files and objects
 flibs = \
     m_vstring.f90               \
@@ -78,6 +79,7 @@ mfusg = \
 
 t2p2 = \
     Str_Module.f90              \
+    sgemv.f                     \
     time.f90                    \
     kdtree2.f90                 \
     Lists.f90                   \
@@ -90,6 +92,7 @@ t2p2 = \
     Sparse_Symmetric.f90        \
     Categories.f90              \
     Tools.f90                   \
+    cellblocks.f90              \
     Grid.f90                    \
     DataSets.f90                \
     weights.f90                 \
@@ -100,7 +103,10 @@ t2p2 = \
     kriging.f90                 \
     sgsim.f90                   \
     FlowModel.f90               \
+    ColMap.f90                  \
+    subsidence_funcs.f90        \
     T2P.f90                     \
+    version.f90                 \
     t2p_log.f90                 \
     Read_Datasets.f90           \
     Read_Main_Input.f90         \
@@ -125,12 +131,12 @@ all: $(PROGRAM)
 # $< -- The name of the first prerequisite.
 # $? -- The names of all the prerequisites that are newer than the target, with spaces between them.
 # $^ -- The names of all the prerequisites, with spaces between them.
-# $+ -- This is like ‘$^’, but prerequisites listed more than once are duplicated in the order they were listed in the makefile.
+# $+ -- This is like â€˜$^â€™, but prerequisites listed more than once are duplicated in the order they were listed in the makefile.
 # $| -- The names of all the order-only prerequisites, with spaces between them.
 # $* -- The stem with which an implicit rule matches
 
 $(PROGRAM): $(objects)
-	$(FC) -static -o $@ $^
+	$(FC) -static $(FLFLAGS) -o $@ $^
 
 $(objflibs): %.o: %
 	$(FC) $(FCFLAGS) -c                 -o $@ $<

@@ -2,7 +2,7 @@
 FC = ifx
 
 # compile flags
-FCFLAGS = -traceback -heap-arrays -O2 -fpe:0 -fpp -nologo -libs:static
+FCFLAGS = -traceback -heap-arrays -real-size:64 -O2 -fpe:0 -fpp -nologo -libs:static -Qopenmp
 #
 #TMPDIR := .temp
 #ifneq ($(TMPDIR),)
@@ -12,7 +12,7 @@ FCFLAGS = -traceback -heap-arrays -O2 -fpe:0 -fpp -nologo -libs:static
 #endif
 
 # link flags
-FLFLAGS =
+FLFLAGS = -Qopenmp
 
 # set src dir
 VPATH =                                \
@@ -20,6 +20,7 @@ VPATH =                                \
     ../src/Libraries/flibs/src/strings/    \
     ../src/Libraries/mfUSGLib/Jan_23_2018/ \
     ../src/Libraries/mfUSGLib/             \
+    ../                                   \
 
 # source files and objects
 flibs = \
@@ -79,6 +80,7 @@ mfusg = \
 
 t2p2 = \
     Str_Module.f90              \
+    sgemv.f                     \
     time.f90                    \
     kdtree2.f90                 \
     Lists.f90                   \
@@ -91,6 +93,7 @@ t2p2 = \
     Sparse_Symmetric.f90        \
     Categories.f90              \
     Tools.f90                   \
+    cellblocks.f90              \
     Grid.f90                    \
     DataSets.f90                \
     weights.f90                 \
@@ -101,7 +104,10 @@ t2p2 = \
     kriging.f90                 \
     sgsim.f90                   \
     FlowModel.f90               \
+    ColMap.f90                  \
+    subsidence_funcs.f90        \
     T2P.f90                     \
+    version.f90                 \
     t2p_log.f90                 \
     Read_Datasets.f90           \
     Read_Main_Input.f90         \
@@ -115,7 +121,7 @@ $(info $$objflibs = $(objflibs))
 $(info $$objother = $(objother))
 
 # program name
-PROGRAM = texture2par
+PROGRAM = ../bin/Texture2Par
 
 all: $(PROGRAM)
 
@@ -131,7 +137,7 @@ all: $(PROGRAM)
 # $* -- The stem with which an implicit rule matches
 
 $(PROGRAM): $(objects)
-	$(FC) $(MODSWITCH) -o $@ $^
+	$(FC) $(MODSWITCH) $(FLFLAGS) -o $@ $^
 
 $(objflibs): %.obj: %
 	$(FC) $(FCFLAGS) -c               -o $@ $<
