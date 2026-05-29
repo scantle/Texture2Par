@@ -84,9 +84,11 @@ module m_kriging
 subroutine decomp(p,id,ntot,ier)
     implicit none
 !*** DECOMPOSITION TO GET LOWER TRIANGULAR S MATRIX
-    integer                :: id,ier,ks,jm1,k,js,is,is1,j,i,i1,ntot
-    real                   :: p,sum,p1,p2
-    dimension              :: p(1),id(1)
+    integer,intent(in)     :: id(:), ntot
+    integer,intent(out)    :: ier
+    integer                :: ks,jm1,k,js,is,is1,j,i,i1
+    real,intent(inout)     :: p(:)
+    real                   :: sum,p1,p2
 
           IER=0
           P(1)=1./P(1)
@@ -122,9 +124,11 @@ end subroutine decomp
 subroutine doolittle(r,p,id,w,ntot)
 
     implicit none
-          integer   :: id,ntot,i,is,js,im1,j,ii,iip1,iis
-          real      :: r,p,w,sum
-      dimension     :: r(1),p(1),w(1),id(1)
+          integer,intent(in)   :: id(:), ntot
+          integer              :: i,is,js,im1,j,ii,iip1,iis
+          real,intent(in)      :: r(:), p(:)
+          real,intent(inout)   :: w(:)
+          real                 :: sum
 !***  START OF DOOLITTLE ***
 !***  FORWARD SUBSTITUTION FOR SYSTEM S*W = R
           W(1)=R(1)*P(1)
@@ -237,6 +241,8 @@ end subroutine doolittle
 
     ! Goal is to fill cat2zone so that the global HSUs can be mapped to the kriging object zones (HSUs)
     ! (and check that all the kriging zones passed exist!)
+    if (.not. vstrlist_exists(this%zones)) return
+
     do i=1, vstrlist_length(this%zones)
       cat_id = vstrlist_search(glo_zone_names, vstring_toupper(vstrlist_index(this%zones,i)))
       if (cat_id==VSTRINGLIST_INDEX_UNKNOWN) then

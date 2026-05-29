@@ -251,9 +251,9 @@ module m_T2P
       call error_handler(1,opt_msg='Cannot both WRITE_IB_WEIGHTS and READ_IB_WEIGHTS - only one')
     end if
 
-    if (this%opt%nsim > 1) then
-      if (this%opt%WRITE_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot WRITE_GRID_WEIGHTS while using SGSIM (NSIM>1)')
-      if (this%opt%READ_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot READ_GRID_WEIGHTS while using SGSIM (NSIM>1)')
+    if (this%opt%nsim > 0) then
+      if (this%opt%WRITE_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot WRITE_GRID_WEIGHTS while using SGSIM (NSIM>0)')
+      if (this%opt%READ_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot READ_GRID_WEIGHTS while using SGSIM (NSIM>0)')
     end if
 
     if (this%opt%READ_GRID_WEIGHTS.and.this%opt%WRITE_VARIANCE) then

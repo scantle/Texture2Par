@@ -60,3 +60,5 @@ Example*
 x64/*
 training*
 *.pyc
+/.claude
+/T2P

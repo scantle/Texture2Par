@@ -783,14 +783,17 @@ module m_read_datasets
     ! Validate primary/secondary dataset classes, regardless of user/auto colmap
     nactive = t2p%get_active_texture_classes()
 
-    if (maxval(class_ids) <= nactive) then
-      ! Primary dataset: must include all active texture classes in one file
-      if (nsets == nactive) then
-        dataset_idx = 1
-        t2p%class_dataset(class_ids) = dataset_idx
-      else
-        call error_handler(1,file,"All primary datasets must be in same dataset file")
-      end if
+    if (all(class_ids <= t2p%ntexclasses)) then
+      ! Primary dataset: must include all active texture classes in one file.
+      ! When INFER_LAST_CLASS is active, the inferred final class may still be
+      ! present in the source file, but it should not make the file secondary.
+      do i = 1, nactive
+        if (.not. any(class_ids == i)) then
+          call error_handler(1,file,"All active primary datasets must be in same dataset file")
+        end if
+      end do
+      dataset_idx = 1
+      t2p%class_dataset(class_ids) = dataset_idx
     else
       ! Secondary dataset: only one class per file
       if (nsets == 1) then
