@@ -17,6 +17,7 @@ import pandas as pd
 from scipy.linalg import cho_factor, cho_solve
 from scipy.spatial.distance import pdist, squareform, cdist
 from scipy.spatial.transform import Rotation
+import time
 
 # ---------------------------------------------------------------------------
 # Variogram defaults
@@ -350,10 +351,12 @@ def calc_ck_correlation(run_t2p, butte_ck_data, vgm_p=_VGM_P, vgm_s=_VGM_S, vgm_
     aem_sub = aem_all.iloc[idx].reset_index(drop=True)
     aem_sub["ID"] = np.arange(1, len(aem_sub) + 1)
     extra = {**butte_ck_data["files"], "aem2d.csv": aem_sub.to_csv(index=False, lineterminator='\n')}
+    t0 = time.perf_counter()
     r = run_t2p(
         _t2p_ck(vgm_s=vgm_s, vgm_x=vgm_x, vgm_p=vgm_p, max_sdist=1e10),
         extra_files=extra,
     )
+    t1 = time.perf_counter()
 
     obs = pd.read_csv(StringIO(butte_ck_data["files"]["pc2d.csv"]))
     t2p = pd.read_csv(r.workdir / "test_Coarse.csv")
@@ -370,6 +373,9 @@ def calc_ck_correlation(run_t2p, butte_ck_data, vgm_p=_VGM_P, vgm_s=_VGM_S, vgm_
         obs["Coarse"].values,   s_val,
         t2p[["X", "Y"]].values,
     )
+    t2 = time.perf_counter()
+
+    print(f"CK: {t1 - t0:.2f}s (T2P), {t2 - t1:.2f}s (Python)")
     est = np.clip(est, 0, 1)
     corr_est = np.corrcoef(est, t2p["Layer1"].values)[0, 1]
     corr_var = np.corrcoef(var, t2p["Var_Layer1"].values)[0, 1]

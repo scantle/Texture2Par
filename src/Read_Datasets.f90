@@ -114,9 +114,11 @@ module m_read_datasets
       all_depth = 0
       prev_idx = 0
       prev_iint = 0
-      ! interbeds (good to set even if not using)
-      kbed_run = 0.0
-      kbed_open = .false.
+      ! interbeds (allocated only when subsidence is on)
+      if (t2p%opt%SUBSIDENCE_ON) then
+        kbed_run = 0.0
+        kbed_open = .false.
+      end if
       inferred_fine = .false.
 
       if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
@@ -423,9 +425,11 @@ module m_read_datasets
       prev_idx = 0
       prev_iint = 0
       npoints = 0    ! in 3D, npoints =/ nwells. Instead, its the total number of intervals.
-      ! interbeds (good to set even if not using)
-      kbed_run = 0.0
-      kbed_open = .false.
+      ! interbeds (allocated only when subsidence is on)
+      if (t2p%opt%SUBSIDENCE_ON) then
+        kbed_run = 0.0
+        kbed_open = .false.
+      end if
       inferred_fine = .false.
 
       if (t2p%opt%SUBSIDENCE_ON.and.didx==1) then
