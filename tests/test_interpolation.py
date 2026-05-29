@@ -11,7 +11,7 @@ import math
 from pathlib import Path
 
 import pytest
-
+import pandas as pd
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -44,13 +44,13 @@ def _grid_t2p(options_extra="", classes="Coarse\n  Fine", infer=True,
         BEGIN VARIOGRAMS
           CLASS Coarse
             1 Sph 0.05 0.038 1.5E4 1.5E4 0.0 16
+          {variogram_extra}
           CLASS PilotPoints
             1 Sph 0.00 1.0 1.0E5 1.0E5 0.0 25
-          {variogram_extra}
         END VARIOGRAMS
 
         BEGIN PP_LOCS
-          1 505000.0 4005000.0 1
+          1 5050.0 4005.0 1
         END PP_LOCS
 
         BEGIN PP_PARAMETERS
@@ -68,14 +68,14 @@ def _grid_t2p(options_extra="", classes="Coarse\n  Fine", infer=True,
 
 DATASET = """\
 Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse,Fine
-W1,1,1,500000.0,4000000.0,100.0,0.0,5.0,0.60,0.40
-W1,1,2,500000.0,4000000.0,100.0,5.0,10.0,0.55,0.45
-W2,2,1,510000.0,4000000.0,100.0,0.0,5.0,0.70,0.30
-W2,2,2,510000.0,4000000.0,100.0,5.0,10.0,0.45,0.55
-W3,3,1,505000.0,4010000.0,100.0,0.0,5.0,0.55,0.45
-W3,3,2,505000.0,4010000.0,100.0,5.0,10.0,0.50,0.50
-W4,4,1,498000.0,4008000.0,100.0,0.0,5.0,0.65,0.35
-W4,4,2,498000.0,4008000.0,100.0,5.0,10.0,0.42,0.58
+W1,1,1,5000,4000.0,100.0,0.0,5.0,0.60,0.40
+W1,1,2,5000,4000.0,100.0,5.0,10.0,0.55,0.45
+W2,2,1,5100,4000.0,100.0,0.0,5.0,0.70,0.30
+W2,2,2,5100,4000.0,100.0,5.0,10.0,0.45,0.55
+W3,3,1,5050,4010.0,100.0,0.0,5.0,0.55,0.45
+W3,3,2,5050,4010.0,100.0,5.0,10.0,0.50,0.50
+W4,4,1,4980,4008.0,100.0,0.0,5.0,0.65,0.35
+W4,4,2,4980,4008.0,100.0,5.0,10.0,0.42,0.58
 """
 
 GRD = """\
@@ -131,19 +131,8 @@ class TestOrdinaryKriging:
         tex_files = list(r.workdir.glob("*Coarse*"))
         if not tex_files:
             pytest.skip("Coarse dataset file not found")
-        content = tex_files[0].read_text()
-        rows = list(csv.DictReader(content.splitlines()))
-        # find the coarse column (last numeric column by convention)
-        for row in rows:
-            for k, v in row.items():
-                try:
-                    val = float(v)
-                    if 0.0 <= val <= 1.0 or math.isnan(val):
-                        pass  # ok
-                    else:
-                        pytest.fail(f"Texture value {val} outside [0,1] in column {k}")
-                except ValueError:
-                    pass
+        est = pd.read_csv(tex_files[0])
+        assert est["Layer1"].min()>=0 and est["Layer1"].max()<=1, "Texture values outside [0,1]"
 
     def test_infer_last_class_coarse_plus_fine_sum_to_one(self, run_t2p):
         """With INFER_LAST_CLASS, Coarse + Fine should sum to 1 at every node."""
@@ -184,30 +173,42 @@ class TestSGS:
         """Two SGS runs with different seeds should produce different outputs."""
         r1 = run_t2p(_grid_t2p(options_extra="SGSIM\n  SEED 1\n  WRITE_DATASET_FILES"),
                      extra_files=FILES)
-        r2 = run_t2p(_grid_t2p(options_extra="SGSIM\n  SEED 2\n  WRITE_DATASET_FILES"),
-                     extra_files=FILES)
-        if r1.returncode != 0 or r2.returncode != 0:
+        if r1.returncode != 0:
             pytest.skip("SGS run did not complete successfully")
         files1 = sorted(r1.workdir.glob("*Coarse*"))
-        files2 = sorted(r2.workdir.glob("*Coarse*"))
-        if not files1 or not files2:
+        if not files1:
             pytest.skip("Coarse dataset files not found for SGS comparison")
-        assert files1[0].read_text() != files2[0].read_text(), (
+        content1 = files1[0].read_text()  # capture before second run overwrites
+
+        r2 = run_t2p(_grid_t2p(options_extra="SGSIM\n  SEED 2\n  WRITE_DATASET_FILES"),
+                     extra_files=FILES)
+        if r2.returncode != 0:
+            pytest.skip("SGS run did not complete successfully")
+        files2 = sorted(r2.workdir.glob("*Coarse*"))
+        if not files2:
+            pytest.skip("Coarse dataset files not found for SGS comparison")
+        assert content1 != files2[0].read_text(), (
             "SGS with different seeds produced identical output")
 
     def test_sgsim_same_seed_reproducible(self, run_t2p):
         """Two SGS runs with the same seed should produce identical outputs."""
         r1 = run_t2p(_grid_t2p(options_extra="SGSIM\n  SEED 99\n  WRITE_DATASET_FILES"),
                      extra_files=FILES)
-        r2 = run_t2p(_grid_t2p(options_extra="SGSIM\n  SEED 99\n  WRITE_DATASET_FILES"),
-                     extra_files=FILES)
-        if r1.returncode != 0 or r2.returncode != 0:
+        if r1.returncode != 0:
             pytest.skip("SGS run did not complete successfully")
         files1 = sorted(r1.workdir.glob("*Coarse*"))
-        files2 = sorted(r2.workdir.glob("*Coarse*"))
-        if not files1 or not files2:
+        if not files1:
             pytest.skip("Coarse dataset files not found")
-        assert files1[0].read_text() == files2[0].read_text(), (
+        content1 = files1[0].read_text()  # capture before second run overwrites
+
+        r2 = run_t2p(_grid_t2p(options_extra="SGSIM\n  SEED 99\n  WRITE_DATASET_FILES"),
+                     extra_files=FILES)
+        if r2.returncode != 0:
+            pytest.skip("SGS run did not complete successfully")
+        files2 = sorted(r2.workdir.glob("*Coarse*"))
+        if not files2:
+            pytest.skip("Coarse dataset files not found")
+        assert content1 == files2[0].read_text(), (
             "SGS with same seed produced different output")
 
     def test_sgsim_incompatible_with_weight_write(self, run_t2p):
@@ -227,19 +228,68 @@ class TestWeightCaching:
 
     def test_write_and_read_grid_weights_binary(self, run_t2p):
         """Write weights on first run, reuse them on second; both must succeed."""
-        r1 = run_t2p(_grid_t2p(options_extra="WRITE_GRID_WEIGHTS"), extra_files=FILES)
+        # Use NZ=1 (single layer) so observations fall in the only layer, ensuring
+        # the WRITE run produces non-empty weight files that the READ run can consume.
+        # Use explicit Fine variogram (no INFER_LAST_CLASS) so Fine is also kriged
+        # and its weight file is complete.
+        single_grd = """\
+NX    5
+NY    5
+NZ    1
+DX    3000.0
+DY    3000.0
+TOP   constant 100.0
+BOT   constant 80.0
+IBOUND constant 1
+"""
+        def _t2p(extra_options):
+            return f"""\
+                BEGIN OPTIONS
+                  MAX_VSTRUCT 1
+                  WRITE_NODE_FILES
+                  {extra_options}
+                END OPTIONS
+                BEGIN CLASSES
+                  Coarse
+                  Fine
+                END CLASSES
+                BEGIN DATASET
+                  FILE dataset.csv
+                END DATASET
+                BEGIN FLOW_MODEL
+                  TYPE GRID
+                  GRID_FILE grid.grd
+                END FLOW_MODEL
+                BEGIN VARIOGRAMS
+                  CLASS Coarse
+                    1 Sph 0.05 0.038 1.5E4 1.5E4 0.0 16
+                  CLASS Fine
+                    1 Sph 0.05 0.038 1.5E4 1.5E4 0.0 16
+                  CLASS PilotPoints
+                    1 Sph 0.00 1.0 1.0E5 1.0E5 0.0 25
+                END VARIOGRAMS
+                BEGIN PP_LOCS
+                  1 5050.0 4005.0 1
+                END PP_LOCS
+                BEGIN PP_PARAMETERS
+                  TYPE Global
+                  1  0.5  -0.5  0.0
+                  TYPE Aquifer
+                  1 Coarse  0.1  100.0  1e-5  0.15  10.0  0.001
+                  1 Fine  0.001    0.5  1e-4  0.05   5.0  0.001
+                END PP_PARAMETERS
+                """
+
+        files = {**FILES, "grid.grd": single_grd}
+        r1 = run_t2p(_t2p("WRITE_GRID_WEIGHTS"), extra_files=files)
         assert r1.returncode == 0, r1.combined
 
-        # Copy weight files into a fresh run dir (run_t2p uses a new tmp_path each call)
         weight_files = list(r1.workdir.glob("*.wts")) + list(r1.workdir.glob("*.gwt"))
         if not weight_files:
             pytest.skip("No weight files found after WRITE_GRID_WEIGHTS run")
 
-        extra = dict(FILES)
-        for wf in weight_files:
-            extra[wf.name] = wf.read_text()
-
-        r2 = run_t2p(_grid_t2p(options_extra="READ_GRID_WEIGHTS"), extra_files=extra)
+        # Both calls share the same workdir (tmp_path), so weight files are already present
+        r2 = run_t2p(_t2p("READ_GRID_WEIGHTS"), extra_files=files)
         assert r2.returncode == 0, r2.combined
 
     def test_write_and_read_pp_weights(self, run_t2p):
@@ -356,7 +406,7 @@ class TestReadGridded:
             BEGIN OPTIONS
               MAX_VSTRUCT 1
               INFER_LAST_CLASS
-              READ_GRIDDED
+              READ_GRID
               WRITE_NODE_FILES
             END OPTIONS
             BEGIN CLASSES
@@ -375,7 +425,7 @@ class TestReadGridded:
                 1 Sph 0.00 1.0 1.0E5 1.0E5 0.0 25
             END VARIOGRAMS
             BEGIN PP_LOCS
-              1 505000.0 4005000.0 1
+              1 5050.0 4005.0 1
             END PP_LOCS
             BEGIN PP_PARAMETERS
               TYPE Global

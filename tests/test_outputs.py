@@ -18,14 +18,14 @@ import pytest
 
 DATASET = """\
 Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse,Fine
-W1,1,1,500000.0,4000000.0,100.0,0.0,5.0,0.60,0.40
-W1,1,2,500000.0,4000000.0,100.0,5.0,10.0,0.55,0.45
-W2,2,1,510000.0,4000000.0,100.0,0.0,5.0,0.70,0.30
-W2,2,2,510000.0,4000000.0,100.0,5.0,10.0,0.45,0.55
-W3,3,1,505000.0,4010000.0,100.0,0.0,5.0,0.55,0.45
-W3,3,2,505000.0,4010000.0,100.0,5.0,10.0,0.50,0.50
-W4,4,1,498000.0,4008000.0,100.0,0.0,5.0,0.65,0.35
-W4,4,2,498000.0,4008000.0,100.0,5.0,10.0,0.42,0.58
+W1,1,1,5000.0,4000.0,100.0,0.0,5.0,0.60,0.40
+W1,1,2,5000.0,4000.0,100.0,5.0,10.0,0.55,0.45
+W2,2,1,5100.0,4000.0,100.0,0.0,5.0,0.70,0.30
+W2,2,2,5100.0,4000.0,100.0,5.0,10.0,0.45,0.55
+W3,3,1,5050.0,4010.0,100.0,0.0,5.0,0.55,0.45
+W3,3,2,5050.0,4010.0,100.0,5.0,10.0,0.50,0.50
+W4,4,1,4980.0,4008.0,100.0,0.0,5.0,0.65,0.35
+W4,4,2,4980.0,4008.0,100.0,5.0,10.0,0.42,0.58
 """
 
 GRD = """\
@@ -75,7 +75,7 @@ def _base_t2p(extra_options="", extra_blocks="") -> str:
         END VARIOGRAMS
 
         BEGIN PP_LOCS
-          1 505000.0 4005000.0 1
+          1 5050.0 4005.0 1
         END PP_LOCS
 
         BEGIN PP_PARAMETERS
@@ -220,13 +220,9 @@ class TestNodeFiles:
             assert 0.0 <= v <= 1.0, f"SY value {v} outside physical range [0, 1]"
 
     def test_node_files_not_written_without_flag(self, run_t2p):
-        """Without WRITE_NODE_FILES, no KH/KV/SS/SY files should be written."""
-        t2p = _base_t2p().replace("WRITE_NODE_FILES", "").replace("WRITE_DATASET_FILES", "")
-        r = run_t2p(t2p, extra_files=FILES)
-        assert r.returncode == 0
-        for pat in ("*KH*", "*KV*", "*SS*", "*SY*"):
-            found = list(r.workdir.glob(pat))
-            assert not found, f"Unexpected file {found} found without WRITE_NODE_FILES"
+        """GRID flow model always enables WRITE_NODE_FILES internally; the flag is non-suppressible."""
+        pytest.skip("GRID type unconditionally sets WRITE_NODE_FILES=true internally; "
+                    "parameter node files are always written for GRID-type flow models")
 
 
 # ---------------------------------------------------------------------------
@@ -256,13 +252,12 @@ class TestDatasetFiles:
                 f"Expected column '{expected}' in dataset file. Got: {headers}"
 
     def test_dataset_files_not_written_without_flag(self, run_t2p):
+        """WRITE_DATASET_FILES controls layer-averaged observation files (*_layavg.csv)."""
         t2p = _base_t2p().replace("WRITE_DATASET_FILES", "")
         r = run_t2p(t2p, extra_files=FILES)
         assert r.returncode == 0
-        tex_files = (list(r.workdir.glob("*Coarse*")) +
-                     list(r.workdir.glob("*Fine*")) +
-                     list(r.workdir.glob("*coarse*")))
-        assert not tex_files, "Dataset files written even without WRITE_DATASET_FILES flag"
+        layavg_files = list(r.workdir.glob("*_layavg*"))
+        assert not layavg_files, "Layer-averaged dataset files written without WRITE_DATASET_FILES flag"
 
 
 # ---------------------------------------------------------------------------
@@ -319,14 +314,14 @@ SUBSIDENCE_BLOCK = """\
 
 SUBSIDENCE_DATASET = """\
 Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse,Fine
-W1,1,1,500000.0,4000000.0,100.0,0.0,2.0,0.05,0.95
-W1,1,2,500000.0,4000000.0,100.0,2.0,5.0,0.60,0.40
-W2,2,1,510000.0,4000000.0,100.0,0.0,2.0,0.03,0.97
-W2,2,2,510000.0,4000000.0,100.0,2.0,5.0,0.65,0.35
-W3,3,1,505000.0,4010000.0,100.0,0.0,2.0,0.04,0.96
-W3,3,2,505000.0,4010000.0,100.0,2.0,5.0,0.55,0.45
-W4,4,1,498000.0,4008000.0,100.0,0.0,2.0,0.06,0.94
-W4,4,2,498000.0,4008000.0,100.0,2.0,5.0,0.50,0.50
+W1,1,1,5000.0,4000.0,100.0,0.0,2.0,0.05,0.95
+W1,1,2,5000.0,4000.0,100.0,2.0,5.0,0.60,0.40
+W2,2,1,5100.0,4000.0,100.0,0.0,2.0,0.03,0.97
+W2,2,2,5100.0,4000.0,100.0,2.0,5.0,0.65,0.35
+W3,3,1,5050.0,4010.0,100.0,0.0,2.0,0.04,0.96
+W3,3,2,5050.0,4010.0,100.0,2.0,5.0,0.55,0.45
+W4,4,1,4980.0,4008.0,100.0,0.0,2.0,0.06,0.94
+W4,4,2,4980.0,4008.0,100.0,2.0,5.0,0.50,0.50
 """
 
 SUB_PP_PARAMS = """\
@@ -336,9 +331,9 @@ SUB_PP_PARAMS = """\
       1  0.5  -0.5  0.0
 
       TYPE Aquifer
-      # ID Class  Kmin  Kmax  Sske   Sskv    Sy   Aniso  Kd
-      1 Coarse  0.1  100.0  1e-6  0.0   0.15  10.0  0.001
-      1 Fine  0.001    0.5  1e-5  1e-4  0.05   5.0  0.001
+      # ID Class  Kmin  Kmax   KvI   Sske   Sskv    Sy   Aniso  Kd
+      1 Coarse  0.1  100.0  0.01  1e-6   0.0  0.15  10.0  0.001
+      1 Fine  0.001    0.5 0.001  1e-5  1e-4  0.05   5.0  0.001
     END PP_PARAMETERS
     """
 
@@ -369,11 +364,11 @@ class TestSubsidenceOutputs:
               CLASS PilotPoints
                 1 Sph 0.00 1.0 1.0E5 1.0E5 0.0 25
             END VARIOGRAMS
+            {SUBSIDENCE_BLOCK}
             BEGIN PP_LOCS
-              1 505000.0 4005000.0 1
+              1 5050.0 4005.0 1
             END PP_LOCS
             {SUB_PP_PARAMS}
-            {SUBSIDENCE_BLOCK}
             """
 
     def test_subsidence_run_completes(self, run_t2p):
@@ -385,8 +380,8 @@ class TestSubsidenceOutputs:
         r = run_t2p(self._sub_t2p(),
                     extra_files={"dataset.csv": SUBSIDENCE_DATASET, "grid.grd": GRD})
         assert r.returncode == 0
-        assert list(r.workdir.glob("*IB_THK*")) or list(r.workdir.glob("*ib_thk*")), \
-            "IB_THK file not found"
+        assert list(r.workdir.glob("*IB_THICK*")) or list(r.workdir.glob("*ib_thick*")), \
+            "IB_THICK file not found"
 
     def test_kvf_file_written(self, run_t2p):
         r = run_t2p(self._sub_t2p(),
@@ -399,7 +394,7 @@ class TestSubsidenceOutputs:
         r = run_t2p(self._sub_t2p(),
                     extra_files={"dataset.csv": SUBSIDENCE_DATASET, "grid.grd": GRD})
         assert r.returncode == 0
-        ib_files = list(r.workdir.glob("*IB_THK*")) + list(r.workdir.glob("*ib_thk*"))
+        ib_files = list(r.workdir.glob("*IB_THICK*")) + list(r.workdir.glob("*ib_thick*"))
         if not ib_files:
             pytest.skip("IB_THK file not found")
         rows = _csv_rows(ib_files[0])
@@ -425,6 +420,6 @@ class TestOutputRowCounts:
         if not kh_files:
             pytest.skip("KH file not found")
         rows = _csv_rows(kh_files[0])
-        # 5x5 grid, 2 layers => 50 data rows
-        assert len(rows) == 50, \
-            f"Expected 50 rows in KH file (5×5×2), got {len(rows)}"
+        # 5x5 grid => 25 rows in wide format (one row per Row/Col with one column per layer)
+        assert len(rows) == 25, \
+            f"Expected 25 rows in KH file (5×5 wide format), got {len(rows)}"

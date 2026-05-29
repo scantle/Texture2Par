@@ -22,6 +22,8 @@ import pytest
 # ---------------------------------------------------------------------------
 
 def _find_exe() -> str:
+    if os.path.exists("bin/Texture2Par.exe"):
+        return os.path.abspath("bin/Texture2Par.exe")
     exe = os.environ.get("T2P_EXE")
     if exe:
         return exe
@@ -66,10 +68,12 @@ def run_t2p(tmp_path):
             cwd=workdir,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
 
         log_path = workdir / (Path(filename).stem + ".out")
-        log = log_path.read_text() if log_path.exists() else ""
+        log = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
 
         return RunResult(
             returncode=result.returncode,
@@ -107,12 +111,12 @@ class RunResult:
 
 MINIMAL_DATASET = """\
 Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse,Fine
-W1,1,1,500000.0,4000000.0,100.0,0.0,5.0,0.6,0.4
-W1,1,2,500000.0,4000000.0,100.0,5.0,10.0,0.5,0.5
-W2,2,1,510000.0,4000000.0,100.0,0.0,5.0,0.7,0.3
-W2,2,2,510000.0,4000000.0,100.0,5.0,10.0,0.4,0.6
-W3,3,1,505000.0,4010000.0,100.0,0.0,5.0,0.55,0.45
-W3,3,2,505000.0,4010000.0,100.0,5.0,10.0,0.45,0.55
+W1,1,1,5000.0,4000.0,100.0,0.0,5.0,0.6,0.4
+W1,1,2,5000.0,4000.0,100.0,5.0,10.0,0.5,0.5
+W2,2,1,5100.0,4000.0,100.0,0.0,5.0,0.7,0.3
+W2,2,2,5100.0,4000.0,100.0,5.0,10.0,0.4,0.6
+W3,3,1,5050.0,4010.0,100.0,0.0,5.0,0.55,0.45
+W3,3,2,5050.0,4010.0,100.0,5.0,10.0,0.45,0.55
 """
 
 MINIMAL_GRD = """\
