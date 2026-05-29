@@ -62,3 +62,4 @@ training*
 *.pyc
 /.claude
 /T2P
+/.codex*

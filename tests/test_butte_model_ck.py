@@ -372,6 +372,9 @@ def calc_ck_correlation(run_t2p, butte_ck_data, vgm_p=_VGM_P, vgm_s=_VGM_S, vgm_
         obs[["x", "y"]].values, aem_sub[["x", "y"]].values,
         obs["Coarse"].values,   s_val,
         t2p[["X", "Y"]].values,
+        vgm0=vgm_p,
+        vgm1=vgm_s,
+        vgmc=vgm_x,
     )
     t2 = time.perf_counter()
 
