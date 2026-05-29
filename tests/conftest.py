@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import textwrap
 from pathlib import Path
-
+from .data import aem2d, grid2d, gridspec, pc2d
 import pytest
 
 
@@ -139,3 +139,36 @@ def minimal_dataset():
 @pytest.fixture
 def minimal_grd():
     return MINIMAL_GRD
+
+
+@pytest.fixture
+def butte_ok_data():
+    return {
+        "kws":dict(
+            datafile="pc2d.csv",
+            gridfile="grid.grd",
+            classes="Coarse\n  Fine",
+            variogram="sph 0.0 0.12 5000 5000 0.0 100",
+        ),
+        "files":{
+            "pc2d.csv":pc2d.pc2d,
+            "grid.grd":gridspec.gridspec,
+        }
+    }
+
+@pytest.fixture
+def butte_ck_data():
+    return {
+        "kws":dict(
+            datafile=["pc2d.csv", "aem2d.csv"],
+            gridfile="grid.grd",
+            classes="Coarse\n  Fine",
+            covariate="Rho",
+            variogram="sph 0.0 0.12 5000 5000 0.0 100",
+        ),
+        "files":{
+            "pc2d.csv":pc2d.pc2d,
+            "aem2d.csv":aem2d.aem2d,
+            "grid.grd":gridspec.gridspec,
+        }
+    }
