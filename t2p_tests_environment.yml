@@ -1,0 +1,12 @@
+name: t2p_tests
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Standard-library imports used by tests, such as pathlib, csv, math, io,
+  # os, shutil, subprocess, textwrap, and time, are provided by Python.
+  - python=3.12
+  - pytest>=8.0
+  - numpy
+  - pandas
+  - scipy

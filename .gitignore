@@ -44,6 +44,7 @@
 build/Debug/**
 build/release/**
 build/x64/**
+build_ifx/**
 src/Libraries/*/Release/**
 src/Libraries/*/x64/**
 src/Libraries/*/Debug/**

@@ -46,6 +46,9 @@ that order.
 # Run everything
 pytest
 
+# If pytest cannot access its default temp directory on Windows
+pytest --basetemp=.pytest_tmp
+
 # Run a single file
 pytest tests/test_input_parsing.py
 

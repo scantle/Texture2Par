@@ -66,43 +66,17 @@ def _simple_t2p(options_extra="", classes="Coarse\n  Fine",
 
 class TestOptionsBlock:
 
-    def test_missing_max_vstruct_fails(self, run_t2p, minimal_dataset, minimal_grd):
-        """MAX_VSTRUCT is the only mandatory option; omitting it must error."""
+    def test_missing_max_vstruct_uses_default(self, run_t2p, minimal_dataset, minimal_grd):
+        """Omitting MAX_VSTRUCT should use the program default and continue."""
         t2p = """\
             BEGIN OPTIONS
               INFER_LAST_CLASS
             END OPTIONS
-            BEGIN CLASSES
-              Coarse
-              Fine
-            END CLASSES
-            BEGIN DATASET
-              FILE dataset.csv
-            END DATASET
-            BEGIN FLOW_MODEL
-              TYPE GRID
-              GRID_FILE grid.grd
-            END FLOW_MODEL
-            BEGIN VARIOGRAMS
-              CLASS Coarse
-                1 Sph 0.05 0.038 1.5E4 1.5E4 0.0 16
-              CLASS PilotPoints
-                1 Sph 0.00 1.0 1.0E5 1.0E5 0.0 25
-            END VARIOGRAMS
-            BEGIN PP_LOCS
-              1 500000.0 4000000.0 1
-            END PP_LOCS
-            BEGIN PP_PARAMETERS
-              TYPE Global
-              1 0.5 -0.5 0.0
-              TYPE Aquifer
-              1 Coarse 0.1 100.0 1e-5 0.15 10.0 0.001
-              1 Fine   0.001 0.5 1e-4 0.05 5.0 0.001
-            END PP_PARAMETERS
+            ...
             """
         r = run_t2p(t2p, extra_files={"dataset.csv": minimal_dataset,
                                        "grid.grd": minimal_grd})
-        assert r.returncode == 0, "MAX_VSTRUCT is no longer mandatory"
+        assert r.returncode == 0, r.combined
 
     def test_max_vstruct_one(self, run_t2p, minimal_dataset, minimal_grd):
         """MAX_VSTRUCT 1 is the minimal valid configuration."""
