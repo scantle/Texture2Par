@@ -6,7 +6,7 @@ module m_interpolator
   use m_error_handler, only: error_handler
   use m_options, only: t_options
   use m_vario, only: t_vgm
-  use m_categories, only: t_category
+  use m_categories, only: t_category, CAT_ALL
   implicit none
 !-------------------------------------------------------------------------------------------------!
 ! ADDING A NEW INTERPOLATOR
@@ -150,7 +150,7 @@ module m_interpolator
       count_cat = 0
       ! Count occurrences across datasets
       do j = 1, size(obs_data)
-        count_cat = count_cat + count(obs_data(j)%category == cat)
+        count_cat = count_cat + count((obs_data(j)%category == cat).or.(obs_data(j)%category == CAT_ALL))
         if (count_cat > 1) exit
       end do
 
@@ -284,7 +284,7 @@ subroutine single_point_full_weight(this, obs_data, cat, to_cats, weights)
 
   ! Loop over datasets to find the index of the ASSUMED SINGLE observation that matches cat
   do i = 1, size(obs_data)
-    obs_idx = findloc(obs_data(i)%category, cat, dim=1)
+    obs_idx = findloc((obs_data(i)%category == cat).or.(obs_data(i)%category == CAT_ALL), .true., dim=1)
     if (obs_idx > 0) then  ! If found in dataset 'i'
       obs_idx = obs_idx + w_offset
       ! set weights for the found observation
@@ -429,7 +429,7 @@ end subroutine single_point_full_weight
       class is (t_layerdata)
         na_mask = .not. any(p%values(1:, :) == NODATA, dim=1)
     end select
-    this%catmask = (obs_data(1)%category == cat) .and. (na_mask)
+    this%catmask = ((obs_data(1)%category == cat).or.(obs_data(1)%category == CAT_ALL)) .and. na_mask
     if (count(this%catmask)>1) has_data = .true.
   end subroutine setup_idw
 

@@ -566,7 +566,7 @@ module m_T2P
     call this%fmodel%read_category_files()
     this%nhsus = this%fmodel%HSUS%ncat
 
-    ! Setup HSU variograms
+    ! Setup HSU categories
     select type(p => this%interp_data)
       class is(t_krige)
         allocate(p%cat2zone(this%fmodel%hsus%ncat))
@@ -574,12 +574,22 @@ module m_T2P
         call p%init_zones(this%fmodel%hsus%strlist_glo)
     end select
 
-    ! Setup PP zone variograms - don't have different variograms (yet)
+    ! Setup PP zone categories - don't have different variograms (yet)
     if (.not. this%opt%ONLY_TEXTURE) then
       select type(p => this%interp_pp)
         class is(t_krige)
           allocate(p%cat2zone(this%pilot_points%nppzones))
           p%cat2zone = 1
+      end select
+    end if
+    
+    ! Subsidence categories (uses HSUs), if ON
+    if (this%opt%SUBSIDENCE_ON) then
+      select type(p => interp_ib)
+        class is(t_krige)
+          allocate(p%cat2zone(this%fmodel%hsus%ncat))
+          p%cat2zone = 1
+          !call p%init_zones(this%fmodel%hsus%strlist_glo)  ! use only if we have HSU variograms for IB (not implemented)
       end select
     end if
 
@@ -962,8 +972,6 @@ module m_T2P
   subroutine interpolate_ib(this, to_grid, to_categories, to_active, results)
     use m_grid, only: t_grid
     use m_weights, only: t_weights
-    use m_pilotpoints, only: nproperties, naquitard_props, aquitard_props
-    ! Pilot Point type in, Pilot Point type out
     implicit none
     class(t_T2P), intent(inout)     :: this
     type(t_layerdata)               :: results(this%fmodel%nlayers)
@@ -1000,15 +1008,15 @@ module m_T2P
         call weights%load_from_file(trim(this%opt%PROJECT_NAME)//'_ibweights_lay'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
       else
         x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
-        call this%interp_pp%calc_weights(this%interbed_count(k:k), &
-                                         class_idx,  &
-                                         to_grid,  &
-                                         to_active, &
-                                         weights%values, &
-                                         to_categories%catlist(1:this%fmodel%hsus%arrncat(x),x), &
-                                         to_categories%array(1:,x),&
-                                         this%opt,&
-                                         'ib')
+        call interp_ib%calc_weights(this%interbed_count(k:k), &
+                                    class_idx,  &
+                                    to_grid,  &
+                                    to_active, &
+                                    weights%values, &
+                                    to_categories%catlist(1:this%fmodel%hsus%arrncat(x),x), &
+                                    to_categories%array(1:,x),&
+                                    this%opt,&
+                                    'ib')
       end if
 
       ! Write PP weights

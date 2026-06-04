@@ -63,6 +63,9 @@ module m_subsidence
         p%nstruct    => nstruct
         p%variograms => variograms
         p%nnear      => nnear
+        if (allocated(p%global_vario_idx)) deallocate(p%global_vario_idx)
+        allocate(p%global_vario_idx(1,1,1))
+        p%global_vario_idx = 1
     end select
 
     has_ib_variogram = .true.
