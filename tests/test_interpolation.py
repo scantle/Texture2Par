@@ -135,6 +135,12 @@ IBOUND constant 1
 
 OK3D_EXACT_VGM = "Sph 0.0 1.0 1000 1000 5 0.0 0.0 0.0 10"
 OK3D_MULTI_VGM = "Sph 0.0 1.0 2.0 2.0 8.0 0.0 0.0 0.0 20"
+OK3D_CROSSLAYER_VGM = "Sph 0.0 1.0 2.0 2.0 20.0 0.0 0.0 0.0 20"
+OK3D_ROTATED_VGM = "Sph 0.0 1.0 1.5 3.0 20.0 30.0 0.0 0.0 20"
+OK3D_TRUNCATED_VGM = "Sph 0.0 1.0 2.0 2.0 20.0 0.0 0.0 0.0 5"
+OK3D_ANISO_SEARCH_VGM = "Sph 0.0 1.0 1.0 4.0 20.0 35.0 0.0 0.0 4"
+OK3D_EXP_VGM = "Exp 0.0 1.0 2.0 2.0 20.0 0.0 0.0 0.0 20"
+OK3D_GAU_VGM = "Gau 0.01 1.0 2.0 2.0 20.0 0.0 0.0 0.0 20"
 
 
 def _max_log_length_t2p(max_log_length=5) -> str:
@@ -396,7 +402,28 @@ W4,4,3,2.5,2.5,100,24,26,0.90
 """
 
 
-def _ok3d_multi_t2p() -> str:
+def _ok3d_irregular_dataset() -> str:
+    return """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W1,1,1,0.2,0.4,100,4,6,0.08
+W1,1,2,0.2,0.4,100,14,16,0.32
+W1,1,3,0.2,0.4,100,24,26,0.68
+W2,2,1,2.7,0.35,100,4,6,0.28
+W2,2,2,2.7,0.35,100,14,16,0.52
+W2,2,3,2.7,0.35,100,24,26,0.86
+W3,3,1,0.4,2.6,100,4,6,0.18
+W3,3,2,0.4,2.6,100,14,16,0.43
+W3,3,3,0.4,2.6,100,24,26,0.78
+W4,4,1,2.4,2.2,100,4,6,0.34
+W4,4,2,2.4,2.2,100,14,16,0.58
+W4,4,3,2.4,2.2,100,24,26,0.92
+W5,5,1,1.1,0.9,100,4,6,0.22
+W5,5,2,1.1,0.9,100,14,16,0.49
+W5,5,3,1.1,0.9,100,24,26,0.82
+"""
+
+
+def _ok3d_multi_t2p(vgm=OK3D_MULTI_VGM, extra_options="") -> str:
     return f"""\
         BEGIN OPTIONS
           MAX_VSTRUCT 1
@@ -406,6 +433,7 @@ def _ok3d_multi_t2p() -> str:
           WRITE_DATASET_FILES
           WRITE_VARIANCE
           INTERP_DIM 3
+          {extra_options}
         END OPTIONS
 
         BEGIN CLASSES
@@ -424,7 +452,7 @@ def _ok3d_multi_t2p() -> str:
 
         BEGIN VARIOGRAMS
           CLASS Coarse
-            1 {OK3D_MULTI_VGM}
+            1 {vgm}
         END VARIOGRAMS
         """
 
@@ -456,34 +484,96 @@ def _read_coarse_texture_output(r) -> pd.DataFrame:
 def _parse_ok3d_vgm(vgm: str):
     parts = vgm.split()
     vtype = parts[0].lower()[:3]
-    if vtype != "sph":
-        raise ValueError(f"Only spherical covariance is supported here, got {vtype}")
     nugget, sill, hmin, hmax, hvert = (float(parts[i]) for i in range(1, 6))
     azimuth, dip, plunge = (float(parts[i]) for i in range(6, 9))
     nnear = int(parts[9])
-    if any(abs(angle) > 1e-12 for angle in (azimuth, dip, plunge)):
-        raise ValueError("This local OK reference currently expects zero rotation angles")
-    return nugget, sill, np.array([hmin, hmax, hvert], dtype=float), nnear
+    rotmat = _fortran_variogram_rotmat(hmin, hmax, hvert, azimuth, dip, plunge)
+    return vtype, nugget, sill, hmax, rotmat, nnear
+
+
+def _fortran_variogram_rotmat(hmin, hmax, hvert, azimuth, dip, plunge):
+    # Matches Texture2Par's Fortran variogram rotation convention; the
+    # test_variogram_rotation_metric_sanity_checks test validates the resulting
+    # metric behavior independently for simple cases.
+    rotmat = np.diag([hmax / hmin, 1.0, hmax / hvert])
+
+    if abs(plunge) > 1e-10:
+        alpha = np.deg2rad(-plunge)
+        sina = np.sin(alpha)
+        cosa = np.cos(alpha)
+        tmp = np.array([
+            [cosa, 0.0, sina],
+            [0.0, 1.0, 0.0],
+            [-sina, 0.0, cosa],
+        ])
+        rotmat = rotmat @ tmp
+
+    if abs(dip) > 1e-10:
+        alpha = np.deg2rad(dip)
+        sina = np.sin(alpha)
+        cosa = np.cos(alpha)
+        tmp = np.array([
+            [1.0, 0.0, 0.0],
+            [0.0, cosa, sina],
+            [0.0, -sina, cosa],
+        ])
+        rotmat = rotmat @ tmp
+
+    if abs(azimuth) > 1e-10:
+        alpha = np.deg2rad(azimuth)
+        sina = np.sin(alpha)
+        cosa = np.cos(alpha)
+        tmp = np.array([
+            [cosa, -sina, 0.0],
+            [sina, cosa, 0.0],
+            [0.0, 0.0, 1.0],
+        ])
+        rotmat = rotmat @ tmp
+
+    return rotmat
+
+
+def _effective_distance(delta, hmin, hmax, hvert, azimuth=0.0, dip=0.0, plunge=0.0):
+    rotmat = _fortran_variogram_rotmat(hmin, hmax, hvert, azimuth, dip, plunge)
+    scaled = rotmat @ np.asarray(delta, dtype=float) / hmax
+    return np.linalg.norm(scaled)
 
 
 def _spherical_covariance(hr):
     return np.where(hr < 1.0, 1.0 - 1.5 * hr + 0.5 * hr**3, 0.0)
 
 
+def _ok3d_covariance(vtype, hr):
+    if vtype == "sph":
+        return _spherical_covariance(hr)
+    if vtype == "exp":
+        return np.exp(-3.0 * hr)
+    if vtype == "gau":
+        return np.exp(-49.0 / 16.0 * hr**2)
+    raise ValueError(f"Unsupported covariance function {vtype!r}")
+
+
 def _ok_reference_3d(obsloc, obsval, newloc, vgm):
     obsloc = np.asarray(obsloc, dtype=float)
     obsval = np.asarray(obsval, dtype=float)
     newloc = np.asarray(newloc, dtype=float)
-    nugget, sill, ranges, nnear = _parse_ok3d_vgm(vgm)
+    vtype, nugget, sill, hmax, rotmat, nnear = _parse_ok3d_vgm(vgm)
     if nnear < len(obsloc):
         raise ValueError(f"nnear ({nnear}) must be >= nobs ({len(obsloc)})")
 
-    scaled_obs = obsloc / ranges
-    scaled_new = newloc / ranges
+    scaled_obs = (rotmat @ obsloc.T).T / hmax
+    scaled_new = (rotmat @ newloc.T).T / hmax
     cov0 = nugget + sill
-    c_obs = _spherical_covariance(squareform(pdist(scaled_obs))) * sill
+    c_obs = _ok3d_covariance(vtype, squareform(pdist(scaled_obs))) * sill
     np.fill_diagonal(c_obs, cov0)
-    c_rhs = _spherical_covariance(cdist(scaled_obs, scaled_new)) * sill
+    rhs_dist = cdist(scaled_obs, scaled_new)
+    c_rhs = _ok3d_covariance(vtype, rhs_dist) * sill
+    if nugget > 0.0:
+        # Texture2Par treats an exact target-observation match as including the
+        # nugget covariance on the RHS. This is a T2P support/convention choice;
+        # tests that should be independent of that convention should avoid exact
+        # target-observation coincidences when nugget > 0.
+        c_rhs = c_rhs + np.where(rhs_dist < 1e-10, nugget, 0.0)
 
     e = np.ones(len(obsloc))
     cf = cho_factor(c_obs, lower=True)
@@ -495,6 +585,67 @@ def _ok_reference_3d(obsloc, obsval, newloc, vgm):
     est = obsval @ weights
     var = np.maximum(0.0, cov0 - (weights * c_rhs).sum(axis=0) - mu)
     return est, var
+
+
+def _ok_reference_3d_augmented(obsloc, obsval, newloc, vgm):
+    obsloc = np.asarray(obsloc, dtype=float)
+    obsval = np.asarray(obsval, dtype=float)
+    newloc = np.asarray(newloc, dtype=float)
+    vtype, nugget, sill, hmax, rotmat, nnear = _parse_ok3d_vgm(vgm)
+    if nnear < len(obsloc):
+        raise ValueError(f"nnear ({nnear}) must be >= nobs ({len(obsloc)})")
+
+    scaled_obs = (rotmat @ obsloc.T).T / hmax
+    scaled_new = (rotmat @ newloc.T).T / hmax
+    cov0 = nugget + sill
+    c_obs = _ok3d_covariance(vtype, squareform(pdist(scaled_obs))) * sill
+    np.fill_diagonal(c_obs, cov0)
+    rhs_dist = cdist(scaled_obs, scaled_new)
+    c_rhs = _ok3d_covariance(vtype, rhs_dist) * sill
+    if nugget > 0.0:
+        # Texture2Par treats an exact target-observation match as including the
+        # nugget covariance on the RHS. This is a T2P support/convention choice;
+        # tests that should be independent of that convention should avoid exact
+        # target-observation coincidences when nugget > 0.
+        c_rhs = c_rhs + np.where(rhs_dist < 1e-10, nugget, 0.0)
+
+    nobs = len(obsloc)
+    lhs = np.zeros((nobs + 1, nobs + 1))
+    lhs[:nobs, :nobs] = c_obs
+    lhs[:nobs, nobs] = 1.0
+    lhs[nobs, :nobs] = 1.0
+
+    rhs = np.vstack([c_rhs, np.ones((1, len(newloc)))])
+    solved = np.linalg.solve(lhs, rhs)
+    weights = solved[:nobs, :]
+    mu = solved[nobs, :]
+    est = obsval @ weights
+    var = np.maximum(0.0, cov0 - (weights * c_rhs).sum(axis=0) - mu)
+    return est, var
+
+
+def _ok_reference_3d_nearest(obsloc, obsval, newloc, vgm, anisotropic_search=False):
+    obsloc = np.asarray(obsloc, dtype=float)
+    obsval = np.asarray(obsval, dtype=float)
+    newloc = np.asarray(newloc, dtype=float)
+    _, _, _, _, rotmat, nnear = _parse_ok3d_vgm(vgm)
+    nuse = min(nnear, len(obsloc))
+    if anisotropic_search:
+        search_obs = (rotmat @ obsloc.T).T
+        search_new = (rotmat @ newloc.T).T
+    else:
+        search_obs = obsloc
+        search_new = newloc
+
+    est = []
+    var = []
+    for i, target in enumerate(newloc):
+        dist = np.linalg.norm(search_obs - search_new[i], axis=1)
+        use = np.argsort(dist, kind="stable")[:nuse]
+        loc_est, loc_var = _ok_reference_3d(obsloc[use], obsval[use], target[None, :], vgm)
+        est.append(loc_est[0])
+        var.append(loc_var[0])
+    return np.asarray(est), np.asarray(var)
 
 
 def _ok3d_observations_from_dataset(dataset_text: str):
@@ -906,6 +1057,54 @@ class TestInterpDim3GridGeometry:
 
 class TestOrdinaryKriging3D:
 
+    def test_ok_reference_schur_matches_augmented_system(self):
+        dataset = _ok3d_corner_dataset()
+        obsloc, obsval = _ok3d_observations_from_dataset(dataset)
+        targets = np.array([
+            [1.5, 1.5, 95.0],
+            [1.5, 1.5, 85.0],
+            [1.5, 1.5, 75.0],
+            [1.25, 1.75, 88.0],
+        ])
+
+        schur_est, schur_var = _ok_reference_3d(obsloc, obsval, targets, OK3D_MULTI_VGM)
+        aug_est, aug_var = _ok_reference_3d_augmented(obsloc, obsval, targets, OK3D_MULTI_VGM)
+
+        assert schur_est == pytest.approx(aug_est, abs=1e-12)
+        assert schur_var == pytest.approx(aug_var, abs=1e-12)
+
+    def test_variogram_rotation_metric_sanity_checks(self):
+        assert _effective_distance([1, 0, 0], 1.0, 4.0, 20.0) == pytest.approx(1.0)
+        assert _effective_distance([0, 1, 0], 1.0, 4.0, 20.0) == pytest.approx(0.25)
+        assert _effective_distance([0, 0, 1], 1.0, 4.0, 20.0) == pytest.approx(0.05)
+
+        delta = [1.0, 2.0, 0.0]
+        isotropic_horizontal = [
+            _effective_distance(delta, 4.0, 4.0, 20.0, azimuth=angle)
+            for angle in (0.0, 30.0, 90.0)
+        ]
+        assert isotropic_horizontal == pytest.approx([isotropic_horizontal[0]] * 3)
+
+        assert _effective_distance([1, 0, 0], 1.0, 4.0, 20.0) > (
+            _effective_distance([0, 1, 0], 1.0, 4.0, 20.0)
+        )
+        assert _effective_distance([0, 1, 0], 1.0, 4.0, 20.0, azimuth=90.0) > (
+            _effective_distance([1, 0, 0], 1.0, 4.0, 20.0, azimuth=90.0)
+        )
+
+        for delta in ([1.0, 2.0, 3.0], [-2.0, 0.5, 1.25], [0.0, -1.0, 4.0]):
+            unrotated = _effective_distance(delta, 7.0, 7.0, 7.0)
+            rotated = _effective_distance(
+                delta,
+                7.0,
+                7.0,
+                7.0,
+                azimuth=30.0,
+                dip=15.0,
+                plunge=-20.0,
+            )
+            assert rotated == pytest.approx(unrotated, abs=1e-12)
+
     def test_exact_vertical_hits_preserve_layer_sequence(self, run_t2p):
         r = run_t2p(
             _ok3d_t2p(),
@@ -988,6 +1187,182 @@ class TestOrdinaryKriging3D:
         center_ref, _ = _ok_reference_3d(obsloc, obsval, center_targets, OK3D_MULTI_VGM)
         assert center_est == pytest.approx(center_ref, abs=1e-5)
         assert center_est[2] - center_est[0] > 0.25
+
+    def test_vertical_range_controls_cross_layer_influence(self, run_t2p):
+        dataset = _ok3d_corner_dataset()
+        r = run_t2p(
+            _ok3d_multi_t2p(vgm=OK3D_CROSSLAYER_VGM),
+            extra_files={
+                "dataset.csv": dataset,
+                "grid.grd": OK3D_INTERIOR_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+
+        df = _read_coarse_texture_output(r)
+        assert len(df) == 9, df.to_string(index=False)
+        targets, t2p_est, t2p_var = _coarse_output_to_arrays(df)
+        obsloc, obsval = _ok3d_observations_from_dataset(dataset)
+        ref_est, ref_var = _ok_reference_3d(obsloc, obsval, targets, OK3D_CROSSLAYER_VGM)
+
+        assert np.allclose(t2p_est.ravel(), ref_est, atol=1e-5), (
+            "3D OK estimates differ from Python reference for cross-layer range.\n"
+            f"T2P:\n{t2p_est}\nReference:\n{ref_est.reshape(t2p_est.shape)}"
+        )
+        assert np.allclose(t2p_var.ravel(), ref_var, atol=1e-5), (
+            "3D OK variances differ from Python reference for cross-layer range.\n"
+            f"T2P:\n{t2p_var}\nReference:\n{ref_var.reshape(t2p_var.shape)}"
+        )
+
+        center = df[
+            (df["X"].sub(1.5).abs() < 1e-9) &
+            (df["Y"].sub(1.5).abs() < 1e-9)
+        ]
+        assert len(center) == 1, df.to_string(index=False)
+        center_est = center[["Layer1", "Layer2", "Layer3"]].to_numpy(dtype=float)[0]
+        center_targets = np.array([[1.5, 1.5, 95.0], [1.5, 1.5, 85.0], [1.5, 1.5, 75.0]])
+        base_ref, _ = _ok_reference_3d(obsloc, obsval, center_targets, OK3D_MULTI_VGM)
+        cross_ref, _ = _ok_reference_3d(obsloc, obsval, center_targets, OK3D_CROSSLAYER_VGM)
+        assert center_est == pytest.approx(cross_ref, abs=1e-5)
+        assert np.max(np.abs(cross_ref - base_ref)) > 0.005
+
+    def test_rotated_anisotropic_variogram_matches_3d_ok_reference(self, run_t2p):
+        dataset = _ok3d_corner_dataset()
+        r = run_t2p(
+            _ok3d_multi_t2p(vgm=OK3D_ROTATED_VGM),
+            extra_files={
+                "dataset.csv": dataset,
+                "grid.grd": OK3D_INTERIOR_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+
+        df = _read_coarse_texture_output(r)
+        assert len(df) == 9, df.to_string(index=False)
+        targets, t2p_est, t2p_var = _coarse_output_to_arrays(df)
+        obsloc, obsval = _ok3d_observations_from_dataset(dataset)
+        ref_est, ref_var = _ok_reference_3d(obsloc, obsval, targets, OK3D_ROTATED_VGM)
+
+        assert np.allclose(t2p_est.ravel(), ref_est, atol=1e-5), (
+            "3D OK estimates differ from Python reference for rotated anisotropy.\n"
+            f"T2P:\n{t2p_est}\nReference:\n{ref_est.reshape(t2p_est.shape)}"
+        )
+        assert np.allclose(t2p_var.ravel(), ref_var, atol=1e-5), (
+            "3D OK variances differ from Python reference for rotated anisotropy.\n"
+            f"T2P:\n{t2p_var}\nReference:\n{ref_var.reshape(t2p_var.shape)}"
+        )
+
+        unrotated_ref, _ = _ok_reference_3d(obsloc, obsval, targets, OK3D_CROSSLAYER_VGM)
+        assert np.max(np.abs(ref_est - unrotated_ref)) > 0.01
+
+    def test_neighbor_truncation_matches_3d_ok_reference(self, run_t2p):
+        dataset = _ok3d_irregular_dataset()
+        r = run_t2p(
+            _ok3d_multi_t2p(vgm=OK3D_TRUNCATED_VGM),
+            extra_files={
+                "dataset.csv": dataset,
+                "grid.grd": OK3D_INTERIOR_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+
+        df = _read_coarse_texture_output(r)
+        assert len(df) == 9, df.to_string(index=False)
+        targets, t2p_est, t2p_var = _coarse_output_to_arrays(df)
+        obsloc, obsval = _ok3d_observations_from_dataset(dataset)
+        ref_est, ref_var = _ok_reference_3d_nearest(obsloc, obsval, targets, OK3D_TRUNCATED_VGM)
+
+        assert np.allclose(t2p_est.ravel(), ref_est, atol=1e-5), (
+            "3D OK estimates differ from nearest-neighbor Python reference.\n"
+            f"T2P:\n{t2p_est}\nReference:\n{ref_est.reshape(t2p_est.shape)}"
+        )
+        assert np.allclose(t2p_var.ravel(), ref_var, atol=1e-5), (
+            "3D OK variances differ from nearest-neighbor Python reference.\n"
+            f"T2P:\n{t2p_var}\nReference:\n{ref_var.reshape(t2p_var.shape)}"
+        )
+
+        all_ref, _ = _ok_reference_3d(obsloc, obsval, targets, OK3D_CROSSLAYER_VGM)
+        assert np.max(np.abs(ref_est - all_ref)) > 0.01
+
+    def test_anisotropic_search_changes_3d_neighbor_selection(self, run_t2p):
+        dataset = _ok3d_irregular_dataset()
+        files = {"dataset.csv": dataset, "grid.grd": OK3D_INTERIOR_GRD}
+
+        r = run_t2p(
+            _ok3d_multi_t2p(
+                vgm=OK3D_ANISO_SEARCH_VGM,
+                extra_options="ANISOTROPIC_SEARCH",
+            ),
+            extra_files=files,
+        )
+        assert r.returncode == 0, r.combined
+        df = _read_coarse_texture_output(r)
+        targets, t2p_est, t2p_var = _coarse_output_to_arrays(df)
+        obsloc, obsval = _ok3d_observations_from_dataset(dataset)
+        ref_est, ref_var = _ok_reference_3d_nearest(
+            obsloc,
+            obsval,
+            targets,
+            OK3D_ANISO_SEARCH_VGM,
+            anisotropic_search=True,
+        )
+
+        assert np.allclose(t2p_est.ravel(), ref_est, atol=1e-5), (
+            "3D OK estimates differ from anisotropic-search Python reference.\n"
+            f"T2P:\n{t2p_est}\nReference:\n{ref_est.reshape(t2p_est.shape)}"
+        )
+        assert np.allclose(t2p_var.ravel(), ref_var, atol=1e-5), (
+            "3D OK variances differ from anisotropic-search Python reference.\n"
+            f"T2P:\n{t2p_var}\nReference:\n{ref_var.reshape(t2p_var.shape)}"
+        )
+
+        r_iso = run_t2p(
+            _ok3d_multi_t2p(vgm=OK3D_ANISO_SEARCH_VGM),
+            extra_files=files,
+        )
+        assert r_iso.returncode == 0, r_iso.combined
+        _, t2p_iso_est, _ = _coarse_output_to_arrays(_read_coarse_texture_output(r_iso))
+        assert np.max(np.abs(t2p_est - t2p_iso_est)) > 0.01
+
+    @pytest.mark.parametrize("vgm", [OK3D_EXP_VGM, OK3D_GAU_VGM])
+    def test_non_spherical_3d_variograms_match_ok_reference(self, run_t2p, vgm):
+        dataset = _ok3d_corner_dataset()
+        r = run_t2p(
+            _ok3d_multi_t2p(vgm=vgm),
+            extra_files={
+                "dataset.csv": dataset,
+                "grid.grd": OK3D_INTERIOR_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+
+        df = _read_coarse_texture_output(r)
+        assert len(df) == 9, df.to_string(index=False)
+        if vgm == OK3D_GAU_VGM:
+            sampled_xy = {(0.5, 0.5), (2.5, 0.5), (0.5, 2.5), (2.5, 2.5)}
+            unsampled_mask = [
+                (round(row.X, 9), round(row.Y, 9)) not in sampled_xy
+                for row in df.itertuples(index=False)
+            ]
+            df = df.loc[unsampled_mask].reset_index(drop=True)
+            assert len(df) >= 5, df.to_string(index=False)
+            assert (
+                (df["X"].sub(1.5).abs() < 1e-9) &
+                (df["Y"].sub(1.5).abs() < 1e-9)
+            ).any(), df.to_string(index=False)
+
+        targets, t2p_est, t2p_var = _coarse_output_to_arrays(df)
+        obsloc, obsval = _ok3d_observations_from_dataset(dataset)
+        ref_est, ref_var = _ok_reference_3d(obsloc, obsval, targets, vgm)
+
+        assert np.allclose(t2p_est.ravel(), ref_est, atol=1e-5), (
+            f"3D OK estimates differ from Python reference for {vgm}.\n"
+            f"T2P:\n{t2p_est}\nReference:\n{ref_est.reshape(t2p_est.shape)}"
+        )
+        assert np.allclose(t2p_var.ravel(), ref_var, atol=1e-5), (
+            f"3D OK variances differ from Python reference for {vgm}.\n"
+            f"T2P:\n{t2p_var}\nReference:\n{ref_var.reshape(t2p_var.shape)}"
+        )
 
 
 # ---------------------------------------------------------------------------

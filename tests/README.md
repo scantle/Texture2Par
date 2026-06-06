@@ -12,7 +12,7 @@ binary, and asserts on its return code, log output, and output files.
 tests/
   conftest.py            # shared fixtures (binary locator, run_t2p runner)
   test_input_parsing.py  # OPTIONS / CLASSES / DATASET / FLOW_MODEL / VARIOGRAMS blocks
-  test_interpolation.py  # ordinary kriging, SGS, weight caching, ONLY_TEXTURE, READ_GRIDDED
+  test_interpolation.py  # ordinary kriging, 3D OK, SGS, weight caching, ONLY_TEXTURE, READ_GRIDDED
   test_outputs.py        # log file, node/dataset CSVs, elevation file, subsidence outputs
 pytest.ini               # pytest configuration
 requirements-test.txt    # pytest dependency
@@ -89,6 +89,9 @@ pytest --tb=long
 | `TestSGS` | flag accepted; different seeds differ; same seed reproducible; SGS + weight write incompatibility |
 | `TestWeightCaching` | WRITE/READ_GRID_WEIGHTS; WRITE/READ_PP_WEIGHTS; TEXT suffix |
 | `TestOnlyTexture` | no pilot points required; no hydraulic property files written |
+| `TestMaxLogLength` | INTERP_DIM 3 log interval splitting and processed XYZ support points |
+| `TestInterpDim3GridGeometry` | 3D grid elevation output and implied layer-center Z coordinates |
+| `TestOrdinaryKriging3D` | 3D OK exact hits; multi-log reference checks; rotation/anisotropy; nnear; ANISOTROPIC_SEARCH; Exp/Gau |
 | `TestReadGridded` | pre-interpolated grid input accepted |
 | `TestAnisotropicSearch` | ANISOTROPIC_SEARCH flag |
 | `TestNoTexBounds` | NO_TEX_BOUNDS allows values outside [0,1] |
