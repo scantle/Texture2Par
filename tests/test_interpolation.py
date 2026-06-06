@@ -12,6 +12,9 @@ from pathlib import Path
 
 import pytest
 import pandas as pd
+import numpy as np
+from scipy.linalg import cho_factor, cho_solve
+from scipy.spatial.distance import cdist, pdist, squareform
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -107,6 +110,31 @@ TOP   constant 100.0
 DZ    10.0
 IBOUND constant 1
 """
+
+OK3D_MULTI_GRD = """\
+NX    2
+NY    2
+NZ    3
+DX    1.0
+DY    1.0
+TOP   constant 100.0
+DZ    10.0
+IBOUND constant 1
+"""
+
+OK3D_INTERIOR_GRD = """\
+NX    3
+NY    3
+NZ    3
+DX    1.0
+DY    1.0
+TOP   constant 100.0
+DZ    10.0
+IBOUND constant 1
+"""
+
+OK3D_EXACT_VGM = "Sph 0.0 1.0 1000 1000 5 0.0 0.0 0.0 10"
+OK3D_MULTI_VGM = "Sph 0.0 1.0 2.0 2.0 8.0 0.0 0.0 0.0 20"
 
 
 def _max_log_length_t2p(max_log_length=5) -> str:
@@ -232,6 +260,275 @@ def _assert_processed_log_points(
         ]
         assert inferred_lengths == pytest.approx(expected_midpoint_spacings)
         assert max(inferred_lengths) <= max_log_length + 1e-9
+
+
+def _interp_dim3_geometry_t2p() -> str:
+    return """\
+        BEGIN OPTIONS
+          MAX_VSTRUCT 1
+          INFER_LAST_CLASS
+          ONLY_TEXTURE
+          WRITE_ELEVATION_FILE
+          INTERP_DIM 3
+        END OPTIONS
+
+        BEGIN CLASSES
+          Coarse
+          Fine
+        END CLASSES
+
+        BEGIN DATASET
+          FILE dataset.csv
+        END DATASET
+
+        BEGIN FLOW_MODEL
+          TYPE GRID
+          GRID_FILE grid.grd
+        END FLOW_MODEL
+
+        BEGIN VARIOGRAMS
+          CLASS Coarse
+            1 Sph 0.001 1.0 1000 1000 5 0.0 0.0 0.0 10
+        END VARIOGRAMS
+        """
+
+
+def _find_elevation_file(r) -> Path:
+    candidates = sorted(set(
+        list(r.workdir.glob("*elev*")) +
+        list(r.workdir.glob("*ELEV*")) +
+        list(r.workdir.glob("*elevation*"))
+    ))
+    if not candidates:
+        files = "\n".join(sorted(path.name for path in r.workdir.iterdir()))
+        pytest.fail(f"No elevation file found. Workdir files:\n{files}")
+    return candidates[0]
+
+
+def _read_grid_elevation_file(r) -> pd.DataFrame:
+    path = _find_elevation_file(r)
+    df = pd.read_csv(path)
+    required = {"Node", "X", "Y", "Top", "Bottom1", "Bottom2", "Bottom3"}
+    missing = required - set(df.columns)
+    if missing:
+        pytest.fail(
+            f"Elevation file {path.name} missing columns {sorted(missing)}. "
+            f"Columns: {list(df.columns)}. Rows:\n{df.to_string(index=False)}"
+        )
+    return df
+
+
+def _ok3d_exact_hit_dataset() -> str:
+    return """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W1,1,1,0.5,0.5,100,4,6,0.10
+W1,1,2,0.5,0.5,100,14,16,0.50
+W1,1,3,0.5,0.5,100,24,26,0.90
+"""
+
+
+def _ok3d_t2p() -> str:
+    return f"""\
+        BEGIN OPTIONS
+          MAX_VSTRUCT 1
+          INFER_LAST_CLASS
+          ONLY_TEXTURE
+          WRITE_NODE_FILES
+          WRITE_DATASET_FILES
+          WRITE_VARIANCE
+          INTERP_DIM 3
+        END OPTIONS
+
+        BEGIN CLASSES
+          Coarse
+          Fine
+        END CLASSES
+
+        BEGIN DATASET
+          FILE dataset.csv
+        END DATASET
+
+        BEGIN FLOW_MODEL
+          TYPE GRID
+          GRID_FILE grid.grd
+        END FLOW_MODEL
+
+        BEGIN VARIOGRAMS
+          CLASS Coarse
+            1 {OK3D_EXACT_VGM}
+        END VARIOGRAMS
+        """
+
+
+def _ok3d_multi_dataset() -> str:
+    return """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W1,1,1,0.5,0.5,100,4,6,0.10
+W1,1,2,0.5,0.5,100,14,16,0.35
+W1,1,3,0.5,0.5,100,24,26,0.70
+W2,2,1,1.5,0.5,100,4,6,0.25
+W2,2,2,1.5,0.5,100,14,16,0.50
+W2,2,3,1.5,0.5,100,24,26,0.85
+W3,3,1,0.5,1.5,100,4,6,0.20
+W3,3,2,0.5,1.5,100,14,16,0.45
+W3,3,3,0.5,1.5,100,24,26,0.80
+W4,4,1,1.5,1.5,100,4,6,0.30
+W4,4,2,1.5,1.5,100,14,16,0.55
+W4,4,3,1.5,1.5,100,24,26,0.90
+"""
+
+
+def _ok3d_corner_dataset() -> str:
+    return """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W1,1,1,0.5,0.5,100,4,6,0.10
+W1,1,2,0.5,0.5,100,14,16,0.35
+W1,1,3,0.5,0.5,100,24,26,0.70
+W2,2,1,2.5,0.5,100,4,6,0.25
+W2,2,2,2.5,0.5,100,14,16,0.50
+W2,2,3,2.5,0.5,100,24,26,0.85
+W3,3,1,0.5,2.5,100,4,6,0.20
+W3,3,2,0.5,2.5,100,14,16,0.45
+W3,3,3,0.5,2.5,100,24,26,0.80
+W4,4,1,2.5,2.5,100,4,6,0.30
+W4,4,2,2.5,2.5,100,14,16,0.55
+W4,4,3,2.5,2.5,100,24,26,0.90
+"""
+
+
+def _ok3d_multi_t2p() -> str:
+    return f"""\
+        BEGIN OPTIONS
+          MAX_VSTRUCT 1
+          INFER_LAST_CLASS
+          ONLY_TEXTURE
+          WRITE_NODE_FILES
+          WRITE_DATASET_FILES
+          WRITE_VARIANCE
+          INTERP_DIM 3
+        END OPTIONS
+
+        BEGIN CLASSES
+          Coarse
+          Fine
+        END CLASSES
+
+        BEGIN DATASET
+          FILE dataset.csv
+        END DATASET
+
+        BEGIN FLOW_MODEL
+          TYPE GRID
+          GRID_FILE grid.grd
+        END FLOW_MODEL
+
+        BEGIN VARIOGRAMS
+          CLASS Coarse
+            1 {OK3D_MULTI_VGM}
+        END VARIOGRAMS
+        """
+
+
+def _read_coarse_texture_output(r) -> pd.DataFrame:
+    candidates = sorted(
+        path for path in r.workdir.glob("*Coarse*.csv")
+        if all(
+            suffix not in path.name.lower()
+            for suffix in ("logxyz", "layavg", "aqtard")
+        )
+    )
+    if not candidates:
+        files = "\n".join(sorted(path.name for path in r.workdir.iterdir()))
+        pytest.fail(f"No Coarse texture node output found. Workdir files:\n{files}")
+
+    df = pd.read_csv(candidates[0])
+    required = {"Layer1", "Layer2", "Layer3"}
+    missing = required - set(df.columns)
+    if missing:
+        pytest.fail(
+            f"Coarse texture output {candidates[0].name} missing columns "
+            f"{sorted(missing)}. Columns: {list(df.columns)}. "
+            f"Rows:\n{df.to_string(index=False)}"
+        )
+    return df
+
+
+def _parse_ok3d_vgm(vgm: str):
+    parts = vgm.split()
+    vtype = parts[0].lower()[:3]
+    if vtype != "sph":
+        raise ValueError(f"Only spherical covariance is supported here, got {vtype}")
+    nugget, sill, hmin, hmax, hvert = (float(parts[i]) for i in range(1, 6))
+    azimuth, dip, plunge = (float(parts[i]) for i in range(6, 9))
+    nnear = int(parts[9])
+    if any(abs(angle) > 1e-12 for angle in (azimuth, dip, plunge)):
+        raise ValueError("This local OK reference currently expects zero rotation angles")
+    return nugget, sill, np.array([hmin, hmax, hvert], dtype=float), nnear
+
+
+def _spherical_covariance(hr):
+    return np.where(hr < 1.0, 1.0 - 1.5 * hr + 0.5 * hr**3, 0.0)
+
+
+def _ok_reference_3d(obsloc, obsval, newloc, vgm):
+    obsloc = np.asarray(obsloc, dtype=float)
+    obsval = np.asarray(obsval, dtype=float)
+    newloc = np.asarray(newloc, dtype=float)
+    nugget, sill, ranges, nnear = _parse_ok3d_vgm(vgm)
+    if nnear < len(obsloc):
+        raise ValueError(f"nnear ({nnear}) must be >= nobs ({len(obsloc)})")
+
+    scaled_obs = obsloc / ranges
+    scaled_new = newloc / ranges
+    cov0 = nugget + sill
+    c_obs = _spherical_covariance(squareform(pdist(scaled_obs))) * sill
+    np.fill_diagonal(c_obs, cov0)
+    c_rhs = _spherical_covariance(cdist(scaled_obs, scaled_new)) * sill
+
+    e = np.ones(len(obsloc))
+    cf = cho_factor(c_obs, lower=True)
+    cinv_rhs = cho_solve(cf, c_rhs)
+    cinv_e = cho_solve(cf, e)
+    mu = (e @ cinv_rhs - 1.0) / (e @ cinv_e)
+    weights = cinv_rhs - np.outer(cinv_e, mu)
+
+    est = obsval @ weights
+    var = np.maximum(0.0, cov0 - (weights * c_rhs).sum(axis=0) - mu)
+    return est, var
+
+
+def _ok3d_observations_from_dataset(dataset_text: str):
+    rows = list(csv.DictReader(dataset_text.splitlines()))
+    locs = []
+    vals = []
+    for row in rows:
+        top = float(row["TopDepth"])
+        bot = float(row["BotDepth"])
+        z = float(row["Zland"]) - 0.5 * (top + bot)
+        locs.append([float(row["X"]), float(row["Y"]), z])
+        vals.append(float(row["Coarse"]))
+    return np.asarray(locs), np.asarray(vals)
+
+
+def _coarse_output_to_arrays(df: pd.DataFrame):
+    layer_cols = ["Layer1", "Layer2", "Layer3"]
+    variance_cols = ["Var_Layer1", "Var_Layer2", "Var_Layer3"]
+    missing_var = set(variance_cols) - set(df.columns)
+    if missing_var:
+        pytest.fail(
+            f"Coarse texture output missing variance columns {sorted(missing_var)} "
+            f"despite WRITE_VARIANCE. Columns: {list(df.columns)}. "
+            f"Rows:\n{df.to_string(index=False)}"
+        )
+
+    z_centers = [95.0, 85.0, 75.0]
+    targets = []
+    for _, row in df.iterrows():
+        for z in z_centers:
+            targets.append([row["X"], row["Y"], z])
+    est = df[layer_cols].to_numpy(dtype=float)
+    var = df[variance_cols].to_numpy(dtype=float)
+    return np.asarray(targets, dtype=float), est, var
 
 
 # ---------------------------------------------------------------------------
@@ -571,7 +868,130 @@ class TestMaxLogLength:
 
 
 # ---------------------------------------------------------------------------
-# 7. READ_GRIDDED mode
+# 7. INTERP_DIM 3 grid geometry
+# ---------------------------------------------------------------------------
+
+class TestInterpDim3GridGeometry:
+
+    def test_elevation_file_writes_top_bottoms_and_layer_centers(self, run_t2p):
+        r = run_t2p(
+            _interp_dim3_geometry_t2p(),
+            extra_files={
+                "dataset.csv": _max_log_length_dataset(5),
+                "grid.grd": MAX_LOG_LENGTH_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+
+        df = _read_grid_elevation_file(r)
+        assert len(df) == 1, df.to_string(index=False)
+        row = df.iloc[0]
+
+        assert [row["Top"], row["Bottom1"], row["Bottom2"], row["Bottom3"]] == (
+            pytest.approx([100.0, 90.0, 80.0, 70.0])
+        )
+        layer_centers = [
+            0.5 * (row["Top"] + row["Bottom1"]),
+            0.5 * (row["Bottom1"] + row["Bottom2"]),
+            0.5 * (row["Bottom2"] + row["Bottom3"]),
+        ]
+        assert layer_centers == pytest.approx([95.0, 85.0, 75.0])
+        assert row["X"] == pytest.approx(0.5)
+        assert row["Y"] == pytest.approx(0.5)
+
+
+# ---------------------------------------------------------------------------
+# 8. Ordinary kriging in 3D
+# ---------------------------------------------------------------------------
+
+class TestOrdinaryKriging3D:
+
+    def test_exact_vertical_hits_preserve_layer_sequence(self, run_t2p):
+        r = run_t2p(
+            _ok3d_t2p(),
+            extra_files={
+                "dataset.csv": _ok3d_exact_hit_dataset(),
+                "grid.grd": MAX_LOG_LENGTH_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+
+        df = _read_coarse_texture_output(r)
+        assert len(df) == 1, df.to_string(index=False)
+        row = df.iloc[0]
+
+        assert row["Layer1"] == pytest.approx(0.10, abs=1e-2)
+        assert row["Layer2"] == pytest.approx(0.50, abs=1e-2)
+        assert row["Layer3"] == pytest.approx(0.90, abs=1e-2)
+        assert row["Layer3"] - row["Layer1"] > 0.7
+
+    def test_multiple_logs_match_3d_ok_reference(self, run_t2p):
+        dataset = _ok3d_multi_dataset()
+        r = run_t2p(
+            _ok3d_multi_t2p(),
+            extra_files={
+                "dataset.csv": dataset,
+                "grid.grd": OK3D_MULTI_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+
+        df = _read_coarse_texture_output(r)
+        assert len(df) == 4, df.to_string(index=False)
+        targets, t2p_est, t2p_var = _coarse_output_to_arrays(df)
+        obsloc, obsval = _ok3d_observations_from_dataset(dataset)
+        ref_est, ref_var = _ok_reference_3d(obsloc, obsval, targets, OK3D_MULTI_VGM)
+
+        assert np.allclose(t2p_est.ravel(), ref_est, atol=1e-5), (
+            "3D OK estimates differ from Python reference.\n"
+            f"T2P:\n{t2p_est}\nReference:\n{ref_est.reshape(t2p_est.shape)}"
+        )
+        assert np.allclose(t2p_var.ravel(), ref_var, atol=1e-5), (
+            "3D OK variances differ from Python reference.\n"
+            f"T2P:\n{t2p_var}\nReference:\n{ref_var.reshape(t2p_var.shape)}"
+        )
+        assert np.mean(t2p_est[:, 2] - t2p_est[:, 0]) > 0.4
+
+    def test_corner_logs_interpolate_unsampled_center_cell(self, run_t2p):
+        dataset = _ok3d_corner_dataset()
+        r = run_t2p(
+            _ok3d_multi_t2p(),
+            extra_files={
+                "dataset.csv": dataset,
+                "grid.grd": OK3D_INTERIOR_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+
+        df = _read_coarse_texture_output(r)
+        assert len(df) == 9, df.to_string(index=False)
+        targets, t2p_est, t2p_var = _coarse_output_to_arrays(df)
+        obsloc, obsval = _ok3d_observations_from_dataset(dataset)
+        ref_est, ref_var = _ok_reference_3d(obsloc, obsval, targets, OK3D_MULTI_VGM)
+
+        assert np.allclose(t2p_est.ravel(), ref_est, atol=1e-5), (
+            "3D OK estimates differ from Python reference for corner-log grid.\n"
+            f"T2P:\n{t2p_est}\nReference:\n{ref_est.reshape(t2p_est.shape)}"
+        )
+        assert np.allclose(t2p_var.ravel(), ref_var, atol=1e-5), (
+            "3D OK variances differ from Python reference for corner-log grid.\n"
+            f"T2P:\n{t2p_var}\nReference:\n{ref_var.reshape(t2p_var.shape)}"
+        )
+
+        center = df[
+            (df["X"].sub(1.5).abs() < 1e-9) &
+            (df["Y"].sub(1.5).abs() < 1e-9)
+        ]
+        assert len(center) == 1, df.to_string(index=False)
+        center_est = center[["Layer1", "Layer2", "Layer3"]].to_numpy(dtype=float)[0]
+        center_targets = np.array([[1.5, 1.5, 95.0], [1.5, 1.5, 85.0], [1.5, 1.5, 75.0]])
+        center_ref, _ = _ok_reference_3d(obsloc, obsval, center_targets, OK3D_MULTI_VGM)
+        assert center_est == pytest.approx(center_ref, abs=1e-5)
+        assert center_est[2] - center_est[0] > 0.25
+
+
+# ---------------------------------------------------------------------------
+# 9. READ_GRIDDED mode
 # ---------------------------------------------------------------------------
 
 class TestReadGridded:
@@ -628,7 +1048,7 @@ class TestReadGridded:
 
 
 # ---------------------------------------------------------------------------
-# 8. ANISOTROPIC_SEARCH
+# 10. ANISOTROPIC_SEARCH
 # ---------------------------------------------------------------------------
 
 class TestAnisotropicSearch:
@@ -639,7 +1059,7 @@ class TestAnisotropicSearch:
 
 
 # ---------------------------------------------------------------------------
-# 9. NO_TEX_BOUNDS
+# 11. NO_TEX_BOUNDS
 # ---------------------------------------------------------------------------
 
 class TestNoTexBounds:
