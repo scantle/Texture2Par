@@ -7,6 +7,7 @@ Section 1 – OK reference tests (mirrors test_butte_model.py; kept here so
             that CK-mode regressions can be compared against a known-good
             ordinary-kriging baseline in the same file).
 Section 2 – CK-specific tests using the secondary AEM resistivity dataset.
+Section 3 – CK-specific tests extended to 3D space with random Z coordinates.
 """
 
 from io import StringIO
@@ -30,6 +31,16 @@ _VGM_sph = "sph 0.0 0.12 5000 5000 0.0 100"
 _VGM_P = "sph 0.0 0.12  5000 5000 0.0 150"   # primary  – Coarse fraction
 _VGM_S = "sph 0.0 0.12  5000 5000 0.0 150"   # secondary – log10(resistivity)
 _VGM_X = "sph 0.0 0.048 5000 5000 0.0"        # cross     – no nnear token required
+
+# ---------------------------------------------------------------------------
+# Variogram defaults (3D Extension)
+# ---------------------------------------------------------------------------
+
+# LMC variograms for 3D cokriging (Format: vtype nugget sill hmin hmax hvert azimuth dip plunge [nmax])
+# Valid LMC: |b_12| = 0.048 <= sqrt(b_11 * b_22) = 0.12
+_VGM_P_3D = "sph 0.0 0.12  5000 5000 1500 35.0 10.0 5.0 150"   # primary  – Coarse fraction
+_VGM_S_3D = "sph 0.0 0.12  5000 5000 1500 35.0 10.0 5.0 150"   # secondary – log10(resistivity)
+_VGM_X_3D = "sph 0.0 0.048 5000 5000 1500 35.0 10.0 5.0"        # cross
 
 _covfunc = dict(
     lin = lambda hr: np.where(hr < 1.0, 1.0 - hr, 0.0),
@@ -79,7 +90,7 @@ def parse_vgm(svgm, is3d=False):
         nmax = int(v[im:=im+1])
     except (IndexError, ValueError):
         nmax = 9999                   # cross-variograms have no nnear token
-    rot = Rotation.from_euler('zyx', [azimuth, dip, plunge], degrees=True)
+    rot = Rotation.from_euler('zxy', [azimuth, -dip, -plunge], degrees=True)
     hh  = np.array([[hmin, hmax, hvert]])
     return vtype, nugget, sill, rot, hh, nmax
 
@@ -280,10 +291,8 @@ def _t2p_ck(classes="Coarse\n  Fine", covariate="Rho",
              gridfile="grid.grd",
              vgm_p=_VGM_P, vgm_s=_VGM_S, vgm_x=_VGM_X,
              transform_s="LOG10",
-             max_sdist=None,
              options_extra="") -> str:
     primary_class = classes.split()[0]
-    sdist_line = f"MAX_SECONDARY_DIST {max_sdist}" if max_sdist is not None else ""
     return f"""\
         BEGIN OPTIONS
           MAX_VSTRUCT 1
@@ -291,7 +300,6 @@ def _t2p_ck(classes="Coarse\n  Fine", covariate="Rho",
           WRITE_NODE_FILES
           WRITE_VARIANCE
           INFER_LAST_CLASS
-          {sdist_line}
           {options_extra}
         END OPTIONS
 
@@ -353,7 +361,7 @@ def calc_ck_correlation(run_t2p, butte_ck_data, vgm_p=_VGM_P, vgm_s=_VGM_S, vgm_
     extra = {**butte_ck_data["files"], "aem2d.csv": aem_sub.to_csv(index=False, lineterminator='\n')}
     t0 = time.perf_counter()
     r = run_t2p(
-        _t2p_ck(vgm_s=vgm_s, vgm_x=vgm_x, vgm_p=vgm_p, max_sdist=1e10),
+        _t2p_ck(vgm_s=vgm_s, vgm_x=vgm_x, vgm_p=vgm_p),
         extra_files=extra,
     )
     t1 = time.perf_counter()
@@ -383,6 +391,96 @@ def calc_ck_correlation(run_t2p, butte_ck_data, vgm_p=_VGM_P, vgm_s=_VGM_S, vgm_
     corr_est = np.corrcoef(est, t2p["Layer1"].values)[0, 1]
     corr_var = np.corrcoef(var, t2p["Var_Layer1"].values)[0, 1]
     return corr_est, corr_var
+
+
+# ---------------------------------------------------------------------------
+# 3D Reference Verification Helper
+# ---------------------------------------------------------------------------
+
+
+def ck3d(obsloc0, obsloc1, obsval0, obsval1,
+       newloc, vgm0=_VGM_P_3D, vgm1=_VGM_S_3D, vgmc=_VGM_X_3D, is3d=True):
+    return ck(obsloc0, obsloc1, obsval0, obsval1, newloc, vgm0, vgm1, vgmc, is3d)
+
+def _t2p_ck3d(classes="Coarse\n  Fine", covariate="Rho",
+             datafile_p="pc3d.csv", datafile_s="aem3d.csv",
+             gridfile="grid.grd",
+             vgm_p=_VGM_P_3D, vgm_s=_VGM_S_3D, vgm_x=_VGM_X_3D,
+             transform_s="LOG10",
+             options_extra="INTERP_DIM          3"):
+    return _t2p_ck(classes, covariate, datafile_p, datafile_s, gridfile,
+                   vgm_p, vgm_s, vgm_x, transform_s, options_extra)
+
+def calc_ck_correlation_3d(run_t2p, butte_ck_data, vgm_p=_VGM_P_3D, vgm_s=_VGM_S_3D, vgm_x=_VGM_X_3D):
+    """
+    3D CK reference calculation generating random Z coordinates to test cross-validation.
+    """
+    obs = pd.read_csv(StringIO(butte_ck_data["files"]["pc2d.csv"]))
+    aem_all = pd.read_csv(StringIO(butte_ck_data["files"]["aem2d.csv"]))
+
+    rng = np.random.default_rng(42)
+    idx = rng.choice(len(aem_all), 150, replace=False)
+    aem_sub = aem_all.iloc[idx].reset_index(drop=True)
+    aem_sub["ID"] = np.arange(1, len(aem_sub) + 1)
+
+    # Inject random Z coordinate profiles (e.g., elevation heights centered 50 m)
+    dz = 75
+    obs["Zland"] = rng.uniform(-dz, dz, len(obs))+52
+    obs["Depth0"] = 1
+    obs["Depth1"] = 3
+    aem_sub["Zland"] = rng.uniform(-dz, dz, len(aem_sub))+52
+    aem_sub["Depth0"] = 1
+    aem_sub["Depth1"] = 3
+
+    extra = {
+        **butte_ck_data["files"],
+        "pc3d.csv": obs.to_csv(index=False, lineterminator='\n'),
+        "aem3d.csv": aem_sub.to_csv(index=False, lineterminator='\n')
+    }
+
+    t0 = time.perf_counter()
+    r = run_t2p(_t2p_ck3d(vgm_s=vgm_s, vgm_x=vgm_x, vgm_p=vgm_p, ),extra_files=extra,)
+    t1 = time.perf_counter()
+
+    t2p = pd.read_csv(r.workdir / "test_Coarse.csv")
+    t2p["Z"] = 50.0
+
+    # T2P shifts secondary values so they share the primary mean before
+    # multiplying by weights (Interpolators.f90, line ~221):
+    #   v_adjust = mean(primary) - mean(secondary)
+    # Apply the same adjustment here so the Python estimate matches T2P.
+    s_log10 = np.log10(aem_sub["Rho"].values)
+    v_adjust = obs["Coarse"].mean() - s_log10.mean()
+    s_val = s_log10 + v_adjust
+
+    # Perform 3D validation step
+    obs    ["z"] = obs    ["Zland"] - 2
+    aem_sub["z"] = aem_sub["Zland"] - 2
+    est, var = ck3d(
+        obs[["x", "y", "z"]].values,
+        aem_sub[["x", "y", "z"]].values,
+        obs["Coarse"].values,
+        s_val,
+        t2p[["X", "Y", "Z"]].values,
+        vgm0=vgm_p,
+        vgm1=vgm_s,
+        vgmc=vgm_x,
+    )
+    t2 = time.perf_counter()
+
+    print(f"CK 3D: {t1 - t0:.2f}s (T2P), {t2 - t1:.2f}s (Python)")
+    est = np.clip(est, 0, 1)
+    np.testing.assert_allclose(est, t2p["Layer1"].values, atol=1e-5)
+    np.testing.assert_allclose(var, t2p["Var_Layer1"].values, atol=1e-5)
+    corr_est = np.corrcoef(est, t2p["Layer1"].values)[0, 1]
+    corr_var = np.corrcoef(var, t2p["Var_Layer1"].values)[0, 1]
+    assert corr_est > 0.99, (
+        f"CK estimate correlation with reference = {corr_est:.4f} (expected > 0.99)"
+    )
+    assert corr_var > 0.99, (
+        f"CK variance correlation with reference = {corr_var:.4f} (expected > 0.99)"
+    )
+
 
 # ---------------------------------------------------------------------------
 # 1. Cokriging tests (primary + secondary AEM dataset)
@@ -460,13 +558,15 @@ class TestCokrigingButteCK:
             f"CK variance correlation with reference = {corr_var:.4f} (expected > 0.99)"
         )
 
-    def test_ck_reference_correlation_aniso(self, run_t2p, butte_ck_data):
+    @pytest.mark.parametrize("aniso1",  [1.0, 0.1])
+    @pytest.mark.parametrize("azimuth", [0.0, 225])
+    def test_ck_reference_correlation_aniso(self, run_t2p, butte_ck_data, aniso1, azimuth):
         """
         CK estimates and variances correlate > 0.99 with a Python reference with anisotropic variograms.
         """
-        vgm_p=_VGM_P.replace("5000 5000 0.0", "1000 5000 40.0")
-        vgm_s=_VGM_S.replace("5000 5000 0.0", "1000 5000 40.0")
-        vgm_x=_VGM_X.replace("5000 5000 0.0", "1000 5000 40.0")
+        vgm_p=f"sph 0.0    0.12  {5000*aniso1} 5000 {azimuth} 150"
+        vgm_s=f"sph 0.02   0.08  {5000*aniso1} 5000 {azimuth} 150"
+        vgm_x=f"sph 0.0   0.048  {5000*aniso1} 5000 {azimuth}"
         corr_est, corr_var = calc_ck_correlation(run_t2p, butte_ck_data, vgm_p, vgm_s, vgm_x)
         assert corr_est > 0.99, (
             f"CK estimate correlation with reference = {corr_est:.4f} (expected > 0.99)"
@@ -474,3 +574,23 @@ class TestCokrigingButteCK:
         assert corr_var > 0.99, (
             f"CK variance correlation with reference = {corr_var:.4f} (expected > 0.99)"
         )
+
+
+
+class TestCokrigingButteCK3D:
+
+
+    @pytest.mark.parametrize("aniso1",  [1.0, 0.1])
+    @pytest.mark.parametrize("aniso2",  [0.1, 0.01])
+    @pytest.mark.parametrize("azimuth", [0.0, 225])
+    @pytest.mark.parametrize("dip"   ,  [0.0, 5.0])
+    def test_ck3d_corectness(self, run_t2p, butte_ck_data, aniso1, aniso2, azimuth, dip):
+        """
+        3D CK estimates correctness test.
+        """
+
+        vgm_p = f"sph 0.0    0.12  {5000*aniso1} 5000 {5000*aniso2} {azimuth} {dip} 0.0 150"   # primary  – Coarse fraction
+        vgm_s = f"sph 0.02   0.08  {5000*aniso1} 5000 {5000*aniso2} {azimuth} {dip} 0.0 150"   # secondary – log10(resistivity)
+        vgm_x = f"sph 0.0   0.048  {5000*aniso1} 5000 {5000*aniso2} {azimuth} {dip} 0.0"       # cross
+
+        calc_ck_correlation_3d(run_t2p, butte_ck_data, vgm_p=vgm_p, vgm_s=vgm_s, vgm_x=vgm_x)
