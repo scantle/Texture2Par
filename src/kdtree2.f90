@@ -24,8 +24,8 @@ module kdtree2_precision_module
   ! you get double precision.
   !
 
-  integer, parameter :: kdkind = sp
-  !integer, parameter :: kdkind = dp
+  !integer, parameter :: kdkind = sp
+  integer, parameter :: kdkind = dp
   public :: kdkind
 
 end module kdtree2_precision_module

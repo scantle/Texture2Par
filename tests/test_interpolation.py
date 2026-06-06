@@ -97,6 +97,143 @@ def _read_csv_column(path: Path, col: str) -> list[float]:
     return [float(r[col]) for r in rows if r.get(col, "").strip() not in ("", "nan")]
 
 
+MAX_LOG_LENGTH_GRD = """\
+NX    1
+NY    1
+NZ    3
+DX    1.0
+DY    1.0
+TOP   constant 100.0
+DZ    10.0
+IBOUND constant 1
+"""
+
+
+def _max_log_length_t2p(max_log_length=5) -> str:
+    return f"""\
+        BEGIN OPTIONS
+          MAX_VSTRUCT 1
+          INFER_LAST_CLASS
+          ONLY_TEXTURE
+          WRITE_DATASET_FILES
+          INTERP_DIM 3
+          MAX_LOG_LENGTH {max_log_length}
+        END OPTIONS
+
+        BEGIN CLASSES
+          Coarse
+          Fine
+        END CLASSES
+
+        BEGIN DATASET
+          FILE dataset.csv
+        END DATASET
+
+        BEGIN FLOW_MODEL
+          TYPE GRID
+          GRID_FILE grid.grd
+        END FLOW_MODEL
+
+        BEGIN VARIOGRAMS
+          CLASS Coarse
+            1 Sph 0.001 1.0 1000 1000 5 0.0 0.0 0.0 10
+        END VARIOGRAMS
+        """
+
+
+def _max_log_length_dataset(bot_depth: float) -> str:
+    return f"""\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W1,1,1,0,0,100,0,{bot_depth},0.60
+W2,2,1,10,0,100,0,5,0.50
+W3,3,1,0,10,100,0,5,0.50
+W4,4,1,10,10,100,0,5,0.50
+"""
+
+
+def _processed_coarse_logxyz(r) -> pd.DataFrame:
+    candidates = sorted(
+        path for path in r.workdir.glob("*Coarse*logxyz*.csv")
+        if path.name.lower() != "dataset.csv"
+    )
+    if not candidates:
+        files = "\n".join(sorted(path.name for path in r.workdir.iterdir()))
+        pytest.fail(f"No processed Coarse logxyz CSV found. Workdir files:\n{files}")
+    df_all = pd.read_csv(candidates[0])
+    required = {"X", "Y", "Z", "Layer1"}
+    missing = required - set(df_all.columns)
+    if missing:
+        pytest.fail(
+            f"Processed log CSV {candidates[0].name} missing columns "
+            f"{sorted(missing)}. Columns: {list(df_all.columns)}"
+        )
+    tol = 1e-9
+    df = df_all[
+        (df_all["X"].sub(0.0).abs() < tol) &
+        (df_all["Y"].sub(0.0).abs() < tol)
+    ]
+    if df.empty:
+        pytest.fail(
+            f"Processed log CSV {candidates[0].name} contains no target "
+            f"records near X=0, Y=0. Rows:\n{df_all.to_string(index=False)}"
+        )
+    return df.sort_values("Z", ascending=False).reset_index(drop=True)
+
+
+def _optional_direct_segment_lengths(df: pd.DataFrame):
+    columns = {col.lower().replace("_", ""): col for col in df.columns}
+
+    if "length" in columns:
+        return df[columns["length"]].abs().tolist()
+
+    boundary_pairs = (
+        ("topdepth", "botdepth"),
+        ("topdepth", "bottomdepth"),
+        ("top", "bot"),
+        ("top", "bottom"),
+        ("topelev", "botelev"),
+        ("topelev", "bottomelev"),
+        ("topelevation", "botelevation"),
+        ("topelevation", "bottomelevation"),
+    )
+    for top_key, bot_key in boundary_pairs:
+        if top_key in columns and bot_key in columns:
+            top = df[columns[top_key]]
+            bot = df[columns[bot_key]]
+            return top.sub(bot).abs().tolist()
+    return None
+
+
+def _assert_processed_log_points(
+    r,
+    expected_z,
+    expected_midpoint_spacings=None,
+    expected_segment_lengths=None,
+    max_log_length=5.0,
+):
+    assert r.returncode == 0, r.combined
+    df = _processed_coarse_logxyz(r)
+    assert len(df) == len(expected_z), df.to_string(index=False)
+    assert df["X"].tolist() == pytest.approx([0.0] * len(expected_z))
+    assert df["Y"].tolist() == pytest.approx([0.0] * len(expected_z))
+    assert df["Z"].tolist() == pytest.approx(expected_z)
+    assert df["Layer1"].tolist() == pytest.approx([0.60] * len(expected_z))
+
+    if expected_segment_lengths:
+        direct_lengths = _optional_direct_segment_lengths(df)
+        if direct_lengths is not None:
+            assert direct_lengths == pytest.approx(expected_segment_lengths)
+            assert max(direct_lengths) <= max_log_length + 1e-9
+
+    if expected_midpoint_spacings and len(expected_z) > 1:
+        inferred_lengths = [
+            abs(df.loc[i, "Z"] - df.loc[i + 1, "Z"])
+            for i in range(len(df) - 1)
+        ]
+        assert inferred_lengths == pytest.approx(expected_midpoint_spacings)
+        assert max(inferred_lengths) <= max_log_length + 1e-9
+
+
 # ---------------------------------------------------------------------------
 # 1. Basic kriging run
 # ---------------------------------------------------------------------------
@@ -383,7 +520,58 @@ class TestOnlyTexture:
 
 
 # ---------------------------------------------------------------------------
-# 6. READ_GRIDDED mode
+# 6. MAX_LOG_LENGTH (3D log preprocessing)
+# ---------------------------------------------------------------------------
+
+class TestMaxLogLength:
+
+    def _run_interval(self, run_t2p, bot_depth):
+        return run_t2p(
+            _max_log_length_t2p(max_log_length=5),
+            extra_files={
+                "dataset.csv": _max_log_length_dataset(bot_depth),
+                "grid.grd": MAX_LOG_LENGTH_GRD,
+            },
+        )
+
+    def test_interval_equal_to_max_length_is_not_split(self, run_t2p):
+        r = self._run_interval(run_t2p, bot_depth=5)
+        _assert_processed_log_points(r, expected_z=[97.5])
+
+    def test_interval_shorter_than_max_length_is_not_split(self, run_t2p):
+        r = self._run_interval(run_t2p, bot_depth=4)
+        _assert_processed_log_points(r, expected_z=[98.0])
+
+    def test_interval_twice_max_length_splits_into_two_equal_parts(self, run_t2p):
+        r = self._run_interval(run_t2p, bot_depth=10)
+        _assert_processed_log_points(
+            r,
+            expected_z=[97.5, 92.5],
+            expected_midpoint_spacings=[5.0],
+            expected_segment_lengths=[5.0, 5.0],
+        )
+
+    def test_interval_slightly_longer_than_max_splits_equally(self, run_t2p):
+        r = self._run_interval(run_t2p, bot_depth=7)
+        _assert_processed_log_points(
+            r,
+            expected_z=[98.25, 94.75],
+            expected_midpoint_spacings=[3.5],
+            expected_segment_lengths=[3.5, 3.5],
+        )
+
+    def test_longer_non_multiple_interval_splits_into_equal_parts(self, run_t2p):
+        r = self._run_interval(run_t2p, bot_depth=12)
+        _assert_processed_log_points(
+            r,
+            expected_z=[98.0, 94.0, 90.0],
+            expected_midpoint_spacings=[4.0, 4.0],
+            expected_segment_lengths=[4.0, 4.0, 4.0],
+        )
+
+
+# ---------------------------------------------------------------------------
+# 7. READ_GRIDDED mode
 # ---------------------------------------------------------------------------
 
 class TestReadGridded:
@@ -440,7 +628,7 @@ class TestReadGridded:
 
 
 # ---------------------------------------------------------------------------
-# 7. ANISOTROPIC_SEARCH
+# 8. ANISOTROPIC_SEARCH
 # ---------------------------------------------------------------------------
 
 class TestAnisotropicSearch:
@@ -451,7 +639,7 @@ class TestAnisotropicSearch:
 
 
 # ---------------------------------------------------------------------------
-# 8. NO_TEX_BOUNDS
+# 9. NO_TEX_BOUNDS
 # ---------------------------------------------------------------------------
 
 class TestNoTexBounds:
