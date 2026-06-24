@@ -80,24 +80,22 @@
 		</Filter>
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
 			<Filter Name="Data Structures">
-				<File RelativePath=".\src\Grid.f90"/>
+				<File RelativePath=".\src\Grid.f90">
+				</File>
 				<File RelativePath=".\src\Lists.f90"/>
 				<File RelativePath=".\src\Sparse_Symmetric.f90"/>
 			</Filter>
 			<Filter Name="File IO">
 				<File RelativePath=".\src\FileIO.f90"/>
 				<File RelativePath=".\src\fpath.f90"/>
-				<File RelativePath=".\src\Read_Datasets.f90">
-				</File>
+				<File RelativePath=".\src\Read_Datasets.f90"/>
 				<File RelativePath=".\src\Read_Main_Input.f90"/>
 				<File RelativePath=".\src\t2p_log.f90"/>
 				<File RelativePath=".\src\write_fmodel.f90"/>
 			</Filter>
 			<Filter Name="Interpolators">
-				<File RelativePath=".\src\Interpolators.f90">
-				</File>
-				<File RelativePath=".\src\kriging.f90">
-				</File>
+				<File RelativePath=".\src\Interpolators.f90"/>
+				<File RelativePath=".\src\kriging.f90"/>
 				<File RelativePath=".\src\sgsim.f90"/>
 				<File RelativePath=".\src\variogram.f90"/>
 			</Filter>
@@ -106,11 +104,11 @@
 				<File RelativePath=".\src\cellblocks.f90"/>
 				<File RelativePath=".\src\ColMap.f90"/>
 				<File RelativePath=".\src\DataSets.f90"/>
-				<File RelativePath=".\src\FlowModel.f90">
-				</File>
+				<File RelativePath=".\src\FlowModel.f90"/>
 				<File RelativePath=".\src\Options.f90"/>
 				<File RelativePath=".\src\PilotPoints.f90"/>
-				<File RelativePath=".\src\T2P.f90"/>
+				<File RelativePath=".\src\T2P.f90">
+				</File>
 				<File RelativePath=".\src\weights.f90"/>
 			</Filter>
 			<Filter Name="Tools">

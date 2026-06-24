@@ -993,7 +993,7 @@ module m_T2P
 
     ! Go by pilot point zone arrays (up to nlayers)
     do k=1, this%fmodel%nlayers
-      call this%write_minor_status('- Layer:',k)
+      call this%write_minor_status('- Layer:',this%fmodel%get_layer_id(k))
 
       ! Initialize weights & results for this array
       call weights%initialize(this%interbed_count(1)%grid%n, to_grid%n)  !input_n, output_n
