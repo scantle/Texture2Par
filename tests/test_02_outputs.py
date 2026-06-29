@@ -1,6 +1,6 @@
 """
-test_outputs.py
-===============
+test_02_outputs.py
+==================
 Tests that Texture2Par produces the correct output files with the expected
 structure, column sets, and physically plausible values.
 """

@@ -10,13 +10,19 @@ binary, and asserts on its return code, log output, and output files.
 
 ```
 tests/
-  conftest.py            # shared fixtures (binary locator, run_t2p runner)
-  test_input_parsing.py  # OPTIONS / CLASSES / DATASET / FLOW_MODEL / VARIOGRAMS blocks
-  test_interpolation.py  # ordinary kriging, 3D OK, SGS, weight caching, ONLY_TEXTURE, READ_GRIDDED
-  test_outputs.py        # log file, node/dataset CSVs, elevation file, subsidence outputs
+  conftest.py               # shared fixtures (binary locator, run_t2p runner)
+  test_01_input_parsing.py  # input syntax, required fields, and validation
+  test_02_outputs.py        # output files, columns, elevation, and subsidence
+  test_03_interpolation.py  # core interpolation, 3D OK, SGS, and weight caching
+  test_04_butte_model.py    # larger Butte ordinary-kriging reference tests
+  test_05_butte_model_ck.py # larger Butte cokriging and 3D CK reference tests
 pytest.ini               # pytest configuration
 requirements-test.txt    # pytest dependency
 ```
+
+The numeric prefixes make the default pytest run grow from basic parsing and
+output contracts through interpolation behavior to the larger Butte reference
+cases. They control presentation order only; tests remain independent.
 
 ---
 
@@ -50,11 +56,11 @@ pytest
 pytest --basetemp=.pytest_tmp
 
 # Run a single file
-pytest tests/test_input_parsing.py
+pytest tests/test_01_input_parsing.py
 
 # Run a single class or test
-pytest tests/test_interpolation.py::TestSGS
-pytest tests/test_outputs.py::TestSubsidenceOutputs::test_ib_thk_non_negative
+pytest tests/test_03_interpolation.py::TestSGS
+pytest tests/test_02_outputs.py::TestSubsidenceOutputs::test_ib_thk_non_negative
 
 # Stop on first failure
 pytest -x
@@ -67,7 +73,7 @@ pytest --tb=long
 
 ## Test categories
 
-### `test_input_parsing.py`
+### `test_01_input_parsing.py`
 
 | Class | What it checks |
 |---|---|
@@ -80,7 +86,19 @@ pytest --tb=long
 | `TestExternalFile` | variogram block in external file; missing external file |
 | `TestFilenameConvention` | explicit .t2p filename |
 
-### `test_interpolation.py`
+### `test_02_outputs.py`
+
+| Class | What it checks |
+|---|---|
+| `TestLogFile` | log created; elapsed time; options echoed; errors on bad run |
+| `TestNodeFiles` | KH/KV/SS/SY written; spatial columns present; KH > 0; SY in [0,1]; suppressed without flag |
+| `TestDatasetFiles` | Coarse file written; X/Y columns present; suppressed without flag |
+| `TestElevationFile` | written with flag; suppressed without flag |
+| `TestWriteNone` | model output files suppressed |
+| `TestSubsidenceOutputs` | run completes; IB_THK/KVF written; IB_THK ≥ 0 |
+| `TestOutputRowCounts` | KH row count matches grid size (5×5×2 = 50) |
+
+### `test_03_interpolation.py`
 
 | Class | What it checks |
 |---|---|
@@ -96,17 +114,12 @@ pytest --tb=long
 | `TestAnisotropicSearch` | ANISOTROPIC_SEARCH flag |
 | `TestNoTexBounds` | NO_TEX_BOUNDS allows values outside [0,1] |
 
-### `test_outputs.py`
+### `test_04_butte_model.py` and `test_05_butte_model_ck.py`
 
-| Class | What it checks |
-|---|---|
-| `TestLogFile` | log created; elapsed time; options echoed; errors on bad run |
-| `TestNodeFiles` | KH/KV/SS/SY written; spatial columns present; KH > 0; SY in [0,1]; suppressed without flag |
-| `TestDatasetFiles` | Coarse file written; X/Y columns present; suppressed without flag |
-| `TestElevationFile` | written with flag; suppressed without flag |
-| `TestWriteNone` | model output files suppressed |
-| `TestSubsidenceOutputs` | run completes; IB_THK/KVF written; IB_THK ≥ 0 |
-| `TestOutputRowCounts` | KH row count matches grid size (5×5×2 = 50) |
+The Butte tests provide larger ordinary-kriging and cokriging reference cases,
+including anisotropy, 3D interpolation, and CK covariance checks. They run last
+because they are broader and more computationally involved than the basic
+contract tests above.
 
 ### Cokriging Reference Tests
 

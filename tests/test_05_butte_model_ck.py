@@ -1,9 +1,9 @@
 """
-test_butte_model_ck.py
-=====================
+test_05_butte_model_ck.py
+==========================
 Tests for Texture2Par's cokriging behaviour using the Butte model dataset.
 
-Section 1 – OK reference tests (mirrors test_butte_model.py; kept here so
+Section 1 – OK reference tests (mirrors test_04_butte_model.py; kept here so
             that CK-mode regressions can be compared against a known-good
             ordinary-kriging baseline in the same file).
 Section 2 – CK-specific tests using the secondary AEM resistivity dataset.

@@ -1,6 +1,6 @@
 """
-test_input_parsing.py
-=====================
+test_01_input_parsing.py
+========================
 Tests that Texture2Par correctly parses (or rejects) various input file
 structures.  All tests execute the binary against real .t2p files.
 """

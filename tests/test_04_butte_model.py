@@ -1,6 +1,6 @@
 """
-test_butte_model.py
-=====================
+test_04_butte_model.py
+=======================
 Tests for Texture2Par's core interpolation behaviour: ordinary kriging.
 """
 

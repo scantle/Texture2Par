@@ -1,6 +1,6 @@
 """
-test_interpolation.py
-=====================
+test_03_interpolation.py
+========================
 Tests for Texture2Par's core interpolation behaviour: ordinary kriging,
 sequential Gaussian simulation (SGS), cokriging, INFER_LAST_CLASS,
 weight caching, and the ONLY_TEXTURE / READ_GRIDDED modes.
