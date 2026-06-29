@@ -95,6 +95,81 @@ def parse_vgm(svgm, is3d=False):
     return vtype, nugget, sill, rot, hh, nmax
 
 
+def _parse_vgm_ranges_angles(svgm, is3d=False):
+    v = svgm.split()
+    hmin = float(v[3])
+    hmax = float(v[4])
+    if is3d:
+        hvert = float(v[5])
+        azimuth = float(v[6])
+        dip = float(v[7])
+        plunge = float(v[8])
+    else:
+        hvert = hmin
+        azimuth = float(v[5])
+        dip = plunge = 0.0
+    return hmin, hmax, hvert, azimuth, dip, plunge
+
+
+def _t2p_variogram_rotmat(hmin, hmax, hvert, azimuth, dip, plunge):
+    # Mirrors T2P's current Fortran anisotropy convention.
+    rotmat = np.diag([hmax / hmin, 1.0, hmax / hvert])
+
+    if abs(plunge) > 1e-10:
+        alpha = np.deg2rad(-plunge)
+        sina = np.sin(alpha)
+        cosa = np.cos(alpha)
+        tmp = np.array([
+            [cosa, 0.0, sina],
+            [0.0, 1.0, 0.0],
+            [-sina, 0.0, cosa],
+        ])
+        rotmat = rotmat @ tmp
+
+    if abs(dip) > 1e-10:
+        alpha = np.deg2rad(dip)
+        sina = np.sin(alpha)
+        cosa = np.cos(alpha)
+        # Positive dip follows T2P's current positive-downward Fortran
+        # matrix convention.
+        tmp = np.array([
+            [1.0, 0.0, 0.0],
+            [0.0, cosa, -sina],
+            [0.0, sina, cosa],
+        ])
+        rotmat = rotmat @ tmp
+
+    if abs(azimuth) > 1e-10:
+        alpha = np.deg2rad(azimuth)
+        sina = np.sin(alpha)
+        cosa = np.cos(alpha)
+        tmp = np.array([
+            [cosa, -sina, 0.0],
+            [sina, cosa, 0.0],
+            [0.0, 0.0, 1.0],
+        ])
+        rotmat = rotmat @ tmp
+
+    return rotmat
+
+
+def _t2p_effective_distance(delta, hmin, hmax, hvert, azimuth=0.0, dip=0.0, plunge=0.0):
+    rotmat = _t2p_variogram_rotmat(hmin, hmax, hvert, azimuth, dip, plunge)
+    scaled = rotmat @ np.asarray(delta, dtype=float) / hmax
+    return np.linalg.norm(scaled)
+
+
+def _transform_vgm_locations(loc, vgm, is3d=False):
+    loc = np.asarray(loc)
+    if not is3d:
+        _, _, _, rot, hh, _ = parse_vgm(vgm, is3d=is3d)
+        return rot.apply(loc) / hh
+
+    hmin, hmax, hvert, azimuth, dip, plunge = _parse_vgm_ranges_angles(vgm, is3d=True)
+    rotmat = _t2p_variogram_rotmat(hmin, hmax, hvert, azimuth, dip, plunge)
+    return (rotmat @ loc.T).T / hmax
+
+
 # ---------------------------------------------------------------------------
 # Python reference: ordinary kriging (Cholesky Schur complement)
 # ---------------------------------------------------------------------------
@@ -114,8 +189,8 @@ def ok(obsloc, obsval, newloc, vgm=_VGM_sph, is3d=False):
     if not is3d:
         obsloc = np.column_stack([obsloc, np.zeros(len(obsloc))])
         newloc = np.column_stack([newloc, np.zeros(len(newloc))])
-    obsloc = rot.apply(obsloc) / hh
-    newloc = rot.apply(newloc) / hh
+    obsloc = _transform_vgm_locations(obsloc, vgm, is3d=is3d)
+    newloc = _transform_vgm_locations(newloc, vgm, is3d=is3d)
 
     nobs = len(obsloc)
     if nmax < nobs:
@@ -196,10 +271,11 @@ def ck(obsloc0, obsloc1, obsval0, obsval1,
         obsloc1 = np.column_stack([obsloc1, np.zeros(len(obsloc1))])
         newloc  = np.column_stack([np.asarray(newloc), np.zeros(len(newloc))])
 
-    # Apply shared rotation and range scaling
-    obsloc0 = rot0.apply(obsloc0) / hh0
-    obsloc1 = rot0.apply(obsloc1) / hh0
-    newloc  = rot0.apply(newloc)  / hh0
+    # Apply shared rotation and range scaling. In 3D this mirrors the
+    # T2P-style metric used by the 3D OK reference tests.
+    obsloc0 = _transform_vgm_locations(obsloc0, vgm0, is3d=is3d)
+    obsloc1 = _transform_vgm_locations(obsloc1, vgm0, is3d=is3d)
+    newloc  = _transform_vgm_locations(newloc,  vgm0, is3d=is3d)
 
     n1, n2, nnew = len(obsloc0), len(obsloc1), len(newloc)
     ntot = n1 + n2 + 1          # +1 for single Lagrange multiplier
@@ -402,19 +478,388 @@ def ck3d(obsloc0, obsloc1, obsval0, obsval1,
        newloc, vgm0=_VGM_P_3D, vgm1=_VGM_S_3D, vgmc=_VGM_X_3D, is3d=True):
     return ck(obsloc0, obsloc1, obsval0, obsval1, newloc, vgm0, vgm1, vgmc, is3d)
 
+def _override_3d_hvert(vgm, hvert_override):
+    if hvert_override is None:
+        return vgm
+    parts = vgm.split()
+    if len(parts) < 9:
+        raise ValueError(f"Expected 3D variogram format, got: {vgm!r}")
+    parts[5] = f"{hvert_override:g}"
+    return " ".join(parts)
+
+
+def _override_3d_dip(vgm, dip):
+    parts = vgm.split()
+    if len(parts) < 9:
+        raise ValueError(f"Expected 3D variogram format, got: {vgm!r}")
+    parts[7] = f"{dip:g}"
+    return " ".join(parts)
+
+
+def _ck_covariance_blocks(obsloc0, obsloc1, newloc,
+                          vgm0=_VGM_P_3D, vgm1=_VGM_S_3D,
+                          vgmc=_VGM_X_3D, is3d=True):
+    obsloc0 = np.asarray(obsloc0, dtype=float)
+    obsloc1 = np.asarray(obsloc1, dtype=float)
+    newloc = np.asarray(newloc, dtype=float)
+
+    vtype0, nugget0, sill0, rot0, hh0, _ = parse_vgm(vgm0, is3d=is3d)
+    vtype1, nugget1, sill1, rot1, hh1, _ = parse_vgm(vgm1, is3d=is3d)
+    vtypec, _, sillc, rotc, hhc, _ = parse_vgm(vgmc, is3d=is3d)
+    assert np.allclose(rot0.as_matrix(), rot1.as_matrix(), atol=1e-6), \
+        "All variograms must share the same rotation"
+    assert np.allclose(rot0.as_matrix(), rotc.as_matrix(), atol=1e-6), \
+        "All variograms must share the same rotation"
+    assert np.allclose(hh0, hh1, atol=1e-6), \
+        "All variograms must share the same range parameters"
+    assert np.allclose(hh0, hhc, atol=1e-6), \
+        "All variograms must share the same range parameters"
+
+    if not is3d:
+        obsloc0 = np.column_stack([obsloc0, np.zeros(len(obsloc0))])
+        obsloc1 = np.column_stack([obsloc1, np.zeros(len(obsloc1))])
+        newloc = np.column_stack([newloc, np.zeros(len(newloc))])
+
+    loc0 = _transform_vgm_locations(obsloc0, vgm0, is3d=is3d)
+    loc1 = _transform_vgm_locations(obsloc1, vgm0, is3d=is3d)
+    targets = _transform_vgm_locations(newloc, vgm0, is3d=is3d)
+
+    C11 = _covfunc[vtype0](squareform(pdist(loc0))) * sill0
+    np.fill_diagonal(C11, nugget0 + sill0)
+    C22 = _covfunc[vtype1](squareform(pdist(loc1))) * sill1
+    np.fill_diagonal(C22, nugget1 + sill1)
+    C12 = _covfunc[vtypec](cdist(loc0, loc1)) * sillc
+    c10 = _covfunc[vtype0](cdist(loc0, targets)) * sill0
+    c20 = _covfunc[vtypec](cdist(loc1, targets)) * sillc
+    return {"C11": C11, "C22": C22, "C12": C12, "c10": c10, "c20": c20}
+
+
+def _ck_block_covariance_summaries(obsloc0, obsloc1, newloc,
+                                   vgm0=_VGM_P_3D, vgm1=_VGM_S_3D,
+                                   vgmc=_VGM_X_3D, dip0=0.0, dip1=5.0):
+    blocks0 = _ck_covariance_blocks(
+        obsloc0,
+        obsloc1,
+        newloc,
+        _override_3d_dip(vgm0, dip0),
+        _override_3d_dip(vgm1, dip0),
+        _override_3d_dip(vgmc, dip0),
+        is3d=True,
+    )
+    blocks1 = _ck_covariance_blocks(
+        obsloc0,
+        obsloc1,
+        newloc,
+        _override_3d_dip(vgm0, dip1),
+        _override_3d_dip(vgm1, dip1),
+        _override_3d_dip(vgmc, dip1),
+        is3d=True,
+    )
+    summaries = {}
+    for name in ("C11", "C22", "C12", "c10", "c20"):
+        diff = np.abs(blocks1[name] - blocks0[name])
+        summaries[name] = {
+            "dip0_min": float(blocks0[name].min()),
+            "dip0_mean": float(blocks0[name].mean()),
+            "dip0_max": float(blocks0[name].max()),
+            "dip1_min": float(blocks1[name].min()),
+            "dip1_mean": float(blocks1[name].mean()),
+            "dip1_max": float(blocks1[name].max()),
+            "mean_abs_delta": float(diff.mean()),
+            "max_abs_delta": float(diff.max()),
+        }
+    return summaries
+
+
+def _ck_rhs_covariance_diagnostics(obsloc0, obsloc1, newloc,
+                                   vgm0=_VGM_P_3D, vgmc=_VGM_X_3D,
+                                   is3d=True):
+    obsloc0 = np.asarray(obsloc0)
+    obsloc1 = np.asarray(obsloc1)
+    newloc = np.asarray(newloc)
+
+    vtype0, _, sill0, rot0, hh0, _ = parse_vgm(vgm0, is3d=is3d)
+    vtypec, _, sillc, rotc, hhc, _ = parse_vgm(vgmc, is3d=is3d)
+    assert np.allclose(rot0.as_matrix(), rotc.as_matrix(), atol=1e-6), \
+        "All variograms must share the same rotation"
+    assert np.allclose(hh0, hhc, atol=1e-6), \
+        "All variograms must share the same range parameters"
+
+    if not is3d:
+        obsloc0 = np.column_stack([obsloc0, np.zeros(len(obsloc0))])
+        obsloc1 = np.column_stack([obsloc1, np.zeros(len(obsloc1))])
+        newloc = np.column_stack([newloc, np.zeros(len(newloc))])
+
+    obsloc0 = _transform_vgm_locations(obsloc0, vgm0, is3d=is3d)
+    obsloc1 = _transform_vgm_locations(obsloc1, vgm0, is3d=is3d)
+    newloc = _transform_vgm_locations(newloc, vgm0, is3d=is3d)
+
+    c10 = _covfunc[vtype0](cdist(obsloc0, newloc)) * sill0
+    c20 = _covfunc[vtypec](cdist(obsloc1, newloc)) * sillc
+    return c10.max(axis=0), c20.max(axis=0)
+
+
+def _print_series_summary(label, values):
+    values = np.asarray(values, dtype=float)
+    print(
+        f"{label} min/mean/max: "
+        f"{values.min():.8g} / {values.mean():.8g} / {values.max():.8g}"
+    )
+
+
+def _print_comparison_diagnostics(label, targets, ref, t2p, include_rows=True):
+    ref = np.asarray(ref, dtype=float)
+    t2p = np.asarray(t2p, dtype=float)
+    diff = t2p - ref
+    rmse = float(np.sqrt(np.mean(diff * diff)))
+    if np.std(ref) == 0.0 or np.std(t2p) == 0.0:
+        corr = np.nan
+    else:
+        corr = float(np.corrcoef(ref, t2p)[0, 1])
+
+    print(f"{label} reference min/max: {ref.min():.8g} / {ref.max():.8g}")
+    print(f"{label} T2P min/max:       {t2p.min():.8g} / {t2p.max():.8g}")
+    print(f"{label} max abs diff:     {np.max(np.abs(diff)):.8g}")
+    print(f"{label} RMSE:             {rmse:.8g}")
+    print(f"{label} correlation:      {corr:.8g}")
+
+    if include_rows:
+        diag = targets[["X", "Y", "Z"]].copy()
+        diag["ref_est" if label == "estimate" else "ref_var"] = ref
+        diag["t2p_est" if label == "estimate" else "t2p_var"] = t2p
+        diag["diff"] = diff
+        worst = diag.iloc[np.argsort(np.abs(diff))[::-1][:10]]
+        print(f"{label} worst 10 rows:")
+        print(worst.to_string(index=False))
+
+
+def _comparison_stats(ref, t2p):
+    ref = np.asarray(ref, dtype=float)
+    t2p = np.asarray(t2p, dtype=float)
+    diff = t2p - ref
+    corr = np.nan
+    if np.std(ref) > 0.0 and np.std(t2p) > 0.0:
+        corr = float(np.corrcoef(ref, t2p)[0, 1])
+    return {
+        "max_abs_diff": float(np.max(np.abs(diff))),
+        "rmse": float(np.sqrt(np.mean(diff * diff))),
+        "corr": corr,
+        "ref_min": float(ref.min()),
+        "ref_max": float(ref.max()),
+        "t2p_min": float(t2p.min()),
+        "t2p_max": float(t2p.max()),
+    }
+
+
+def _print_stats(label, stats):
+    print(
+        f"{label}: max_abs_diff={stats['max_abs_diff']:.8g}, "
+        f"rmse={stats['rmse']:.8g}, corr={stats['corr']:.8g}, "
+        f"ref_min/max={stats['ref_min']:.8g}/{stats['ref_max']:.8g}, "
+        f"t2p_min/max={stats['t2p_min']:.8g}/{stats['t2p_max']:.8g}"
+    )
+
+
+# The Python CK reference uses the full 150-point secondary subsample for
+# every target. T2P has a finite default MAX_SECONDARY_DIST, so these
+# full-matrix reference tests explicitly set MAX_SECONDARY_DIST large enough
+# to prevent distance-based secondary filtering.
 def _t2p_ck3d(classes="Coarse\n  Fine", covariate="Rho",
              datafile_p="pc3d.csv", datafile_s="aem3d.csv",
              gridfile="grid.grd",
              vgm_p=_VGM_P_3D, vgm_s=_VGM_S_3D, vgm_x=_VGM_X_3D,
              transform_s="LOG10",
-             options_extra="INTERP_DIM          3"):
+             options_extra=None):
+    if options_extra is None:
+        options_extra = """\
+          INTERP_DIM          3
+          WRITE_DATASET_FILES
+          MAX_SECONDARY_DIST  1e10
+        """
     return _t2p_ck(classes, covariate, datafile_p, datafile_s, gridfile,
                    vgm_p, vgm_s, vgm_x, transform_s, options_extra)
 
-def calc_ck_correlation_3d(run_t2p, butte_ck_data, vgm_p=_VGM_P_3D, vgm_s=_VGM_S_3D, vgm_x=_VGM_X_3D):
+
+CK3D_SYNTHETIC_GRID = """\
+NX    2
+NY    2
+NZ    2
+DX    10.0
+DY    10.0
+TOP   constant 100.0
+BOT   constant 80.0
+IBOUND constant 1
+"""
+
+CK3D_SYNTHETIC_PRIMARY = """\
+Well,ID,n,x,y,Zland,Depth0,Depth1,Coarse
+P1,1,1,2.0,2.0,100.0,4.0,6.0,0.22
+P2,2,1,18.0,3.0,100.0,8.0,10.0,0.38
+P3,3,1,4.0,17.0,100.0,13.0,15.0,0.72
+P4,4,1,17.0,18.0,100.0,17.0,19.0,0.84
+P5,5,1,9.0,11.0,100.0,9.0,11.0,0.55
+"""
+
+CK3D_SYNTHETIC_SECONDARY = """\
+iRho,ID,n,x,y,Zland,Depth0,Depth1,Rho
+S1,1,1,1.0,12.0,100.0,5.0,7.0,8.0
+S2,2,1,7.0,4.0,100.0,11.0,13.0,11.0
+S3,3,1,14.0,8.0,100.0,7.0,9.0,16.0
+S4,4,1,19.0,14.0,100.0,15.0,17.0,23.0
+S5,5,1,11.0,19.0,100.0,3.0,5.0,31.0
+S6,6,1,5.0,18.0,100.0,18.0,20.0,19.0
+"""
+
+
+def _shift_xy_dataset(text, dx, dy):
+    df = pd.read_csv(StringIO(text))
+    x_col = "x" if "x" in df.columns else "X"
+    y_col = "y" if "y" in df.columns else "Y"
+    df[x_col] = df[x_col] + dx
+    df[y_col] = df[y_col] + dy
+    return df.to_csv(index=False, lineterminator="\n")
+
+
+def _t2p_ck3d_synthetic(vgm_p, vgm_s, vgm_x, xoffset=None, yoffset=None):
+    offset_lines = ""
+    if xoffset is not None:
+        offset_lines += f"          XOFFSET   {xoffset}\n"
+    if yoffset is not None:
+        offset_lines += f"          YOFFSET   {yoffset}\n"
+    return f"""\
+        BEGIN OPTIONS
+          MAX_VSTRUCT 1
+          ONLY_TEXTURE
+          WRITE_NODE_FILES
+          WRITE_VARIANCE
+          INFER_LAST_CLASS
+          INTERP_DIM 3
+          WRITE_DATASET_FILES
+          MAX_SECONDARY_DIST 1e10
+        END OPTIONS
+
+        BEGIN CLASSES
+          Coarse
+          Fine
+        END CLASSES
+
+        BEGIN COVARIATES
+          Coarse Rho
+        END COVARIATES
+
+        BEGIN DATASET
+          FILE pc3d.csv
+        END DATASET
+
+        BEGIN DATASET
+          FILE aem3d.csv
+          TRANSFORM LOG10
+        END DATASET
+
+        BEGIN FLOW_MODEL
+          TYPE GRID
+          GRID_FILE grid.grd
+{offset_lines.rstrip()}
+        END FLOW_MODEL
+
+        BEGIN VARIOGRAMS
+          CLASS Coarse
+            1 {vgm_p}
+          CLASS Rho
+            1 {vgm_s}
+          CLASS Coarse:Rho
+            1 {vgm_x}
+        END VARIOGRAMS
+        """
+
+
+def _synthetic_ck3d_reference_inputs(primary_text=CK3D_SYNTHETIC_PRIMARY,
+                                     secondary_text=CK3D_SYNTHETIC_SECONDARY):
+    primary = pd.read_csv(StringIO(primary_text))
+    secondary = pd.read_csv(StringIO(secondary_text))
+    primary["z"] = primary["Zland"] - 0.5 * (primary["Depth0"] + primary["Depth1"])
+    secondary["z"] = secondary["Zland"] - 0.5 * (secondary["Depth0"] + secondary["Depth1"])
+
+    s_log10 = np.log10(secondary["Rho"].values)
+    v_adjust = primary["Coarse"].mean() - s_log10.mean()
+    s_val = s_log10 + v_adjust
+    return primary, secondary, s_val
+
+
+def _synthetic_ck3d_output_arrays(output, layer_z=(95.0, 85.0)):
+    targets = []
+    est = []
+    var = []
+    for row in output.itertuples(index=False):
+        for layer_index, z in enumerate(layer_z, start=1):
+            targets.append([row.X, row.Y, z])
+            est.append(getattr(row, f"Layer{layer_index}"))
+            var.append(getattr(row, f"Var_Layer{layer_index}"))
+    return np.asarray(targets), np.asarray(est), np.asarray(var)
+
+
+def _run_synthetic_ck3d(run_t2p, vgm_p, vgm_s, vgm_x,
+                        primary_text=CK3D_SYNTHETIC_PRIMARY,
+                        secondary_text=CK3D_SYNTHETIC_SECONDARY,
+                        xoffset=None, yoffset=None):
+    r = run_t2p(
+        _t2p_ck3d_synthetic(vgm_p, vgm_s, vgm_x, xoffset=xoffset, yoffset=yoffset),
+        extra_files={
+            "pc3d.csv": primary_text,
+            "aem3d.csv": secondary_text,
+            "grid.grd": CK3D_SYNTHETIC_GRID,
+        },
+    )
+    assert r.returncode == 0, r.combined
+    t2p = pd.read_csv(r.workdir / "test_Coarse.csv")
+    targets, t2p_est, t2p_var = _synthetic_ck3d_output_arrays(t2p)
+    primary, secondary, s_val = _synthetic_ck3d_reference_inputs(primary_text, secondary_text)
+    ref_est, ref_var = ck3d(
+        primary[["x", "y", "z"]].values,
+        secondary[["x", "y", "z"]].values,
+        primary["Coarse"].values,
+        s_val,
+        targets,
+        vgm0=vgm_p,
+        vgm1=vgm_s,
+        vgmc=vgm_x,
+    )
+    return {
+        "targets": targets,
+        "ref_est": np.clip(ref_est, 0, 1),
+        "ref_var": ref_var,
+        "t2p_est": t2p_est,
+        "t2p_var": t2p_var,
+        "t2p": t2p,
+        "primary": primary,
+        "secondary": secondary,
+    }
+
+
+def _calc_ck_correlation_3d_result(
+    run_t2p,
+    butte_ck_data,
+    vgm_p=_VGM_P_3D,
+    vgm_s=_VGM_S_3D,
+    vgm_x=_VGM_X_3D,
+    z_mode="random",
+    hvert_override=None,
+    options_extra=None,
+    debug=False,
+):
     """
-    3D CK reference calculation generating random Z coordinates to test cross-validation.
+    Run one 3D CK reference comparison and return both Python and T2P arrays.
+
+    The Python reference includes all primary and secondary observations
+    passed to ck3d. It does not implement T2P's target-specific
+    secondary-distance filtering, so exact reference comparisons must run T2P
+    with MAX_SECONDARY_DIST large enough to include the selected secondary
+    subsample for every target.
     """
+    vgm_p = _override_3d_hvert(vgm_p, hvert_override)
+    vgm_s = _override_3d_hvert(vgm_s, hvert_override)
+    vgm_x = _override_3d_hvert(vgm_x, hvert_override)
+
     obs = pd.read_csv(StringIO(butte_ck_data["files"]["pc2d.csv"]))
     aem_all = pd.read_csv(StringIO(butte_ck_data["files"]["aem2d.csv"]))
 
@@ -423,14 +868,19 @@ def calc_ck_correlation_3d(run_t2p, butte_ck_data, vgm_p=_VGM_P_3D, vgm_s=_VGM_S
     aem_sub = aem_all.iloc[idx].reset_index(drop=True)
     aem_sub["ID"] = np.arange(1, len(aem_sub) + 1)
 
-    # Inject random Z coordinate profiles (e.g., elevation heights centered 50 m)
-    dz = 75
-    obs["Zland"] = rng.uniform(-dz, dz, len(obs))+52
-    obs["Depth0"] = 1
-    obs["Depth1"] = 3
-    aem_sub["Zland"] = rng.uniform(-dz, dz, len(aem_sub))+52
-    aem_sub["Depth0"] = 1
-    aem_sub["Depth1"] = 3
+    if z_mode == "random":
+        dz = 75
+        obs["Zland"] = rng.uniform(-dz, dz, len(obs)) + 52
+        aem_sub["Zland"] = rng.uniform(-dz, dz, len(aem_sub)) + 52
+    elif z_mode == "flat50":
+        obs["Zland"] = 52.0
+        aem_sub["Zland"] = 52.0
+    else:
+        raise ValueError(f"Unknown z_mode {z_mode!r}")
+    obs["Depth0"] = 1.0
+    obs["Depth1"] = 3.0
+    aem_sub["Depth0"] = 1.0
+    aem_sub["Depth1"] = 3.0
 
     extra = {
         **butte_ck_data["files"],
@@ -439,8 +889,17 @@ def calc_ck_correlation_3d(run_t2p, butte_ck_data, vgm_p=_VGM_P_3D, vgm_s=_VGM_S
     }
 
     t0 = time.perf_counter()
-    r = run_t2p(_t2p_ck3d(vgm_s=vgm_s, vgm_x=vgm_x, vgm_p=vgm_p, ),extra_files=extra,)
+    r = run_t2p(
+        _t2p_ck3d(
+            vgm_s=vgm_s,
+            vgm_x=vgm_x,
+            vgm_p=vgm_p,
+            options_extra=options_extra,
+        ),
+        extra_files=extra,
+    )
     t1 = time.perf_counter()
+    assert r.returncode == 0, r.combined
 
     t2p = pd.read_csv(r.workdir / "test_Coarse.csv")
     t2p["Z"] = 50.0
@@ -468,12 +927,82 @@ def calc_ck_correlation_3d(run_t2p, butte_ck_data, vgm_p=_VGM_P_3D, vgm_s=_VGM_S
     )
     t2 = time.perf_counter()
 
-    print(f"CK 3D: {t1 - t0:.2f}s (T2P), {t2 - t1:.2f}s (Python)")
     est = np.clip(est, 0, 1)
-    np.testing.assert_allclose(est, t2p["Layer1"].values, atol=1e-5)
-    np.testing.assert_allclose(var, t2p["Var_Layer1"].values, atol=1e-5)
-    corr_est = np.corrcoef(est, t2p["Layer1"].values)[0, 1]
-    corr_var = np.corrcoef(var, t2p["Var_Layer1"].values)[0, 1]
+    if debug:
+        print(f"CK 3D: {t1 - t0:.2f}s (T2P), {t2 - t1:.2f}s (Python)")
+        print(f"CK 3D diagnostic z_mode={z_mode}, hvert_override={hvert_override}")
+        print(f"vgm_p: {vgm_p}")
+        print(f"vgm_s: {vgm_s}")
+        print(f"vgm_x: {vgm_x}")
+        _print_comparison_diagnostics(
+            "estimate",
+            t2p[["X", "Y", "Z"]],
+            est,
+            t2p["Layer1"].values,
+        )
+        _print_comparison_diagnostics(
+            "variance",
+            t2p[["X", "Y", "Z"]],
+            var,
+            t2p["Var_Layer1"].values,
+        )
+        c10_max, c20_max = _ck_rhs_covariance_diagnostics(
+            obs[["x", "y", "z"]].values,
+            aem_sub[["x", "y", "z"]].values,
+            t2p[["X", "Y", "Z"]].values,
+            vgm0=vgm_p,
+            vgmc=vgm_x,
+            is3d=True,
+        )
+        _print_series_summary("c10 max by target", c10_max)
+        _print_series_summary("c20 max by target", c20_max)
+
+    return {
+        "est": est,
+        "var": var,
+        "t2p_est": t2p["Layer1"].values,
+        "t2p_var": t2p["Var_Layer1"].values,
+        "t2p": t2p,
+        "obs": obs,
+        "aem_sub": aem_sub,
+        "vgm_p": vgm_p,
+        "vgm_s": vgm_s,
+        "vgm_x": vgm_x,
+    }
+
+
+def calc_ck_correlation_3d(
+    run_t2p,
+    butte_ck_data,
+    vgm_p=_VGM_P_3D,
+    vgm_s=_VGM_S_3D,
+    vgm_x=_VGM_X_3D,
+    z_mode="random",
+    hvert_override=None,
+    debug=False,
+):
+    """
+    3D CK reference calculation generating random Z coordinates to test cross-validation.
+    """
+    result = _calc_ck_correlation_3d_result(
+        run_t2p,
+        butte_ck_data,
+        vgm_p=vgm_p,
+        vgm_s=vgm_s,
+        vgm_x=vgm_x,
+        z_mode=z_mode,
+        hvert_override=hvert_override,
+        debug=debug,
+    )
+    est = result["est"]
+    var = result["var"]
+    t2p_est = result["t2p_est"]
+    t2p_var = result["t2p_var"]
+
+    np.testing.assert_allclose(est, t2p_est, atol=1e-5)
+    np.testing.assert_allclose(var, t2p_var, atol=1e-5)
+    corr_est = np.corrcoef(est, t2p_est)[0, 1]
+    corr_var = np.corrcoef(var, t2p_var)[0, 1]
     assert corr_est > 0.99, (
         f"CK estimate correlation with reference = {corr_est:.4f} (expected > 0.99)"
     )
@@ -579,12 +1108,272 @@ class TestCokrigingButteCK:
 
 class TestCokrigingButteCK3D:
 
+    def _zero_rotation_vgms(self):
+        return (
+            "sph 0.0    0.12  500 5000 500 0.0 0.0 0.0 150",
+            "sph 0.02   0.08  500 5000 500 0.0 0.0 0.0 150",
+            "sph 0.0   0.048  500 5000 500 0.0 0.0 0.0",
+        )
+
+    def _synthetic_dipped_vgms(self):
+        return (
+            "sph 0.0    0.12  12.0 25.0 18.0 0.0 5.0 0.0 20",
+            "sph 0.02   0.08  12.0 25.0 18.0 0.0 5.0 0.0 20",
+            "sph 0.0    0.04  12.0 25.0 18.0 0.0 5.0 0.0",
+        )
+
+    def test_ck3d_rotation_metric_uses_t2p_fortran_dip_convention(self):
+        delta = np.array([-1.0, 15.0, -9.0])
+        hmin, hmax, hvert = 500.0, 5000.0, 500.0
+
+        zero = _t2p_variogram_rotmat(hmin, hmax, hvert, 0.0, 0.0, 0.0)
+        np.testing.assert_allclose(
+            zero,
+            np.diag([hmax / hmin, 1.0, hmax / hvert]),
+            atol=1e-14,
+        )
+
+        azimuth = _t2p_variogram_rotmat(hmin, hmax, hvert, 35.0, 0.0, 0.0)
+        assert _t2p_effective_distance(delta, hmin, hmax, hvert, 35.0, 0.0, 0.0) == pytest.approx(
+            np.linalg.norm((azimuth @ delta) / hmax),
+            abs=1e-14,
+        )
+
+        dip = _t2p_variogram_rotmat(12.0, 25.0, 18.0, 0.0, 5.0, 0.0)
+        expected = np.array([
+            [25.0 / 12.0, 0.0, 0.0],
+            [0.0, np.cos(np.deg2rad(5.0)), -np.sin(np.deg2rad(5.0))],
+            [0.0, (25.0 / 18.0) * np.sin(np.deg2rad(5.0)), (25.0 / 18.0) * np.cos(np.deg2rad(5.0))],
+        ])
+        np.testing.assert_allclose(dip, expected, atol=1e-14)
+
+    def test_ck3d_dip_pair_trace_matches_fortran_covariance(self):
+        hmin, hmax, hvert = 12.0, 25.0, 18.0
+        rotmat = _t2p_variogram_rotmat(
+            hmin, hmax, hvert,
+            azimuth=0.0,
+            dip=5.0,
+            plunge=0.0,
+        )
+
+        cases = [
+            (np.array([-1.0, 15.0, -9.0]), 0.12, 0.00923520489567),
+            (np.array([-4.0, 4.0, 5.0]), 0.12, 0.0419239732925),
+        ]
+        for delta, sill, expected_cov in cases:
+            dist = np.linalg.norm(rotmat @ delta)
+            hr = dist / hmax
+            cov = sill * (1.0 - 1.5 * hr + 0.5 * hr**3) if dist < hmax else 0.0
+            assert cov == pytest.approx(expected_cov, abs=1e-12)
+
+    def test_ck3d_t2p_style_metric_is_common_translation_invariant(self):
+        vgm_p, vgm_s, vgm_x = self._synthetic_dipped_vgms()
+        primary, secondary, _ = _synthetic_ck3d_reference_inputs()
+        targets = np.array([
+            [5.0, 5.0, 95.0],
+            [15.0, 5.0, 95.0],
+            [5.0, 15.0, 85.0],
+            [15.0, 15.0, 85.0],
+        ])
+        shift = np.array([10000.0, -20000.0, 123.0])
+
+        blocks0 = _ck_covariance_blocks(
+            primary[["x", "y", "z"]].values,
+            secondary[["x", "y", "z"]].values,
+            targets,
+            vgm_p,
+            vgm_s,
+            vgm_x,
+            is3d=True,
+        )
+        blocks1 = _ck_covariance_blocks(
+            primary[["x", "y", "z"]].values + shift,
+            secondary[["x", "y", "z"]].values + shift,
+            targets + shift,
+            vgm_p,
+            vgm_s,
+            vgm_x,
+            is3d=True,
+        )
+
+        for name in ("C11", "C22", "C12", "c10", "c20"):
+            np.testing.assert_allclose(blocks0[name], blocks1[name], atol=1e-14)
+
+    def test_ck3d_python_block_covariance_summaries_are_dip_sensitive(self):
+        vgm_p, vgm_s, vgm_x = self._synthetic_dipped_vgms()
+        primary, secondary, _ = _synthetic_ck3d_reference_inputs()
+        targets = np.array([
+            [5.0, 5.0, 95.0],
+            [15.0, 5.0, 95.0],
+            [5.0, 15.0, 85.0],
+            [15.0, 15.0, 85.0],
+        ])
+
+        summaries = _ck_block_covariance_summaries(
+            primary[["x", "y", "z"]].values,
+            secondary[["x", "y", "z"]].values,
+            targets,
+            vgm_p,
+            vgm_s,
+            vgm_x,
+        )
+        assert max(s["max_abs_delta"] for s in summaries.values()) > 1e-4
+        assert summaries["c20"]["max_abs_delta"] > 1e-5
+
+    def test_ck3d_dip_synthetic_local_coordinates_matches_reference(self, run_t2p):
+        vgm_p, vgm_s, vgm_x = self._synthetic_dipped_vgms()
+        result = _run_synthetic_ck3d(run_t2p, vgm_p, vgm_s, vgm_x)
+
+        np.testing.assert_allclose(result["ref_est"], result["t2p_est"], atol=1e-5)
+        np.testing.assert_allclose(result["ref_var"], result["t2p_var"], atol=1e-5)
+
+    def test_ck3d_dip_synthetic_translation_invariant(self, run_t2p):
+        vgm_p, vgm_s, vgm_x = self._synthetic_dipped_vgms()
+        local = _run_synthetic_ck3d(run_t2p, vgm_p, vgm_s, vgm_x)
+        dx, dy = 10000.0, 20000.0
+        shifted = _run_synthetic_ck3d(
+            run_t2p,
+            vgm_p,
+            vgm_s,
+            vgm_x,
+            primary_text=_shift_xy_dataset(CK3D_SYNTHETIC_PRIMARY, dx, dy),
+            secondary_text=_shift_xy_dataset(CK3D_SYNTHETIC_SECONDARY, dx, dy),
+            xoffset=dx,
+            yoffset=dy,
+        )
+
+        np.testing.assert_allclose(local["t2p_est"], shifted["t2p_est"], atol=1e-5)
+        np.testing.assert_allclose(local["t2p_var"], shifted["t2p_var"], atol=1e-5)
+
+    def test_ck3d_flat_z_matches_reference_zero_rotation(self, run_t2p, butte_ck_data):
+        vgm_p, vgm_s, vgm_x = self._zero_rotation_vgms()
+
+        calc_ck_correlation_3d(
+            run_t2p,
+            butte_ck_data,
+            vgm_p=vgm_p,
+            vgm_s=vgm_s,
+            vgm_x=vgm_x,
+            z_mode="flat50",
+        )
+
+    def test_ck3d_random_z_huge_hvert_matches_reference_zero_rotation(self, run_t2p, butte_ck_data):
+        vgm_p, vgm_s, vgm_x = self._zero_rotation_vgms()
+
+        calc_ck_correlation_3d(
+            run_t2p,
+            butte_ck_data,
+            vgm_p=vgm_p,
+            vgm_s=vgm_s,
+            vgm_x=vgm_x,
+            z_mode="random",
+            hvert_override=1e9,
+        )
+
+    def test_ck3d_random_z_finite_hvert_diagnostic_zero_rotation(self, run_t2p, butte_ck_data):
+        vgm_p, vgm_s, vgm_x = self._zero_rotation_vgms()
+
+        calc_ck_correlation_3d(
+            run_t2p,
+            butte_ck_data,
+            vgm_p=vgm_p,
+            vgm_s=vgm_s,
+            vgm_x=vgm_x,
+            z_mode="random",
+        )
+
+    def test_ck3d_full_secondary_reference_requires_large_max_secondary_dist(
+        self,
+        run_t2p,
+        butte_ck_data,
+    ):
+        vgm_p, vgm_s, vgm_x = self._zero_rotation_vgms()
+
+        full = _calc_ck_correlation_3d_result(
+            run_t2p,
+            butte_ck_data,
+            vgm_p=vgm_p,
+            vgm_s=vgm_s,
+            vgm_x=vgm_x,
+            z_mode="flat50",
+        )
+        np.testing.assert_allclose(full["est"], full["t2p_est"], atol=1e-5)
+
+        # This intentionally restrictive run demonstrates the test contract:
+        # the Python reference still uses the full secondary subsample, while
+        # T2P solves a different, distance-filtered system.
+        restricted = _calc_ck_correlation_3d_result(
+            run_t2p,
+            butte_ck_data,
+            vgm_p=vgm_p,
+            vgm_s=vgm_s,
+            vgm_x=vgm_x,
+            z_mode="flat50",
+            options_extra="""\
+              INTERP_DIM          3
+              WRITE_DATASET_FILES
+              MAX_SECONDARY_DIST  1.0
+            """,
+        )
+
+        assert np.max(np.abs(restricted["t2p_est"] - full["t2p_est"])) > 1e-3
+        assert np.max(np.abs(restricted["t2p_est"] - restricted["est"])) > 1e-3
+
+    def test_ck3d_butte_dip_vs_no_dip_diagnostic(self, run_t2p, butte_ck_data):
+        base = {
+            "aniso1": 0.1,
+            "aniso2": 0.1,
+            "azimuth": 225.0,
+        }
+
+        def vgms(dip):
+            return (
+                f"sph 0.0    0.12  {5000*base['aniso1']} 5000 {5000*base['aniso2']} {base['azimuth']} {dip} 0.0 150",
+                f"sph 0.02   0.08  {5000*base['aniso1']} 5000 {5000*base['aniso2']} {base['azimuth']} {dip} 0.0 150",
+                f"sph 0.0   0.048  {5000*base['aniso1']} 5000 {5000*base['aniso2']} {base['azimuth']} {dip} 0.0",
+            )
+
+        vgm_p0, vgm_s0, vgm_x0 = vgms(0.0)
+        no_dip = _calc_ck_correlation_3d_result(
+            run_t2p,
+            butte_ck_data,
+            vgm_p=vgm_p0,
+            vgm_s=vgm_s0,
+            vgm_x=vgm_x0,
+            z_mode="random",
+        )
+        np.testing.assert_allclose(no_dip["est"], no_dip["t2p_est"], atol=1e-5)
+        np.testing.assert_allclose(no_dip["var"], no_dip["t2p_var"], atol=1e-5)
+
+        vgm_p5, vgm_s5, vgm_x5 = vgms(5.0)
+        dip = _calc_ck_correlation_3d_result(
+            run_t2p,
+            butte_ck_data,
+            vgm_p=vgm_p5,
+            vgm_s=vgm_s5,
+            vgm_x=vgm_x5,
+            z_mode="random",
+        )
+
+        est_stats = _comparison_stats(dip["est"], dip["t2p_est"])
+        var_stats = _comparison_stats(dip["var"], dip["t2p_var"])
+        assert est_stats["max_abs_diff"] < 1e-5
+        assert var_stats["max_abs_diff"] < 1e-5
+
+        py_est_delta = np.abs(dip["est"] - no_dip["est"])
+        t2p_est_delta = np.abs(dip["t2p_est"] - no_dip["t2p_est"])
+        py_var_delta = np.abs(dip["var"] - no_dip["var"])
+        t2p_var_delta = np.abs(dip["t2p_var"] - no_dip["t2p_var"])
+        assert t2p_est_delta.mean() > 0.0
+        np.testing.assert_allclose(t2p_est_delta, py_est_delta, atol=1e-5)
+        np.testing.assert_allclose(t2p_var_delta, py_var_delta, atol=1e-5)
+
 
     @pytest.mark.parametrize("aniso1",  [1.0, 0.1])
     @pytest.mark.parametrize("aniso2",  [0.1, 0.01])
     @pytest.mark.parametrize("azimuth", [0.0, 225])
-    @pytest.mark.parametrize("dip"   ,  [0.0, 5.0])
-    def test_ck3d_corectness(self, run_t2p, butte_ck_data, aniso1, aniso2, azimuth, dip):
+    @pytest.mark.parametrize("dip", [0.0, 5.0])
+    def test_ck3d_correctness(self, run_t2p, butte_ck_data, aniso1, aniso2, azimuth, dip):
         """
         3D CK estimates correctness test.
         """
