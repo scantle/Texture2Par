@@ -108,6 +108,21 @@ pytest --tb=long
 | `TestSubsidenceOutputs` | run completes; IB_THK/KVF written; IB_THK ≥ 0 |
 | `TestOutputRowCounts` | KH row count matches grid size (5×5×2 = 50) |
 
+### Cokriging Reference Tests
+
+Butte CK reference tests use a full augmented CK matrix in Python. For
+secondary data, that Python reference uses the entire selected secondary
+subsample for every target. Texture2Par's default `MAX_SECONDARY_DIST` is
+finite, so tests that compare to the full Python reference must explicitly set
+a very large `MAX_SECONDARY_DIST`, such as `1e10`. Tests for default or
+restricted secondary-distance behavior should use their own reference logic or
+be treated as separate behavior/regression tests.
+
+The 3D CK Python reference follows Texture2Par's current 3D anisotropy
+convention, including the positive-downward dip / Fortran rotation-matrix
+convention. A compact traced-pair covariance regression guards against future
+dip-sign regressions in that reference helper.
+
 ---
 
 ## Adding new tests
