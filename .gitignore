@@ -38,11 +38,13 @@
 # VS junk
 *.u2d
 *.suo
+*.pdb
 
 # Generated folders
 build/Debug/**
 build/release/**
 build/x64/**
+build_ifx/**
 src/Libraries/*/Release/**
 src/Libraries/*/x64/**
 src/Libraries/*/Debug/**
@@ -57,3 +59,8 @@ src/Libraries/*/Debug/**
 
 Example*
 x64/*
+training*
+*.pyc
+/.claude
+/T2P
+/.codex*

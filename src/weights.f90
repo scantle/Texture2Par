@@ -168,7 +168,7 @@ contains
       if (this%f%binary) then
         write(this%f%unit) size(this%ppd), this%nin
       else
-        write(this%f%unit,*) size(this%ppd), this%nin
+        write(this%f%unit,"(2I10)") size(this%ppd), this%nin
       end if
     end if
     
@@ -195,7 +195,9 @@ contains
     if (this%f%binary) then
       write(this%f%unit) grid_idx, this%ppd(1:), this%idx(1:), this%values(1:)
     else
-      write(this%f%unit, *) grid_idx, this%ppd(1:), this%idx(1:), this%values(1:)
+      write(this%f%unit, "(10I10)") grid_idx, this%ppd(1:)
+      write(this%f%unit, "(10I10)") this%idx(1:)
+      write(this%f%unit, "(10F10.6)") this%values(1:)
     end if
     
   end subroutine save_to_file_sosa
@@ -213,9 +215,11 @@ contains
     if (this%f%binary) then
       read(this%f%unit, iomsg=iomsg) grid_idx, this%ppd(1:), this%idx(1:), this%values(1:)
     else
-      read(this%f%unit,*, iomsg=iomsg) grid_idx, this%ppd(1:), this%idx(1:), this%values(1:)
+      read(this%f%unit,*, iomsg=iomsg) grid_idx, this%ppd(1:); call this%f%iomsg_handler(iomsg)  ! in case something goes wrong with reading the values
+      read(this%f%unit,*, iomsg=iomsg) this%idx(1:)          ; call this%f%iomsg_handler(iomsg)  ! in case something goes wrong with reading the values
+      read(this%f%unit,*, iomsg=iomsg) this%values(1:)       ; call this%f%iomsg_handler(iomsg)  ! in case something goes wrong with reading the values
     end if
-    call this%f%iomsg_handler(iomsg)  ! in case something goes wrong with reading the values
+    
     
   end subroutine load_from_file_sosa
 

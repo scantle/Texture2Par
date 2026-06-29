@@ -167,7 +167,7 @@ module m_sgsim
     integer                         :: inear(this%maxnear,this%nsets), loc_usenear(this%nsets)
     real                            :: dist(this%maxnear,this%nsets), maxdist
     type(kdtree2_result)            :: kdnearest(this%maxnear)
-    real                            :: newloc(2), var0, var_reduce
+    real                            :: newloc(this%ndim), var0, var_reduce
 
     ! local
     integer                         :: j, d, vidx, wi, osize, mat_tot, ier
@@ -180,6 +180,7 @@ module m_sgsim
 
     do iset=1, this%nsets
       loc_usenear(iset) = min(loc_usenear(iset), count(obsxy(iset)%mask))
+      if (loc_usenear(iset) == 0) cycle
       call kdtree2_n_nearest(obsxy(iset)%tree, newloc, loc_usenear(iset), kdnearest(:loc_usenear(iset)), mask=obsxy(iset)%mask)
       inear(:loc_usenear(iset),iset) = kdnearest(:loc_usenear(iset))%idx
       dist (:loc_usenear(iset),iset) = kdnearest(:loc_usenear(iset))%dis
@@ -198,8 +199,16 @@ module m_sgsim
 
     osize   = sum(loc_usenear)
     if (osize==0) then
-      write(*,*) "No data point is found for Node", idx
-      stop 1
+      ! No conditioning data yet - unconditional simulation from the variogram sill
+      var0 = 0.0
+      vidx = this%vario_idx(1,1)
+      do j=1, this%nstruct(vidx)
+        var0 = var0 + this%variograms(j,vidx)%cov(newloc,newloc)
+      end do
+      res = gridxy%sample(idx) * sqrt(max(var0, 0.0))
+      res = max(0.0, min(1.0, res))
+      obsxy(1)%mask(idx) = .true.
+      return
     end if
     this%matsize = osize+this%unbias+this%ndrift
     mat_tot = this%matsize * (this%matsize + 1) / 2
@@ -351,7 +360,7 @@ module m_sgsim
 
   !-------------------------------------------------------------------------------------------------!
 
-  subroutine calc_sgsim(this, obs_data, obs_idx, val_idx, to_grid, active, results, catlist, to_cats, opt, layer)
+  subroutine calc_sgsim(this, obs_data, obs_idx, val_idx, to_grid, active, results, variance, catlist, to_cats, opt, layer)
     use m_weights, only: t_sosa_weights
     use kdtree2_module
     implicit none
@@ -360,7 +369,7 @@ module m_sgsim
     integer,intent(in)                    :: obs_idx(:), val_idx(:)
     type(t_grid),intent(in)               :: to_grid
     logical,intent(in)                    :: active(:)    !1:to_grid%n
-    real                                  :: results(:)
+    real                                  :: results(:), variance(:)
     integer,intent(in)                    :: catlist(:), to_cats(:), layer
     type(t_options),intent(in)            :: opt
     logical                               :: has_data
@@ -369,22 +378,18 @@ module m_sgsim
     integer                               :: i, j, iset, cat,  nobs1
     real    , allocatable                 :: weights(:,:)
 
-    ! Call super setup
-    call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
-
-    ! OK uses unbias
-    this%unbias = 1
-
     do i=1, size(catlist)
       ! Setup for each category
       cat = catlist(i)
+      call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
+      this%unbias = 1
       block
         type(t_simgrid)  :: obsxy(this%nsets), gridxy
         ! Step 1: filter obs and grid to
         call this%setup_sgsim(obs_data, obs_idx, val_idx, to_grid, cat, to_cats, weights, opt, obsxy, gridxy)
         ! Step 2: estimate values
         do j=1, gridxy%n
-          if (.not.active(j)) cycle
+          if (.not.active(gridxy%order(j))) cycle
           ! Interpolate for each point
           obsxy(1)%values(j) = this%predict_point_sgsim(j, obsxy, gridxy, opt%NSIM)
         end do

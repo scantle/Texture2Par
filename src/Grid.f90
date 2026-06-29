@@ -1,5 +1,6 @@
 module m_grid
   use kdtree2_module
+  use m_cellblocks
   implicit none
 
 !-------------------------------------------------------------------------------------------------!
@@ -11,6 +12,9 @@ module m_grid
     real    , allocatable     :: masked_coords(:,:)  ! xy[z] by n points, subject to a mask (for kdtree)
     type(kdtree2),pointer     :: tree => null()      ! Tree for locating model nodes
     integer, allocatable      :: true_idx(:)         ! Mapping of indices from masked to full dataset
+    
+    ! Block Kriging Support
+    type(t_cellblocks), pointer :: active_blocks => null()
 
     contains
       procedure,private        :: initialize
@@ -171,10 +175,11 @@ module m_grid
     implicit none
     class(t_Grid), intent(inout) :: this
 
-    if (allocated(this%coords))        deallocate(this%coords)
-    if (allocated(this%masked_coords)) deallocate(this%masked_coords)
-    if (allocated(this%true_idx))      deallocate(this%true_idx)
-    if (associated(this%tree))         deallocate(this%tree)
+    if (allocated(this%coords))         deallocate(this%coords)
+    if (allocated(this%masked_coords))  deallocate(this%masked_coords)
+    if (allocated(this%true_idx))       deallocate(this%true_idx)
+    if (associated(this%tree))          deallocate(this%tree)
+    if (associated(this%active_blocks)) deallocate(this%active_blocks)
 
     ! Include any other cleanup tasks here
   end subroutine finalize

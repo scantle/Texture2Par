@@ -20,12 +20,13 @@ module m_kriging
     integer                   :: unbias                  ! Unbias term (0 - SK, 1 - OK)
     integer                   :: ndrift                  ! Unimplemented
     integer                   :: nzones                  ! Tracks length of zones list (see below)
+    real                      :: max_pdist               ! Maximum inclusion distance for primary data
     real                      :: max_sdist               ! Maximum inclusion distance for secondary data
     real   ,allocatable       :: matA(:)                 ! LHS obs-obs covariance matrix (lower triangle, stored as an array)
     real   ,allocatable       :: rhsB(:)                 ! RHS grid-obs covariance array
     integer,pointer           :: nstruct(:)              ! Number of structures for each variogram
     integer,pointer           :: nnear(:)                ! Number of nearest points used for interpolation, for each dataset/class (nvario) (0 for cross)
-    integer,pointer           :: obs_idx(:)              ! Indices of datasets
+    integer,allocatable       :: obs_idx(:)              ! Indices of datasets
     type(t_vstringlist)       :: zones                   ! List of HSUs, needed to track the order of HSUs in global_vario_idx (may not match global HSU id!)
     integer,allocatable       :: cat2zone(:)             ! Map from global category id (hsu_id) to internal zone number (read at different times)
     type(t_vgm),pointer       :: variograms(:,:)         ! (stuctures, variogram)
@@ -33,9 +34,12 @@ module m_kriging
     integer,allocatable       :: vario_idx(:,:)          ! Variogram index given (class_id, class_id) for local classes passed to setup/point
     real   ,allocatable       :: w(:)                    ! Internally calculated weights
     integer,allocatable       :: pset_id(:)              ! ID vector used for kriging matrix
+    type(t_grid),pointer      :: grid                    ! Pointer to result grid
     ! Some kriging-specific settings
     logical                   :: no_negative_weights     ! Flag to zero negative weights and rebalance (True = zero, rebalance)
     logical                   :: write_matrix            ! Flag to write AMAT and RHS to log file
+    logical                   :: block_krige             ! Flag to block krige
+    logical                   :: kvme_enabled            ! Kriging with variance of measurement error
     ! Attributes for KD-tree and search parameters could be added here
   contains
     procedure               :: intialize => initialize_kriging
@@ -44,6 +48,8 @@ module m_kriging
     procedure               :: setup => setup_krige
     procedure               :: pset_cok
     procedure               :: filter_near_points
+    procedure               :: block_cov_rhs
+    procedure               :: block_sill
     procedure               :: write_amat, write_rhs_array, write_inear
     procedure               :: write_summary => write_summary_krige
     procedure               :: finalize => finalize_krige
@@ -78,9 +84,11 @@ module m_kriging
 subroutine decomp(p,id,ntot,ier)
     implicit none
 !*** DECOMPOSITION TO GET LOWER TRIANGULAR S MATRIX
-    integer                :: id,ier,ks,jm1,k,js,is,is1,j,i,i1,ntot
-    real                   :: p,sum,p1,p2
-    dimension              :: p(1),id(1)
+    integer,intent(in)     :: id(:), ntot
+    integer,intent(out)    :: ier
+    integer                :: ks,jm1,k,js,is,is1,j,i,i1
+    real,intent(inout)     :: p(:)
+    real                   :: sum,p1,p2
 
           IER=0
           P(1)=1./P(1)
@@ -116,9 +124,11 @@ end subroutine decomp
 subroutine doolittle(r,p,id,w,ntot)
 
     implicit none
-          integer   :: id,ntot,i,is,js,im1,j,ii,iip1,iis
-          real      :: r,p,w,sum
-      dimension     :: r(1),p(1),w(1),id(1)
+          integer,intent(in)   :: id(:), ntot
+          integer              :: i,is,js,im1,j,ii,iip1,iis
+          real,intent(in)      :: r(:), p(:)
+          real,intent(inout)   :: w(:)
+          real                 :: sum
 !***  START OF DOOLITTLE ***
 !***  FORWARD SUBSTITUTION FOR SYSTEM S*W = R
           W(1)=R(1)*P(1)
@@ -231,6 +241,8 @@ end subroutine doolittle
 
     ! Goal is to fill cat2zone so that the global HSUs can be mapped to the kriging object zones (HSUs)
     ! (and check that all the kriging zones passed exist!)
+    if (.not. vstrlist_exists(this%zones)) return
+
     do i=1, vstrlist_length(this%zones)
       cat_id = vstrlist_search(glo_zone_names, vstring_toupper(vstrlist_index(this%zones,i)))
       if (cat_id==VSTRINGLIST_INDEX_UNKNOWN) then
@@ -252,7 +264,7 @@ end subroutine doolittle
     class(t_krige),intent(inout)   :: this
     class(t_dataset)               :: obs_data(:)
     integer,intent(in)             :: obs_idx(:)
-    type(t_grid),intent(in)        :: to_grid
+    type(t_grid),intent(in),target :: to_grid
     real                           :: weights(:,:)
     integer,intent(in)             :: cat
     integer,intent(in)             :: to_cats(:)
@@ -267,9 +279,15 @@ end subroutine doolittle
     this%nsets  = size(obs_data)
     this%no_negative_weights = opt%CORRECT_WEIGHTS
     this%write_matrix = opt%WRITE_MATRIX
+    this%block_krige = opt%BLOCK_KRIGE > 0
+    this%kvme_enabled = opt%KVME
     has_data = .true.
+    this%grid => to_grid
+    if (allocated(this%obs_idx)) deallocate(this%obs_idx)
+    this%obs_idx = obs_idx
 
     ! If MAX_SECONDARY_DIST is zero, will use 3x the largest structure range
+    this%max_pdist = opt%MAX_PRIMARY_DIST
     this%max_sdist = opt%MAX_SECONDARY_DIST
 
     if (allocated(this%vario_idx)) deallocate(this%vario_idx)
@@ -281,23 +299,33 @@ end subroutine doolittle
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine filter_near_points(this, usenear, inear, dist, vidx)
+  subroutine filter_near_points(this, usenear, inear, dist, vidx, primary)
     implicit none
     class(t_krige),intent(inout)  :: this
     integer, intent(inout)        :: usenear
     integer, intent(inout)        :: inear(:)
-    real    , intent(inout)       :: dist(:)
+    real   , intent(inout)        :: dist(:)
     integer, intent(in)           :: vidx
-    real                          :: max_sdist
+    logical, intent(in), optional :: primary
+    real                          :: max_dist
 
     integer :: count, j
 
-    max_sdist = this%max_sdist
-    if (this%max_sdist < 0.1) max_sdist = maxval(this%variograms(:,vidx)%a_hmax) * 3.0
+    max_dist = -999.0
+    if (present(primary)) then
+      if (primary) max_dist = this%max_pdist
+    end if
+    if (max_dist < 0.0) then
+      if (this%max_sdist > 0.1) then
+        max_dist = this%max_sdist
+      else
+        max_dist = maxval(this%variograms(:,vidx)%a_hmax) * 3.0
+      end if
+    end if
 
     count = 0
     do j = 1, usenear
-      if (sqrt(dist(j)) <= max_sdist) then
+      if (sqrt(dist(j)) <= max_dist) then
         count = count + 1
         ! Move valid entries to the beginning of the array
         if (count /= j) then
@@ -310,6 +338,47 @@ end subroutine doolittle
     ! Update usenear to the new count of valid points
     usenear = count
   end subroutine filter_near_points
+
+!-------------------------------------------------------------------------------------------------!
+
+  function block_cov_rhs(this,inode,obs_coord,vidx) result(sum)
+    implicit none
+    class(t_krige), intent(in) :: this
+    integer, intent(in)        :: inode, vidx
+    real   , intent(in)        :: obs_coord(:)
+    real                        :: sum
+    integer                     :: q, j, npts
+
+    npts = this%grid%active_blocks%nblockpts(inode)
+    sum  = 0.0
+    do j = 1, this%nstruct(vidx)
+      do q = 1, npts
+        sum = sum + this%grid%active_blocks%block_wts(q,inode)*this%variograms(j,vidx)%cov(this%grid%active_blocks%block_coords(:,q,inode),obs_coord)
+      end do
+    end do
+  end function block_cov_rhs
+
+!-------------------------------------------------------------------------------------------------!
+
+  function block_sill(this,inode,vidx) result(sill)
+    implicit none
+    class(t_krige), intent(in) :: this
+    integer, intent(in)        :: inode, vidx
+    real                        :: sill
+    integer                     :: q, r, j, npts
+
+    npts = this%grid%active_blocks%nblockpts(inode)
+    sill = 0.0
+    do j = 1, this%nstruct(vidx)
+      do q = 1, npts
+        do r = 1, npts
+          sill = sill + this%grid%active_blocks%block_wts(q,inode) * &
+                 this%grid%active_blocks%block_wts(r,inode) * &
+                 this%variograms(j,vidx)%cov(this%grid%active_blocks%block_coords(:,q,inode),this%grid%active_blocks%block_coords(:,r,inode))
+        end do
+      end do
+    end do
+  end function block_sill
 
 !-------------------------------------------------------------------------------------------------!
 
@@ -380,7 +449,7 @@ subroutine write_summary_krige(this)
   implicit none
   class(t_krige),intent(inout)  :: this
   integer                       :: i,j
-  character(len=256)            :: line, struct
+  character(len=512)            :: line, struct
   integer, dimension(3)         :: idx
 
   do i=1, this%nvario
@@ -392,7 +461,7 @@ subroutine write_summary_krige(this)
         write(struct, '(i5,2x,a)') j, trim(adjustl(this%variograms(j,i)%write_variogram()))
         call log%write_line(trim(line) // ' - ' // trim(struct))
       else
-        write(struct, '(38x,i5,2x,a)') j, this%variograms(j,i)%write_variogram()
+        write(struct, '(41x,i5,2x,a)') j, this%variograms(j,i)%write_variogram()
         call log%write_line(trim(struct))
       end if
     end do
@@ -408,8 +477,8 @@ end subroutine write_summary_krige
     if (associated(this%nnear)) deallocate(this%nnear)
     if (allocated(this%matA))    deallocate(this%matA)
     if (allocated(this%rhsB))    deallocate(this%rhsB)
+    if (allocated(this%obs_idx)) deallocate(this%obs_idx)
     if (associated(this%nstruct)) deallocate(this%nstruct)
-    if (associated(this%obs_idx)) deallocate(this%obs_idx)
     if (associated(this%variograms)) deallocate(this%variograms)
     if (allocated(this%global_vario_idx)) deallocate(this%global_vario_idx)
     if (allocated(this%vario_idx)) deallocate(this%vario_idx)
@@ -427,7 +496,7 @@ end subroutine write_summary_krige
     class(t_globkrige),intent(inout)      :: this
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
-    type(t_grid),intent(in)               :: to_grid
+    type(t_grid),intent(in),target        :: to_grid
     real                                  :: weights(:,:)
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
@@ -436,7 +505,8 @@ end subroutine write_summary_krige
     !integer,pointer           :: npoints(i)            ! Number of points (in category) to be used for simple kriging
     !integer,allocatable       :: useidx(:,:)           ! Indices of points to use for simple kriging, within category, by (npoints, nset)
     ! Local
-    integer                               :: i,ier,class_id,matsize,mat_tot
+    integer                               :: i,j,ier,class_id,matsize,mat_tot
+    real,allocatable                      :: merror(:,:)
 
     ! Call super setup
     call setup_krige(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
@@ -446,11 +516,12 @@ end subroutine write_summary_krige
     if (allocated(this%useidx)) deallocate(this%useidx)
     allocate(this%npoints(this%nsets))
     do i=1, this%nsets
-      this%npoints = obs_data(i)%grid%n
+      this%npoints(i) = obs_data(i)%grid%n
     end do
     allocate(this%useidx(maxval(this%npoints),this%nsets))
+    allocate(     merror(maxval(this%npoints),this%nsets))  ! measurement error
 
-    ! Build search trees in observed grid objects
+    ! Get observed data in category
     ! Also, figure out number of datasets in each category
     do i=1, this%nsets
       class_id = obs_idx(i)
@@ -471,8 +542,25 @@ end subroutine write_summary_krige
 
     this%matA = 0.0
     this%w = 0.0
+    merror = 0.0
 
-    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, this%useidx, this%npoints, this%ndim)
+    ! Setup KVME, if using
+    if (this%kvme_enabled) then
+      do i = 1, this%nsets
+        select type(ld => obs_data(i))
+        type is (t_layerdata)
+          class_id = obs_idx(i)
+          if (i > 1) class_id = 1
+          do j = 1, this%npoints(i)
+            merror(j, i) = max(0.0, ld%variance(class_id, this%useidx(j, i)))
+          end do
+        class default
+          ! otherwise: zeros
+        end select
+      end do
+    end if
+
+    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, this%useidx, this%npoints, this%ndim, merror)
     if (this%write_matrix) then
       write(log%unit, '(/,A)') 'DEBUG - STARTING SIMPLE (CO)KRIGING'
       call this%write_amat(log%unit)
@@ -484,37 +572,45 @@ end subroutine write_summary_krige
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine predict_point_sk(this, idx, p, obs_data, cat, weights, widx, ppd)
+  subroutine predict_point_sk(this, idx, p, obs_data, cat, variance, weights, widx, ppd)
     implicit none
     class(t_globkrige),intent(inout)  :: this
     integer,intent(in)                :: idx, cat
     real    ,intent(in)               :: p(:)
     class(t_dataset)                  :: obs_data(:)
+    real                              :: variance
     real                              :: weights(:)
     integer, optional                 :: widx(:)              ! idx associated with weights
     integer, optional                 :: ppd(size(obs_data))  ! points per dataset
     ! Local
-    integer                           :: i, j, d, rcount, start_idx, end_idx
-    real                              :: value
-    character(20)                     :: cidx
+    integer                           :: i, j, d, rcount, vidx, osize, matsize
+    real                              :: value, c0
 
     this%rhsB = 0.0
     weights = 0.0
-    if (this%unbias==1) this%rhsB(size(this%rhsB)) = 1.0d0
+    osize   = sum(this%npoints(:))
+    matsize = osize+this%unbias+this%ndrift
+    if (this%unbias==1) this%rhsB(matsize) = 1.0
 
     rcount = 1
     do d = 1, this%nsets
       do i = 1, this%npoints(d)
-        do j = 1, this%nstruct(this%vario_idx(1, d))
-          value = this%variograms(j, this%vario_idx(1, d))%cov(p, obs_data(d)%grid%coords(:, this%useidx(i,d)))
-          this%rhsB(rcount) = this%rhsB(rcount) + value
-        end do
+        vidx = this%vario_idx(1, d)
+        if (.not. this%block_krige) then    ! Point kriging
+          do j = 1, this%nstruct(vidx)
+            value = this%variograms(j, vidx)%cov(p, obs_data(d)%grid%coords(:, this%useidx(i,d)))
+            this%rhsB(rcount) = this%rhsB(rcount) + value
+          end do
+        else                                ! Block kriging
+          value = this%block_cov_rhs(idx, obs_data(d)%grid%coords(:, this%useidx(i,d)), vidx)
+          this%rhsB(rcount) = value
+        end if
         rcount = rcount + 1
       end do
     end do
 
     ! Solve weights using the precomputed A matrix
-    call doolittle(this%rhsB, this%matA, this%pset_id, weights, size(this%rhsB))
+    call doolittle(this%rhsB, this%matA, this%pset_id, weights, matsize)
 
     ! If CORRECT_WEIGHTS, zero negative weights and rebalance
     if (this%no_negative_weights .and. minval(weights) < 0.0) then
@@ -522,15 +618,29 @@ end subroutine write_summary_krige
       weights = weights / sum(weights)
     end if
 
+    ! Variance
+    vidx  = this%vario_idx(1,1)
+    c0 = 0.0
+    if (.not. this%block_krige) then    ! Point kriging
+      do i = 1, this%nstruct(vidx)
+        c0 = c0 + this%variograms(i,vidx)%cov(p,p)  ! Max covariance
+      end do
+    else  ! Block kriging
+      c0 = this%block_sill(idx, vidx)
+    end if
+    variance = c0 - dot_product(weights(1:osize), this%rhsB(1:osize))
+    if (this%unbias==1) variance = variance - weights(matsize)
+    variance = max(0.0, variance)
+
     ! Optional: Return observation indices
     if (present(widx)) then
-        rcount = 1
-        do d = 1, this%nsets
-            do i = 1, this%npoints(d)
-                widx(rcount) = this%useidx(i, d)
-                rcount = rcount + 1
-            end do
+      rcount = 1
+      do d = 1, this%nsets
+        do i = 1, this%npoints(d)
+          widx(rcount) = this%useidx(i, d)
+          rcount = rcount + 1
         end do
+      end do
     end if
 
     if (present(ppd)) then
@@ -553,10 +663,10 @@ end subroutine write_summary_krige
 
   subroutine setup_ok(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
     implicit none
-    class(t_treekrige),intent(inout)       :: this
+    class(t_treekrige),intent(inout)      :: this
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
-    type(t_grid),intent(in)               :: to_grid
+    type(t_grid),intent(in),target        :: to_grid
     real                                  :: weights(:,:)
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
@@ -581,7 +691,7 @@ end subroutine write_summary_krige
       class_id = obs_idx(i)
       if (i>1) class_id = 1
       if (opt%ANISOTROPIC_SEARCH) then
-        vidx = this%vario_idx(1,i)
+        vidx = this%vario_idx(i,i)
         call obs_data(i)%build_tree_by_category(cat,class_id, rotmat=this%variograms(1,vidx)%rotmat(1:this%ndim,1:this%ndim), has_data=has_data)
       else
         call obs_data(i)%build_tree_by_category(cat,class_id, has_data=has_data)
@@ -608,38 +718,64 @@ end subroutine write_summary_krige
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine predict_point_ok(this, idx, p, obs_data, cat, weights, widx, ppd)
+  subroutine predict_point_ok(this, idx, p, obs_data, cat, variance, weights, widx, ppd)
     implicit none
     class(t_treekrige),intent(inout)  :: this
     integer,intent(in)               :: idx, cat
     real    ,intent(in)              :: p(:)
     class(t_dataset)                 :: obs_data(:)
+    real                             :: variance
     real                             :: weights(:)
     integer, optional                :: widx(:)              ! idx associated with weights
     integer, optional                :: ppd(size(obs_data))  ! points per dataset
     ! local
-    integer                          :: i, j, d, vidx, wi, osize, matsize, mat_tot, ier, rcount, woffset
+    integer                          :: i, j, d, vidx, wi, osize, matsize, mat_tot, ier, rcount, woffset,class_id
     integer                          :: inear(this%maxnear,this%nsets), loc_usenear(this%nsets)
-    real                             :: value
-    real                             :: dist(this%maxnear,this%nsets)
+    real                             :: value, c0
+    real                             :: dist(this%maxnear,this%nsets), merror(this%maxnear,this%nsets)
 
     ! Get nearest for each obs dataset
     loc_usenear = this%usenear  ! LOCAL VERSION
     do i=1, this%nsets
       vidx = this%vario_idx(i,i)
       call obs_data(i)%grid%get_nnear(p, loc_usenear(i), inear(:,i), dist(:,i))
-      ! Filter out points beyond max_sdist for covariate datasets
-      if (i > 1) call this%filter_near_points(loc_usenear(i), inear(:,i), dist(:,i), vidx)
+      ! Filter out points beyond max_sdist
+      if (i ==1) then
+        call this%filter_near_points(loc_usenear(i), inear(:,i), dist(:,i), vidx, primary=.true.)
+      else
+        call this%filter_near_points(loc_usenear(i), inear(:,i), dist(:,i), vidx)
+      end if
     end do
 
     if (present(ppd)) ppd = loc_usenear
 
     osize   = sum(loc_usenear)
+    if (osize==0) then
+      print*, "Error: No data found for kriging at point ", idx," with coordinates ", p(1:this%ndim)
+      call error_handler(4)
+    end if
     matsize = osize+this%unbias+this%ndrift
     mat_tot = matsize * (matsize + 1) / 2
 
+    ! Setup KVME if using
+    merror = 0.0
+    if (this%kvme_enabled) then
+      do i = 1, this%nsets
+        select type(ld => obs_data(i))
+        type is (t_layerdata)
+          class_id = this%obs_idx(i)
+          if (i > 1) class_id = 1
+          do j = 1, loc_usenear(i)
+            merror(j, i) = max(0.0, ld%variance(class_id, inear(j, i)))
+          end do
+        class default
+          ! pilot points (or anything else): leave zeros
+        end select
+      end do
+    end if
+
     ! Create obs-obs matrix
-    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, inear, loc_usenear, this%ndim)
+    call this%pset_cok(obs_data, matsize, this%matA, this%pset_id, mat_tot, inear, loc_usenear, this%ndim, merror)
     if (this%write_matrix) then
       write(log%unit, '(/,A,i0)') 'DEBUG - POINT:',idx
       write(log%unit, '(  A,9F12.3)') '  Coordinates:',p
@@ -650,19 +786,25 @@ end subroutine write_summary_krige
     if (ier == 1) call error_handler(4,opt_msg="Kriging Matrix Decomposition Failure. This is often caused by co-located wells")
 
     ! Create RHS
-    this%rhsB = 0.d0
+    this%rhsB = 0.0
     this%w = 0
-    if (this%unbias==1) this%rhsB(matsize) = 1.0d0
+
+    if (this%unbias==1) this%rhsB(matsize) = 1.0
     rcount = 1
     ! Loop over datasets
     do d = 1, this%nsets
       vidx = this%vario_idx(1,d)
       ! loop over data points
       do i=1, loc_usenear(d)
-        do j=1, this%nstruct(vidx)
-          value = this%variograms(j,vidx)%cov(p,obs_data(d)%grid%coords(1:,inear(i,d)))
-          this%rhsB(rcount) = this%rhsB(rcount) + value
-        end do
+        if (.not. this%block_krige) then    ! Point kriging
+          do j=1, this%nstruct(vidx)
+            value = this%variograms(j,vidx)%cov(p,obs_data(d)%grid%coords(1:,inear(i,d)))
+            this%rhsB(rcount) = this%rhsB(rcount) + value
+          end do
+        else  ! Block kriging
+          value = this%block_cov_rhs(idx, obs_data(d)%grid%coords(:, inear(i,d)), vidx)
+          this%rhsB(rcount) = value
+        end if
         rcount = rcount + 1
       end do
     end do
@@ -675,6 +817,20 @@ end subroutine write_summary_krige
       where (this%w(1:osize) < 0.0) this%w(1:osize) = 0.0
       this%w(1:osize) = this%w(1:osize)/sum(this%w(1:osize))
     end if
+
+    ! Variance
+    vidx  = this%vario_idx(1,1)
+    c0 = 0.0
+    if (.not. this%block_krige) then    ! Point kriging
+      do i = 1, this%nstruct(vidx)
+        c0 = c0 + this%variograms(i,vidx)%cov(p,p)  ! Max covariance
+      end do
+    else  ! Block kriging
+      c0 = this%block_sill(idx, vidx)
+    end if
+    variance = c0 - dot_product(this%w(1:osize), this%rhsB(1:osize))
+    if (this%unbias==1) variance = variance - this%w(matsize)
+    variance = max(0.0, variance)
 
     wi = 0
     woffset = 0
@@ -701,14 +857,14 @@ end subroutine write_summary_krige
 
   end subroutine predict_point_ok
 
-
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine pset_cok(this, obs_data, ntot, p, id, maxpt, inear, nnear,  dim)
+  subroutine pset_cok(this, obs_data, ntot, p, id, maxpt, inear, nnear,  dim, me_diag)
     implicit none
     ! Rewrite of PSET routine for ordinary cokriging
     ! Author Leland Scantlebury
     !
+    ! LS 8/11/2025 - Added support for KVME through me_diag array
     ! Copyright 2022 S.S. Papadopulos & Associates. All rights reserved.
 
     ! Inputs
@@ -716,11 +872,12 @@ end subroutine write_summary_krige
     type(t_dataset)        :: obs_data(:)
     integer,intent(in)     :: maxpt, ntot, dim
     integer,intent(in)     :: inear(this%maxnear,this%nsets), nnear(this%nsets)
+    real   ,intent(in)     :: me_diag(this%maxnear, this%nsets)
     integer,intent(inout)  :: id(ntot)
-    real    ,intent(inout) :: p(maxpt)
+    real   ,intent(inout)  :: p(maxpt)
 
     ! Subroutine variables
-    integer             :: i,ii,j,jj,n,ind,JS, rowcount, nobs
+    integer             :: i,ii,j,jj,n,r,ind,JS, rowcount, nobs
     integer,allocatable :: colcount(:)
     real                :: coordi(dim),coordj(dim),value,value_sum
 
@@ -755,7 +912,7 @@ end subroutine write_summary_krige
           if (i/=j) ii=1
           do while (ii <= nnear(i))
             coordi=obs_data(i)%grid%coords(1:,inear(ii,i))
-            value_sum=0.0d0
+            value_sum=0.0
             do n=1, this%nstruct(ind)
               value = this%variograms(n,ind)%cov(coordi,coordj)
               value_sum = value_sum + value
@@ -772,6 +929,15 @@ end subroutine write_summary_krige
       DO I=1,ntot-1
         P(ID(I)+ntot-I)=1
       END DO
+    end if
+    ! Add measurement error (variance) to diagonal, if using
+    if (this%kvme_enabled) then
+      do j = 1, nobs
+        do jj = 1, nnear(j)
+          r = colcount(j) + jj
+          p( id(r) ) = p( id(r) ) + me_diag(jj, j)
+        end do
+      end do
     end if
 
     deallocate(colcount)

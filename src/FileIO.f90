@@ -44,8 +44,8 @@ module m_file_io
     contains
       procedure,private     :: write_line_character, write_line_t_vstring
       generic,public        :: write_line => write_line_character, write_line_t_vstring
-      procedure,private     :: write_valueline_int, write_valueline_real, write_valueline_char
-      generic,public        :: write_valueline => write_valueline_int, write_valueline_real, write_valueline_char
+      procedure,private     :: write_valueline_int, write_valueline_real, write_valueline_char, write_valueline_reals
+      generic,public        :: write_valueline => write_valueline_int, write_valueline_real, write_valueline_char, write_valueline_reals
 
   end type t_file_writer
 
@@ -55,7 +55,8 @@ module m_file_io
                                             ! (notably, this is not the maximum units allowed open)
   integer                     :: log_unit   ! Unit the log file is open on
                                             ! (so IO errors can be written to it)
-  character(500)              :: line       ! For reading in lines from files
+  character(:), allocatable   :: line       ! For reading in lines from files
+  character(500)              :: basename   ! basename of main input file (for log/output files)
   INTEGER, PARAMETER          :: dp = SELECTED_REAL_KIND(15,307)  ! 64-bit real
   integer, parameter          :: log_width=38
 
@@ -136,7 +137,7 @@ module m_file_io
     else
       open(f%unit, file=f%file, action='READ', STATUS='OLD', iostat=f%ioerr, iomsg=iomsg)
     end if
-    
+
     write(log_unit,'(3a)') 'Opening file ', trim(f%file), ' for reading.'
     call f%iomsg_handler(iomsg)
 
@@ -268,6 +269,70 @@ module m_file_io
 
 !-------------------------------------------------------------------------------------------------!
 
+  function vstrlist_to_charvec(strings, subset) result(names)
+    implicit none
+    type(t_vstringlist), intent(in) :: strings
+    character(len=:), allocatable   :: names(:)
+    integer                         :: n, i, cmax
+    integer, optional               :: subset(:)
+    integer, allocatable            :: idx(:)
+
+    if (present(subset)) then
+      idx = subset
+      n = size(idx)
+    else
+      n = vstrlist_length(strings)
+      idx = [(i, i=1, n)]
+    end if
+    if (n <= 0) then
+      allocate(character(len=1) :: names(0))
+      return
+    end if
+
+    ! find maximum label width
+    cmax = 1
+    do i = 1, n
+      cmax = max(cmax, vstring_length(vstrlist_index(strings, idx(i))))
+    end do
+
+    ! allocate and copy
+    allocate(character(cmax) :: names(n))
+    do i = 1, n
+      call item2char(strings, idx(i), names(i))
+    end do
+
+    return
+  end function vstrlist_to_charvec
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine vstrlist_replace(strings, existing, replacement)
+    implicit none
+    type(t_vstringlist), intent(inout) :: strings
+    character(*), intent(in)           :: existing, replacement
+    type(t_vstringlist)                :: new_list
+    type(t_vstring)                    :: item
+    integer                            :: idx, i
+
+    ! Find first match
+    idx = vstrlist_search(strings, existing)
+    if (idx <= 0) return   ! nothing to replace
+
+    call vstrlist_new(new_list)
+
+    do i = 1, vstrlist_length(strings)
+      if (i == idx) then
+        call vstrlist_append(new_list, replacement)
+      else
+        item = vstrlist_index(strings, i)
+        call vstrlist_append(new_list, item)
+      end if
+    end do
+
+    strings = new_list
+
+  end subroutine vstrlist_replace
+
 !-------------------------------------------------------------------------------------------------!
 ! BASE CLASS FILE TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -301,6 +366,35 @@ module m_file_io
 
 !-------------------------------------------------------------------------------------------------!
 
+  subroutine read_line(funit, iostat, linestring)
+    implicit none
+    integer, intent(in)  :: funit
+    integer, intent(out) :: iostat
+    character(len=:), intent(out), allocatable :: linestring
+
+    ! local
+    integer, parameter     :: bufsize=1024
+    integer                :: size_read, ibuf
+    character(len=bufsize) :: buffer
+
+    linestring = ""
+    ibuf = 0
+    do
+      read(funit, '(A)', advance='no', size=size_read, iostat=iostat) buffer
+      ibuf = ibuf + 1
+      ! Append buffer
+      if (size_read > 0) then
+        linestring = linestring // buffer(1:size_read)
+      end if
+      if (size_read < bufsize) exit
+    end do
+    if (linestring /= "") then
+      iostat = 0 ! reset iostat values if there is content in the current line
+    end if
+  end subroutine read_line
+
+!-------------------------------------------------------------------------------------------------!
+
 !-------------------------------------------------------------------------------------------------!
 ! READER TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -315,6 +409,7 @@ module m_file_io
     type(t_vstring)                   :: line_string
     type(t_vstringlist)               :: strings
     character(len=500)                :: ext_file
+    character(len=2000)               :: tmp_line
 
     ! For line splitting
     integer             :: left(2), right(2)
@@ -322,8 +417,8 @@ module m_file_io
     eof = 0
     i = 0
     do while (eof == 0)
-      read(this%unit, '(a500)', iostat=ierr) line
-      line = adjustl(line)
+      read(this%unit, "(A)", iostat=ierr) tmp_line
+      line = adjustl(tmp_line)
       ! Handle EOF
       if (IS_IOSTAT_END(ierr)) then
         call this%handle_eof(eof)
@@ -364,15 +459,15 @@ subroutine read_to_next_iwfm_line(this, eof, skipped)
   integer                           :: i, ierr
   integer, intent(out)              :: eof
   integer, intent(inout), optional  :: skipped
-  character(len=500)                :: line
   character(len=1)                  :: first_char
   character(len=1)                  :: second_char
+  character(len=2000)               :: tmp_line
 
   eof = 0
   i = 0
   do while (eof == 0)
-    read(this%unit, '(a500)', iostat=ierr) line
-    line = adjustl(line)
+    read(this%unit, "(A)", iostat=ierr) tmp_line
+    line = adjustl(tmp_line)
     first_char = line(1:1)
     second_char = ' '
 
@@ -388,6 +483,10 @@ subroutine read_to_next_iwfm_line(this, eof, skipped)
     else if ((first_char == 'C' .or. first_char == 'c' .or. first_char == '*') .and. &
              (second_char == ' ' .or. second_char == '/' .or. second_char == '-' .or. second_char == '*')) then
       ! Comment line based on specific second character criteria
+      i = i + 1
+      cycle
+    else if (line(1:1) == '#') then
+      ! Always taken as a comment
       i = i + 1
       cycle
     else
@@ -428,7 +527,6 @@ end subroutine
     class(t_file_reader)     :: this
     type(list_node)        :: prev
     integer, intent(inout) :: eof
-
     if (this%backstack%size > 0) then
       close(this%unit)
       prev = this%backstack%pop()
@@ -456,7 +554,7 @@ end subroutine
     if (eof == 0) then
 
       ! Read string
-      read(this%unit, '(a500)', iostat=ierr) line
+      call read_line(this%unit, ierr, line)
       call TABREM(trim(adjustl(line)))
       line = replace_line(line)
       call vstring_new(line_string, trim(adjustl(line)))
@@ -481,7 +579,7 @@ end subroutine
     if (eof == 0) then
       do i=1, nlines
         ! Read empty
-        read(this%unit, '(a500)', iostat=ierr)
+        read(this%unit, '(a1)', iostat=ierr)
       end do
     else
       ! End of file - just return
@@ -567,7 +665,7 @@ end subroutine
     do while (status == 0)
       block_len = block_len + 1
       call this%read_to_next_line(eof, skipped=skipped)
-      read(this%unit, '(a500)', iostat=ierr) line
+      call read_line(this%unit, ierr, line)
       total_skipped = total_skipped + skipped + 1
       if (index(line, "END") > 0.or.eof < 0) status = 1
     end do
@@ -625,7 +723,6 @@ end subroutine
     implicit none
     class(t_file_reader), intent(in) :: this
     integer                         :: i, data_len, eof, ierr
-    character(200)                  :: line
     logical, optional               :: rewind_to_last_line
 
     data_len = 0
@@ -634,7 +731,7 @@ end subroutine
     call this%read_to_next_line(eof)
     do while (eof == 0)
       !call this%read_to_next_line(eof)  ! Inconsistent with how data files are usually read
-      read(this%unit, '(a)', iostat=ierr) line
+      call read_line(this%unit, ierr, line)
       if (IS_IOSTAT_END(ierr)) then
         eof = 1
       else if (trim(adjustl(line)) /= '') then
@@ -757,7 +854,11 @@ end subroutine
     integer                             :: line_length, spaces
 
     fmt_use = 'f8.2'
-    if (present(fmt)) fmt_use = trim(fmt)
+    if (present(fmt)) then
+      fmt_use = trim(fmt)
+    else
+      if (abs(value)>=1e5) fmt_use = 'es8.2'
+    end if
 
     line_length = len_trim(line)
     spaces = log_width - line_length
@@ -766,6 +867,32 @@ end subroutine
     write(this%unit, full_fmt) adjustl(line), value
 
   end subroutine write_valueline_real
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine write_valueline_reals(this, line, values, fmt)
+    implicit none
+    class(t_file_writer), intent(inout) :: this
+    character(*), intent(in)            :: line
+    real                                :: values(:)
+    character(*), optional              :: fmt
+    character(128)                      :: fmt_use,full_fmt
+    integer                             :: line_length, spaces
+
+    fmt_use = 'f8.2'
+    if (present(fmt)) then
+      fmt_use = trim(fmt)
+    else
+      if (any(abs(values)>=1e5)) fmt_use = 'es8.2'
+    end if
+    fmt_use = "*("//trim(fmt_use)//",x)"
+    line_length = len_trim(line)
+    spaces = log_width - line_length
+
+    write(full_fmt, '(2(a,i2),7a)') '(1x,a', line_length, ',', spaces, 'x,', trim(fmt_use), ')'
+    write(this%unit, full_fmt) adjustl(line), values
+
+  end subroutine write_valueline_reals
 
 !-------------------------------------------------------------------------------------------------!
 

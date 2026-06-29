@@ -1,7 +1,7 @@
 module m_read_main_input
   use m_T2P, only: t_t2p
   use m_vstring, only: t_vstring, vstring_new, vstring_toupper
-  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_split, vstrlist_append, VSTRINGLIST_INDEX_UNKNOWN
+  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_split, vstrlist_append, vstrlist_range, VSTRINGLIST_INDEX_UNKNOWN
   use m_file_io
   use m_error_handler, only: error_handler
   implicit none
@@ -58,18 +58,22 @@ module m_read_main_input
       case("COVARIATES")
         CALL read_covariates_block(t2p, reader)
       case("DATASET")
+        call pre_block_read_check(t2p, id)
         CALL read_dataset_block(t2p, reader)
       case("VARIOGRAMS")
         CALL read_variogram_block(t2p, reader)
       case("PP_LOCS")
         call pre_block_read_check(t2p, id)
-        CALL read_pploc_block(t2p, reader, t2p%pilot_points)
+        CALL read_pploc_block(t2p, reader, t2p%pilot_points, .false.)
       case("PP_PARAMETERS")
         call pre_block_read_check(t2p, id)
         CALL read_ppparm_block(t2p, reader)
       case("PP_AQUITARD_LOCS")
         call pre_block_read_check(t2p, id)
-        CALL read_pploc_block(t2p, reader, t2p%pilot_points_aquitard)
+        CALL read_pploc_block(t2p, reader, t2p%pilot_points_aquitard, .true.)
+      case("SUBSIDENCE")
+        call pre_block_read_check(t2p, id)
+        CALL read_subsidence_block(t2p, reader)
       case ("END")
         ! Do nothing - errant line? Block reader ended early?
       case DEFAULT
@@ -89,6 +93,8 @@ module m_read_main_input
     select case(trim(block_id))
       case("CLASSES")
         if (.not. t2p%has_opt) call error_handler(2,reader%file,"OPTIONS block must be declared before CLASSES")
+      case("DATASET")
+        if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before DATASETS")
       case("COVARIATES")
         if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before COVARIATES")
         if (t2p%has_vario) call error_handler(2,reader%file,"COVARIATES block cannot be declared after VARIOGRAMS")
@@ -100,6 +106,9 @@ module m_read_main_input
         if (.not. t2p%has_pplocs) call error_handler(2,reader%file,"PP_LOCS block must be declared before PP_PARAMETERS")
       case("PP_AQUITARD_LOCS")
         if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before PP_AQUITARD_LOCS")
+      case("SUBSIDENCE")
+        if (.not. t2p%has_classes) call error_handler(2,reader%file,"CLASSES block must be declared before SUBSIDENCE")
+        if (t2p%has_pplocs) call error_handler(2,reader%file,"SUBSIDENCE block cannot be declared after PP_LOCS")
       case DEFAULT
       ! Do nothing
     end select
@@ -161,6 +170,9 @@ module m_read_main_input
         case("ROT","ROTATION")
           call check_id_validity(id, t2p%fmodel, 3) ! only MODFLOW2000
           t2p%fmodel%rot= item2dp(strings, 2)
+        case('BLOCK_MODE')
+          t2p%opt%BLOCK_KRIGE = 1
+          ! TODO custom point/weight file
         case DEFAULT
           call error_handler(1,reader%file,"Unknown Flow Model option: " // trim(id))
       end select
@@ -287,6 +299,7 @@ module m_read_main_input
 !-------------------------------------------------------------------------------------------------!
 
 subroutine read_dataset_block(t2p, reader)
+  use m_colmap, only: t_dataset_colmap, append_colmap
   implicit none
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
@@ -299,9 +312,19 @@ subroutine read_dataset_block(t2p, reader)
   ! Sub variables
   logical                    :: fname_set
   type(t_vstring)            :: fname, ftrans
+  integer                    :: i, cid, nactive
+  type(t_vstringlist)        :: classes
+  integer, allocatable       :: valcols(:), varcols(:), hsucols(:), cids(:)
+  type(t_dataset_colmap)     :: cm
 
   ! Default values
+  fname_set = .false.
   call vstring_new (ftrans , "NONE" )
+  call vstrlist_new(classes)
+  cm%nsets = 0
+
+  ! For checks
+  nactive = t2p%get_active_texture_classes()
 
   ! Loop until end of block or end of file
   do
@@ -313,6 +336,42 @@ subroutine read_dataset_block(t2p, reader)
         fname_set = .true.
       case("TRANSFORM")
         ftrans = vstring_toupper(vstrlist_index(strings , 2))
+      case("CLASSES")
+        ! Assumption: everything after "CLASSES" is a class
+        cm%nsets = length-1
+        allocate(cids(cm%nsets), valcols(cm%nsets), varcols(cm%nsets))
+        cids = 0
+        valcols = 0
+        varcols = 0
+        do i=2, length
+          cids(i-1) = t2p%get_class_id(vstrlist_index(strings, i), adjust_for_infer=.false.)
+          if (cids(i-1)==0) then
+            call item2char(strings, i, tmp)
+            call error_handler(1,reader%file,"Invalid data class in DATASET CLASSES: "//tmp)
+          else if (t2p%opt%INFER_LAST_CLASS.and.(cids(i-1)==t2p%ntexclasses)) then
+            call item2char(strings, i, tmp)
+            call error_handler(1,reader%file,"Inferred Class in DATASET CLASSES: "//tmp)
+          end if
+        end do
+      case("VALUES")
+        if (.not. allocated(cids)) call error_handler(2,reader%file,"In DATSET explicit column mapping, CLASSES must be declared before VALUES")
+        if ((length-1) /= cm%nsets) call error_handler(2,reader%file,"VALUES must provide one column per class listed in CLASSES")
+        do i=2,length
+          valcols(i-1) = item2int(strings,i)
+        end do
+      case("VARIANCES")
+        if (.not. allocated(cids)) call error_handler(2,reader%file,"In DATSET explicit column mapping, CLASSES must be declared before VARIANCES")
+        if ((length-1) /= cm%nsets) call error_handler(2,reader%file,"VARIANCES must provide one column per class listed in CLASSES")
+        do i=2,length
+          varcols(i-1) = item2int(strings,i)
+        end do
+      case("HSUS")
+        allocate(hsucols(length-1))
+        ! Huh, flow model hasn't been read yet, so we don't know how many layers! We'll have to take their word for it.
+        ! If only one item is passed, we assume it's the index of the first column
+        do i=2, length
+          hsucols(i-1) = item2int(strings,i)
+        end do
       case DEFAULT
         call error_handler(1,reader%file,"Unknown Dataset option: " // trim(id))
     end select
@@ -323,10 +382,32 @@ subroutine read_dataset_block(t2p, reader)
     call error_handler(2,reader%file,"Dataset Block must include a FILE")
   end if
 
+  ! Were explicit columns provided?
+  if (cm%nsets>0) then
+    if (.not. allocated(valcols)) call error_handler(2,reader%file,"Explicit mapping requires VALUES when CLASSES is provided")
+    allocate(cm%class_ids(cm%nsets), cm%col_val(cm%nsets))
+    cm%class_ids = cids
+    cm%col_val   = valcols
+    cm%maxcol    = maxval(cm%col_val)
+    if (t2p%opt%KVME) then
+      if (.not. allocated(varcols)) call error_handler(2,reader%file,"KVME is ON: explicit mapping requires VARIANCES")
+      allocate(cm%col_var(cm%nsets))
+      cm%col_var = varcols
+      cm%maxcol  = max(cm%maxcol, maxval(cm%col_var))
+    end if
+    ! Can't be sure yet if HSUs are active (model block may be unread)
+    if (allocated(hsucols)) then
+      allocate(cm%col_hsu(size(hsucols)))
+      cm%col_hsu = hsucols
+      cm%maxcol  = max(cm%maxcol, maxval(cm%col_hsu))
+    end if
+  end if
+
   ! Add to T2P
   t2p%ndatafiles = t2p%ndatafiles + 1
   call vstrlist_append(t2p%dataset_files, fname)
   call vstrlist_append(t2p%dataset_trans, ftrans)
+  call append_colmap(t2p%dataset_colmap, cm)  ! Added regardless of if empty; use nsets>0 to check if filled
 
   ! No Hook (yet) for datasets
   t2p%has_datafiles = .true.
@@ -351,8 +432,8 @@ subroutine read_variogram_block(t2p, reader)
   ! Sub variables
   type(t_vgm),pointer        :: vgms(:,:), tmp(:,:)
   integer,pointer            :: nnear(:), nstruct(:)
-  integer                    :: prime_id, prime_vidx, cross_id, vario_id, struct_id, vcount, maxread, hsu_id
-  logical                    :: iscross, ispp, ishsu
+  integer                    :: prime_id, prime_vidx, cross_id, vario_id, struct_id, vcount, maxread, hsu_id, dim
+  logical                    :: iscross, ispp, ishsu, pp_read
   type(t_vstring)            :: class_name, cross_name, hsu_name
   type(t_vstringlist)        :: class_temp
   character(100)             :: msg
@@ -363,6 +444,7 @@ subroutine read_variogram_block(t2p, reader)
   vcount = 0
   nnear = 0
   nstruct = 0
+  pp_read = .false.
 
   ! Loop until end of block or end of file
   status = 0
@@ -420,11 +502,16 @@ subroutine read_variogram_block(t2p, reader)
         ! Check for pilot point class
         if (vstring_match(class_name,"PilotPoints",nocase=.true.)) then
           ispp = .true.
+          pp_read = .true.
           vario_id = t2p%nvario  ! PP vario is max
+          dim = 2
           !prime_id = size(nnear,1)
           prime_vidx = size(nnear,1)
-        else
-        ! Not PP
+        else ! Not PP
+          if (pp_read) then
+            call error_handler(2, reader%file, "PilotPoints variogram must be the last variogram in the VARIOGRAM block.")
+          end if
+          dim = t2p%opt%INTERP_DIM
           select type(p => t2p%interp_data)
             class is(t_krige)
               if (t2p%opt%INTERP_ORDER=="BEFORE") then
@@ -455,9 +542,10 @@ subroutine read_variogram_block(t2p, reader)
                 ! Resize nstruct & vgm from nvario update...
                 call expand_int_array(nstruct,t2p%nvario, init=0)
                 allocate(tmp(t2p%opt%max_vstruct,t2p%nvario))
-                tmp(:, 1:size(vgms)) = vgms
-                deallocate(vgms); nullify(vgms)
+                tmp(:, 1:size(vgms,2)) = vgms
+                deallocate(vgms)
                 vgms => tmp
+                nullify(tmp)
               else
                 hsu_id = 0
               end if
@@ -478,36 +566,37 @@ subroutine read_variogram_block(t2p, reader)
             call reader%back(1)
             exit
           end if
+          
           ! Read structure
           struct_id = item2int(strings, 1)
           nstruct(vario_id) = struct_id
+          if (struct_id == 1) vcount = vcount+1
+          write(msg, '(2(a,i3))') 'variogram', vcount, ', structure', struct_id
+          if (struct_id>t2p%opt%MAX_VSTRUCT) call error_handler(2,reader%file,"Structure ID exceeds MAX_VSTRUCT Option - increase MAX_VSTRUCT and try again. "//msg)
 
-          !TODO validate struct_id
           ! Is the variogram line long enough?
-          write(msg, '(2(a,i3))') 'variogram', vcount+1, ', structure', struct_id
-          if (t2p%opt%INTERP_DIM==2 .and. length < 7) then
+          if (dim==2 .and. length < 7) then
             call error_handler(2,reader%file,"Too few variogram parameters for 2D (7+ expected). See "//msg)
-          else if (t2p%opt%INTERP_DIM==3 .and. length < 10) then
+          else if (dim==3 .and. length < 10) then
             call error_handler(2,reader%file,"Too few variogram parameters for 3D (10+ expected). See "//msg)
           end if
           ! Get full variogram item from the rest of the line
-          call get_vgm_from_line(vgms(struct_id,vario_id), strings, struct_id, t2p%OPT%INTERP_DIM, maxread)
-          ! NNear on first struct read, if not cross, advance vcount
+          call get_vgm_from_line(vgms(struct_id,vario_id), strings, struct_id, dim, maxread)
+          ! NNear on first struct read, if not cross
           if (struct_id == 1) then
             if (iscross.or.ishsu) then
               ! Can't get n cross points...
             else
               nnear(prime_vidx) = item2int(strings, maxread+1)
             end if
-            vcount = vcount + 1
           end if
-          if (t2p%opt%ANISOTROPIC_SEARCH .and. struct_id>1) then
-            ! check anisotropy
-            if (any(vgms(struct_id,vario_id)%rotmat /= vgms(1,vario_id)%rotmat)) then
-              call t2p%write_status("Different anisotropy are used while anisotropic search is on."//new_line('1')//&
-                                    "  Only the first structure anisotropy will be used.")
-            end if
-          end if
+          ! if (t2p%opt%ANISOTROPIC_SEARCH .and. struct_id>1) then
+          !   ! check anisotropy
+          !   if (any(vgms(struct_id,vario_id)%rotmat /= vgms(1,vario_id)%rotmat)) then
+          !     call t2p%write_status("Different anisotropy are used while anisotropic search is on."//new_line('1')//&
+          !                           "  Only the first structure anisotropy will be used.")
+          !   end if
+          ! end if
         end do
         ! End of variogram structure reading, moves to next class variogram or end of block
       case DEFAULT
@@ -526,12 +615,13 @@ end subroutine read_variogram_block
 
 !-------------------------------------------------------------------------------------------------!
 
-subroutine read_pploc_block(t2p, reader, p)
+subroutine read_pploc_block(t2p, reader, p, is_aquitard)
   use m_pilotpoints, only: t_pilotpoints, create_pilotpoint_object
   implicit none
   type(t_t2p),intent(inout)       :: t2p
   type(t_file_reader), pointer    :: reader
   type(t_pilotpoints),pointer     :: p
+  logical,intent(in)              :: is_aquitard
 
   ! Standard file reader variables
   integer                    :: status, length
@@ -550,7 +640,7 @@ subroutine read_pploc_block(t2p, reader, p)
   ! Allocate & setup PP object
   allocate(pp_id       (npp), &
            zone_tracker(npp)  )
-  p => create_pilotpoint_object(npp, t2p%ntexclasses)
+  p => create_pilotpoint_object(npp, t2p%ntexclasses, is_aquitard)
   nzones = 0
   zone_tracker = 0
 
@@ -665,6 +755,81 @@ subroutine read_ppparm_block(t2p, reader)
   t2p%has_pp = .true.
 
 end subroutine read_ppparm_block
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine read_SUBSIDENCE_block(t2p, reader)
+    use m_subsidence, only: interbed_cutoff, setup_ib_variogram, has_ib_classes
+    use m_vario, only: t_vgm, get_vgm_from_line
+    implicit none
+    type(t_t2p),intent(inout)       :: t2p
+    type(t_file_reader), pointer    :: reader
+
+    ! Standard file reader variables
+    integer                    :: status, length
+    character(30)              :: id, value
+    type(t_vstringlist)        :: strings
+
+    ! Locals
+    integer                    :: nfine, struct_id, dim, maxread
+    type(t_vgm),pointer        :: vgms(:,:), tmp(:,:)
+    integer,pointer            :: nnear(:), nstruct(:)
+    character(100)             :: msg
+
+    allocate(vgms(t2p%opt%max_vstruct,1), nnear(1), nstruct(1))  ! single variogram (mult struct ok) for interbeds
+    dim=2  ! Hardcoded, for now
+
+    ! Loop until end of block or end of file
+    do
+      if (status /= 0) exit  ! Exit if inner loop variogram read loop found the end
+      call reader%next_block_item(status, id, strings, length)
+      if (status /= 0) exit  ! exit if end of block or end of file
+      select case(trim(id))
+        case("FINE_CLASSES")
+          call t2p%setup_subsidence(vstrlist_range(strings,2,vstrlist_length(strings)))
+          has_ib_classes = .true.
+        case("INTERBED_CUTOFF")
+          interbed_cutoff = item2real(strings,2)
+        case("TEMPLATE_FILE")
+          call item2char(strings,2,t2p%fmodel%tmp_sub_file)  ! Requires flow model to be created first? Could move to m_subsidence
+        case('VARIOGRAM','VARIO')
+          ! Loop and read in structures
+          do
+            call reader%next_block_item(status, id, strings, length)
+            if (status /= 0) exit       ! exit if end of block or end of file
+            if (trim(id)=="FINE_CLASSES".or.trim(id)=="INTERBED_CUTOFF".or.trim(id)=="END") then ! no more struct
+              call reader%back(1)
+              exit
+            end if
+            ! Read structure
+            struct_id = item2int(strings, 1)
+            nstruct(1) = struct_id
+
+            ! Only 2D for interbeds
+            write(msg, '(2(a,i3))') 'interbed variogram structure', struct_id
+            if (dim==2 .and. length < 7) then
+              call error_handler(2,reader%file,"Too few variogram parameters for 2D (7+ expected). See "//msg)
+            !else if (dim==3 .and. length < 10) then
+            !  call error_handler(2,reader%file,"Too few variogram parameters for 3D (10+ expected). See "//msg)
+            end if
+            ! Get full variogram item from the rest of the line
+            call get_vgm_from_line(vgms(struct_id,1), strings, struct_id, dim, maxread)
+            ! NNear on first struct read, if not cross, advance vcount
+            if (struct_id == 1) then
+              nnear(1) = item2int(strings, maxread+1)
+            end if
+          end do
+          ! End of variogram structure reading
+
+          ! Pass to IB interp object
+          call setup_ib_variogram(vgms, nnear, nstruct, t2p%opt)
+
+        case DEFAULT
+          call error_handler(1,reader%file,"Unknown Subsidence option: " // trim(id))
+      end select
+    end do
+
+  end subroutine read_SUBSIDENCE_block
 
 !-------------------------------------------------------------------------------------------------!
 

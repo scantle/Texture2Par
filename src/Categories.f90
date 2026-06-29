@@ -1,9 +1,11 @@
 module m_categories
-  use m_vstring, only: t_vstring, vstring_toupper, vstring_new
+  use m_vstring, only: t_vstring, vstring_equals, vstring_toupper, vstring_new
   use m_vstringlist
   implicit none
   
-  integer,parameter   :: DEFAULT_CATLIST_SIZE=10
+  integer,parameter       :: DEFAULT_CATLIST_SIZE=10
+  integer, parameter      :: CAT_ALL = -1
+  character(*), parameter :: CAT_ALL_KEY = "ALL"
 !-------------------------------------------------------------------------------------------------!
 
   type :: t_category
@@ -14,6 +16,7 @@ module m_categories
     integer,allocatable             :: catlist_glo(:) ! List of category values
     type(t_vstringlist),allocatable :: strlist(:)     ! Category values, but when string
     type(t_vstringlist)             :: strlist_glo    ! Category strings for ALL arrays
+    type(t_vstring)                 :: CAT_ALL_VKEY
     integer,allocatable             :: lay2arr(:)     ! Translation from layer to array
     integer,allocatable             :: array(:,:)     ! Arrays of category values (nvalues, narr)
     integer,allocatable             :: arrncat(:)     ! Number of categories per array
@@ -59,6 +62,7 @@ module m_categories
       do i=1, narr
         call vstrlist_new(this%strlist(i))
       end do
+      call vstring_new(this%CAT_ALL_VKEY, CAT_ALL_KEY)
     end if
     
     ! By Default
@@ -202,20 +206,21 @@ module m_categories
   
 !-------------------------------------------------------------------------------------------------!
   
-  subroutine read_file(this, file, nlayers, nnodes, datatype, lay_aquitard_flag, arr_aquitard_flag)
+  subroutine read_file(this, file, nlayers, nnodes, datatype, layer_exists, lay_aquitard_flag, arr_aquitard_flag)
     use m_file_io, only: t_file_reader, open_file_reader, item2int, item2char
     use m_error_handler, only: error_handler
     implicit none
     class(t_category), intent(inout) :: this
     character(*), intent(in)         :: file
     integer,intent(in)               :: datatype, nlayers, nnodes
-    logical,intent(in)               :: lay_aquitard_flag(nlayers)
+    logical,intent(in)               :: lay_aquitard_flag(nlayers), layer_exists(nlayers)
     logical,allocatable,intent(out)  :: arr_aquitard_flag(:)
     type(t_file_reader), pointer     :: reader
     type(t_vstringlist)              :: strings
     !type(t_vstring)                  :: temp
     integer                          :: lay2arr(nlayers)
     integer                          :: eof, ierr, narr, cidx, i, j, inode, itemp
+    character(50)                    :: shortline
     character(30),allocatable        :: chartemp(:)
     character(256)                   :: iomsg
     logical                          :: has_aquitard
@@ -245,7 +250,7 @@ module m_categories
       this%lay2arr = lay2arr
     else
       this%from_file = .false.
-      has_aquitard = any(lay_aquitard_flag)
+      has_aquitard = any(lay_aquitard_flag .and. layer_exists)
       narr = 1 + merge(1, 0, has_aquitard)  ! narr = 2 if there's any aquitard, otherwise 1
       call this%initialize(narr, nlayers, nnodes, datatype)
       call this%no_category_setup()
@@ -265,6 +270,7 @@ module m_categories
     
     ! Check for re-use of arrays between aquifers and aquitards
     do i = 1, nlayers
+      if (.not. layer_exists(i)) cycle  ! ignore layers that don't exist (e.g., no thickness, inactive...)
       if (lay_aquitard_flag(i) .and. .not. arr_aquitard_flag(lay2arr(i))) then
         arr_aquitard_flag(lay2arr(i)) = .true.
       elseif (.not. lay_aquitard_flag(i) .and. arr_aquitard_flag(lay2arr(i))) then
@@ -277,23 +283,25 @@ module m_categories
       call reader%read_to_next_line(eof)  ! Skip header
       if (datatype==0) then ! INT
         ! Check for constant
-        read(reader%unit,*) chartemp(1), itemp
-        if (trim(chartemp(1))=="CONSTANT") then
-          this%array(:,i) = itemp
+        read(reader%unit,'(a50)') shortline
+        if (index(adjustl(shortline),"CONSTANT") == 1) then
+          read(shortline,*) chartemp(1), itemp
           call this%add_category(itemp, i, cidx)
+          this%array(:,i) = itemp
         else
           ! array
           backspace(reader%unit)
           read(reader%unit,*) this%array(:,i)
           do j=1, nnodes
-            call this%add_category(this%array(j,i), i, cidx)
+            if (this%array(j,i)/=0) call this%add_category(this%array(j,i), i, cidx)
             !this%array(j,i) = cidx  ! Excessively confusing, e.g. cat 4 is 3...
           end do
         end if
       else if (datatype==1) then  ! STR/CHAR
-        ! Check for constant
-        read(reader%unit,*) chartemp(1), chartemp(2)
-        if (trim(chartemp(1))=="CONSTANT") then
+        ! Check for constant  
+        read(reader%unit,'(a50)') shortline
+        if (index(adjustl(shortline),"CONSTANT") == 1) then
+          read(shortline,*) chartemp(1), chartemp(2)
           call this%add_category(chartemp(2), i, cidx)
           this%array(:,i) = cidx
         else
@@ -315,6 +323,7 @@ module m_categories
   
   function get_id_char(this, value) result(index)
     ! Gets strlist index of pass character category
+    ! Returns zero if not found
     implicit none
     class(t_category), intent(inout) :: this
     character(*),intent(in)          :: value
@@ -323,6 +332,14 @@ module m_categories
 
     call vstring_new (valupp, trim(value))
     valupp = vstring_toupper(valupp)
+    
+    ! Reserved wildcard CAT_ALL_KEY?
+    if (vstring_equals(valupp, this%CAT_ALL_VKEY)) then   ! whatever your vstring -> char accessor is
+      index = CAT_ALL
+      return ! early return
+    end if
+    
+    ! Otherwise, is it a stored category?
     index = vstrlist_search(this%strlist_glo, valupp)
   
   end function get_id_char

@@ -1,18 +1,20 @@
 module m_T2P
   use m_global, only: NODATA
-  use m_vstringlist, only: t_vstringlist, vstrlist_search, vstrlist_append, vstrlist_range
+  use m_vstringlist
   use m_vstring, only: t_vstring, vstring_toupper
-  use m_error_handler, only: error_handler,warnings
+  use m_error_handler, only: error_handler,warning_handler,warnings
   use m_options, only: t_options
   use m_datasets, only: t_layerdata, t_dataset, write_layerdata
-  use m_flow_model, only: t_flow_model, t_iwfm_model
-  use m_pilotpoints, only: t_pilotpoints
+  use m_flow_model, only: t_flow_model, t_iwfm_model, get_layer_thicknesses
+  use m_pilotpoints, only: t_pilotpoints, setup_pilotpoint_property_arrays, add_pilotpoint_aquifer_parameter
   use m_interpolator, only: t_interpolator, t_idw
   use m_kriging, only: t_krige, t_globkrige, t_treekrige
   use m_sgsim, only: t_sgsim
   use m_categories, only: t_category
   use m_vario, only: t_vgm
   use m_grid, only: t_grid, create_grid_object
+  use m_subsidence, only: interp_ib, check_subsidence_inputs
+  use m_colmap, only: t_dataset_colmap
 !-------------------------------------------------------------------------------------------------!
 
 #ifdef __INTEL_COMPILER
@@ -22,39 +24,45 @@ module m_T2P
 #endif
 
   type t_T2P
-    type(t_options)                  :: opt  ! avoid conflict with Fortran intrinsic 'options'
-    class(t_flow_model),pointer      :: fmodel      => null()
-    class(t_interpolator),pointer    :: interp_data => null()
-    class(t_interpolator),pointer    :: interp_pp   => null()
-    type(t_layerdata),pointer        :: datasets(:,:)           ! Datasets (dataset, layer) (1+nsecondary, layer)
-    type(t_layerdata),pointer        :: dset_intermediate(:,:)  ! texture or parameters data interpolated to model grid (nsets, nlayers)
-    type(t_layerdata),pointer        :: par(:)            ! Final model hydraulic parameters (nlayers)&values(npar, npoints)
-    !type(t_vgm),pointer              :: variograms(:,:)   ! (stuctures, variogram)  ! Moved to interpolator
-    type(t_pilotpoints),pointer      :: pilot_points
-    type(t_pilotpoints),pointer      :: pilot_points_aquitard
+    type(t_options)                    :: opt  ! avoid conflict with Fortran intrinsic 'options'
+    class(t_flow_model),pointer        :: fmodel      => null()
+    class(t_interpolator),pointer      :: interp_data => null()
+    class(t_interpolator),pointer      :: interp_pp   => null()
+    type(t_layerdata),pointer          :: datasets(:,:)           ! Datasets (dataset, layer) (1+nsecondary, layer)
+    type(t_layerdata),pointer          :: dset_intermediate(:,:)  ! texture or parameters data interpolated to model grid (nsets, nlayers)
+    type(t_layerdata),pointer          :: par(:)                  ! Final model hydraulic parameters (nlayers)&values(npar, npoints)
+    type(t_layerdata),pointer          :: interbed_count(:)       ! interbed counts by (layer) with %values(1,:) of counts by location
+    type(t_layerdata),pointer          :: interbed_thick(:)       ! interbed thickness by (layer) with %values(2,:) (thicknesses, squared thicknesses)
+    type(t_layerdata),pointer          :: interbed_final(:)       ! Where the kriged interbed ararys are stored %values(3,:) (count, thick, thick^2)
+    type(t_pilotpoints),pointer        :: pilot_points
+    type(t_pilotpoints),pointer        :: pilot_points_aquitard
 
     ! Counters
-    integer                          :: npar        ! Kh, Kv, Ss, Sy
-    integer                          :: nclasses    ! Number of data classes
-    integer                          :: ntexclasses ! Texture datasets (for which hydraulic properties exist) (one may be inferred)
-    integer                          :: nprimary    ! Number of active primary datasets for kriging (texture or parameter, see opt%INTERP_ORDER)
-    integer                          :: nsecondary  ! Number of covariate data classes
-    integer                          :: ndatasets   ! Number of dataset objects (one for primary datasets, n for secondary)
-    integer                          :: nvario      ! Number of variograms, eventually passed to interpolator (if kriging)
-    integer                          :: ndatafiles  ! Number of data files to read in
-    integer                          :: nhsus       ! Number of Hydrostratigraphic Units (HSUs)
-                                                    ! (Formerly "geologic zones")
+    integer                            :: npar        ! Kh, Kv, Ss, Sy
+    integer                            :: nclasses    ! Number of data classes
+    integer                            :: ntexclasses ! Texture datasets (for which hydraulic properties exist) (one may be inferred)
+    integer                            :: nprimary    ! Number of active primary datasets for kriging (texture or parameter, see opt%INTERP_ORDER)
+    integer                            :: nsecondary  ! Number of covariate data classes
+    integer                            :: ndatasets   ! Number of dataset objects (one for primary datasets, n for secondary)
+    integer                            :: nvario      ! Number of variograms, eventually passed to interpolator (if kriging)
+    integer                            :: ndatafiles  ! Number of data files to read in
+    integer                            :: nhsus       ! Number of Hydrostratigraphic Units (HSUs)
+                                                      ! (Formerly "geologic zones")
 
     ! Trackers
-    type(t_vstringlist),pointer      :: class_names           ! Data class names
-    type(t_vstringlist)              :: parnames              ! Names of output parameters calculated
-    integer,pointer                  :: nsecondary_by_id(:)=>null() ! Connections (covariates) per [class, hyd property]
-    integer,pointer                  :: connections(:,:)   =>null() ! (connections, [classes or hyd properties])
-    integer,allocatable              :: class_dataset(:)      ! Translation from class id to dataset_id, ie datasets(dataset_id, layer)
-    type(t_vstringlist)              :: dataset_files         ! dataset filenames
-    type(t_vstringlist)              :: dataset_trans         ! dataset transformations (same order as filenames)
-    type(t_vstringlist)              :: dataset_trans_params  ! dataset transformation parameters (same order as filenames) (unimplemented)
-    type(t_category),pointer         :: dataset_ppzones       ! Pilot point zone dataset grid arrays & tracking (when INTERP_ORDER=AFTER)
+    type(t_vstringlist),pointer        :: class_names           ! Data class names
+    type(t_vstringlist)                :: parnames              ! Names of output parameters calculated
+    type(t_vstringlist)                :: ibparnames            ! Names of subsidence interbed parameters calculated
+    integer,pointer                    :: nsecondary_by_id(:)=>null() ! Connections (covariates) per [class, hyd property]
+    integer,pointer                    :: connections(:,:)   =>null() ! (connections, [classes or hyd properties])
+    integer,allocatable                :: class_dataset(:)      ! Translation from class id to dataset_id, ie datasets(dataset_id, layer)
+    type(t_vstringlist)                :: dataset_files         ! dataset filenames
+    type(t_vstringlist)                :: dataset_trans         ! dataset transformations (same order as filenames)
+    type(t_vstringlist)                :: dataset_trans_params  ! dataset transformation parameters (same order as filenames) (unimplemented)
+    type(t_dataset_colmap),allocatable :: dataset_colmap(:)     ! User-input column mappings for datasets (same order as filenames)
+    type(t_category),pointer           :: dataset_ppzones       ! Pilot point zone dataset grid arrays & tracking (when INTERP_ORDER=AFTER)
+    integer,allocatable                :: fine_classes(:)       ! Fine classes (for subsidence)
+    integer,allocatable                :: coarse_classes(:)     ! Coarse classes (all classes not in fine_classes). Needed for SskeC.
 
     ! Read trackers - used to check if a block has been read (and make sure it exists)
     logical                          :: has_opt
@@ -83,6 +91,7 @@ module m_T2P
     procedure,public   :: setup_pplocs
     procedure,public   :: setup_dataset_ppzones
     procedure,public   :: setup_categories   ! AKA HSUs & PPZones
+    procedure,public   :: setup_subsidence
     procedure,public   :: check_major_inputs
     !procedure,private  :: check_pp_zone_layertype_assignments
     procedure,private  :: nvario_estimator
@@ -92,6 +101,7 @@ module m_T2P
     procedure,public   :: predict
     procedure,private  :: interpolate_pp
     procedure,private  :: interpolate_model
+    procedure,private  :: interpolate_ib
     procedure,private  :: interpolate_prepare
     procedure,private  :: calc_block_parameters
 
@@ -113,6 +123,7 @@ module m_T2P
     procedure, public  :: get_connection_list
     procedure, public  :: get_dataset_idx_list
     procedure, public  :: get_dataval_idx_list
+    procedure, public  :: is_inferred_class_fine
 
   end type t_T2P
 !-------------------------------------------------------------------------------------------------!
@@ -145,6 +156,7 @@ module m_T2P
 
     ! Initialize Elements
     call this%opt%initialize()
+    call setup_pilotpoint_property_arrays()
     call vstrlist_new (this%dataset_files)
     call vstrlist_new (this%dataset_trans)
 
@@ -155,6 +167,12 @@ module m_T2P
     call vstrlist_append (this%parnames, "SS" )
     call vstrlist_append (this%parnames, "SY" )
     this%npar = vstrlist_length(this%parnames)
+
+    ! Initialize interbed parameter list
+    call vstrlist_new(this%ibparnames)
+    call vstrlist_append (this%ibparnames, 'IB_COUNT')
+    call vstrlist_append (this%ibparnames, 'IB_THICK')
+    call vstrlist_append (this%ibparnames, 'IB_THICKSQ')
 
     ! Intialize counters (useful to determine when a block is missing or has not been read yet)
     this%nclasses = 0
@@ -184,7 +202,7 @@ module m_T2P
     select case (this%opt%INTERP_METHOD)
       case("OK")
         if (this%opt%NSIM == 0) then
-        allocate(t_treekrige::this%interp_data)
+          allocate(t_treekrige::this%interp_data)
         else
           allocate(t_sgsim::this%interp_data)
         end if
@@ -210,23 +228,45 @@ module m_T2P
       this%opt%WRITE_NONE = .true.
     end if
 
+    ! Enforce READ_GRID
+    if (this%opt%READ_GRID) then
+      this%opt%WRITE_DATASET_FILES = .false.
+    end if
+
     ! Invalid combinations...
     if (this%opt%INTERP_ORDER=="AFTER") then
       if (this%opt%ONLY_TEXTURE) call error_handler(1,opt_msg='ONLY_TEXTURE option is only valid for INTERP_ORDER=="BEFORE"')
       if (this%opt%INFER_LAST_CLASS) call error_handler(1,opt_msg='Cannot use INFER_LAST_CLASS with INTERP_ORDER=="AFTER"')
     end if
-    
+
     if (this%opt%WRITE_GRID_WEIGHTS.and.this%opt%READ_GRID_WEIGHTS) then
       call error_handler(1,opt_msg='Cannot both WRITE_GRID_WEIGHTS and READ_GRID_WEIGHTS - only one')
     end if
-    
+
     if (this%opt%WRITE_PP_WEIGHTS.and.this%opt%READ_PP_WEIGHTS) then
       call error_handler(1,opt_msg='Cannot both WRITE_PP_WEIGHTS and READ_PP_WEIGHTS - only one')
     end if
-    
-    if (this%opt%nsim > 1) then
-      if (this%opt%WRITE_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot WRITE_GRID_WEIGHTS while using SGSIM (NSIM>1)')
-      if (this%opt%READ_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot READ_GRID_WEIGHTS while using SGSIM (NSIM>1)')
+
+    if (this%opt%WRITE_IB_WEIGHTS.and.this%opt%READ_IB_WEIGHTS) then
+      call error_handler(1,opt_msg='Cannot both WRITE_IB_WEIGHTS and READ_IB_WEIGHTS - only one')
+    end if
+
+    if (this%opt%nsim > 0) then
+      if (this%opt%WRITE_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot WRITE_GRID_WEIGHTS while using SGSIM (NSIM>0)')
+      if (this%opt%READ_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot READ_GRID_WEIGHTS while using SGSIM (NSIM>0)')
+    end if
+
+    if (this%opt%READ_GRID_WEIGHTS.and.this%opt%WRITE_VARIANCE) then
+      call error_handler(1,opt_msg='Cannot WRITE_VARIANCE while reusing weights from READ_GRID_WEIGHTS')
+    end if
+
+    if (this%opt%READ_GRID.and.this%opt%ONLY_TEXTURE) then
+      call error_handler(1,opt_msg='Cannot do ONLY_TEXTURE when skipping texture interpolation (READ_GRID')
+    end if
+
+    ! Some warnings
+    if (this%opt%WRITE_VARIANCE.and.this%opt%CORRECT_WEIGHTS) then
+      call warning_handler("Variance calculated with corrected weights is an approximation and may be biased low - use with caution.")
     end if
 
   end subroutine process_options
@@ -303,6 +343,7 @@ module m_T2P
     integer :: nlayers, nnodes, i, j, idx
 
     ! Initialize...
+    if (.not. associated(this%dataset_ppzones)) allocate(this%dataset_ppzones)
     call this%dataset_ppzones%initialize(this%fmodel%ppzones%narr, this%fmodel%nlayers, this%fmodel%nnodes(1), 0)
 
     ! Copy over all categories
@@ -346,49 +387,54 @@ module m_T2P
     vidx = 0  ! Start variogram index counter
     vario_map = 0  ! Initialize to zero (unassigned)
 
-    ! Loop over each primary dataset
-    do i = 1, this%nprimary
-      ! Variogram for the primary dataset itself
-      vidx = vidx + 1
-      vario_map(i, i) = vidx  ! Assign variogram index
+    ! If we're not kriging the texture/secondary data, then only a pilot point variogram is needed
+    if (.not. this%opt%READ_GRID) then
 
-      if (associated(this%connections)) then  ! has covariates
-        ! Loop over datasets connected to this primary
-        do j = 1, this%nsecondary_by_id(i)+1
-          k = this%connections(j, i)  ! Connected dataset ID
-          if (this%opt%ASYMMETRIC_COV) then
-            ! Assign asymmetric variograms for i -> k
-            if (vario_map(i, k) == 0) then
-              vidx = vidx + 1
-              vario_map(i, k) = vidx
+      ! Loop over each primary dataset
+      do i = 1, this%nprimary
+        ! Variogram for the primary dataset itself
+        vidx = vidx + 1
+        vario_map(i, i) = vidx  ! Assign variogram index
+
+        if (associated(this%connections)) then  ! has covariates
+          ! Loop over datasets connected to this primary
+          do j = 1, this%nsecondary_by_id(i)+1
+            k = this%connections(j, i)  ! Connected dataset ID
+            if (this%opt%ASYMMETRIC_COV) then
+              ! Assign asymmetric variograms for i -> k
+              if (vario_map(i, k) == 0) then
+                vidx = vidx + 1
+                vario_map(i, k) = vidx
+              end if
+            else
+              ! Assign symmetric variograms for i <-> k
+              if (vario_map(i, k) == 0) then
+                vidx = vidx + 1
+                vario_map(i, k) = vidx
+                vario_map(k, i) = vidx  ! Enforce symmetry
+              end if
             end if
-          else
-            ! Assign symmetric variograms for i <-> k
-            if (vario_map(i, k) == 0) then
-              vidx = vidx + 1
-              vario_map(i, k) = vidx
-              vario_map(k, i) = vidx  ! Enforce symmetry
-            end if
-          end if
-        end do
-      end if
-    end do
-
-    ! Loop over secondary-secondary pairs (assumed always symmetric)
-    do i = 1, this%nsecondary
-      k = this%ntexclasses + i  ! Secondary datasets start after primaries
-      vidx = vidx + 1
-      vario_map(k, k) = vidx  ! Self-variogram for secondary
-
-      do j = i + 1, this%nsecondary  ! Only consider i < j to avoid duplicates
-        k = this%ntexclasses + j
-        if (vario_map(i, k) == 0) then
-          vidx = vidx + 1
-          vario_map(i, k) = vidx
-          vario_map(k, i) = vidx  ! Enforce symmetry
+          end do
         end if
       end do
-    end do
+
+      ! Loop over secondary-secondary pairs (assumed always symmetric)
+      do i = 1, this%nsecondary
+        k = this%ntexclasses + i  ! Secondary datasets start after primaries
+        vidx = vidx + 1
+        vario_map(k, k) = vidx  ! Self-variogram for secondary
+
+        do j = i + 1, this%nsecondary  ! Only consider i < j to avoid duplicates
+          k = this%ntexclasses + j
+          if (vario_map(i, k) == 0) then
+            vidx = vidx + 1
+            vario_map(i, k) = vidx
+            vario_map(k, i) = vidx  ! Enforce symmetry
+          end if
+        end do
+      end do
+
+    end if  ! end of READ_GRID check
 
     ! Add Pilot Point Variogram (if used/kriging)
     if (.not. this%opt%ONLY_TEXTURE) then
@@ -511,24 +557,24 @@ module m_T2P
   end subroutine setup_pplocs
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine setup_categories(this)
     implicit none
     class(t_T2P), intent(inout)   :: this
-    
+
     ! Read in category files
     call this%fmodel%read_category_files()
     this%nhsus = this%fmodel%HSUS%ncat
-    
-    ! Setup HSU variograms
+
+    ! Setup HSU categories
     select type(p => this%interp_data)
       class is(t_krige)
         allocate(p%cat2zone(this%fmodel%hsus%ncat))
         p%cat2zone = 0
         call p%init_zones(this%fmodel%hsus%strlist_glo)
     end select
-      
-    ! Setup PP zone variograms - don't have different variograms (yet)
+
+    ! Setup PP zone categories - don't have different variograms (yet)
     if (.not. this%opt%ONLY_TEXTURE) then
       select type(p => this%interp_pp)
         class is(t_krige)
@@ -537,8 +583,76 @@ module m_T2P
       end select
     end if
     
+    ! Subsidence categories (uses HSUs), if ON
+    if (this%opt%SUBSIDENCE_ON) then
+      select type(p => interp_ib)
+        class is(t_krige)
+          allocate(p%cat2zone(this%fmodel%hsus%ncat))
+          p%cat2zone = 1
+          !call p%init_zones(this%fmodel%hsus%strlist_glo)  ! use only if we have HSU variograms for IB (not implemented)
+      end select
+    end if
+
   end subroutine setup_categories
-  
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine setup_subsidence(this, fine_classes)
+    use m_pilotpoints, only: add_pilotpoint_aquifer_parameter, aquifer_propnames
+    use m_file_io, only: vstrlist_replace, item2char
+    ! Run during subsidence block read
+    implicit none
+    class(t_T2P), intent(inout)   :: this
+    type(t_vstringlist)           :: fine_classes
+    integer                       :: nfine, i, j, is_fine, class_id
+    character,allocatable         :: temp
+
+    ! Setup arrays to track which classes (by id) are fine and coarse
+    nfine = vstrlist_length(fine_classes)
+    allocate(this%fine_classes(nfine), this%coarse_classes(this%ntexclasses - nfine))
+    this%fine_classes = 0
+    do i=1, nfine
+      class_id = this%get_class_id(vstrlist_index(fine_classes, i))
+      if (class_id==0) then
+        call item2char(fine_classes, i, temp)
+        call error_handler(1,opt_msg="Missing Required OPTIONS Block")
+      end if
+      this%fine_classes(i) = class_id
+    end do
+
+    ! build coarse = complement of fine in [1..ntexclasses]
+    j = 1
+    do i=1, this%ntexclasses
+      is_fine = findloc(this%fine_classes, i, 1)
+      if (is_fine == 0) then
+        this%coarse_classes(j) = i
+        j = j+1
+      end if
+    end do
+
+    ! Turn option on
+    this%opt%subsidence_on = .true.
+
+    ! Modify existing Ss pilot point parameter, add new pilot point parameter
+    call vstrlist_replace(aquifer_propnames, 'Ss', 'Sske')
+    i = vstrlist_search(aquifer_propnames, 'Sske')
+    call add_pilotpoint_aquifer_parameter('Sskv', before=i+1)
+    
+    ! Add KvI parameter (interbed Kv)
+    i = vstrlist_search(aquifer_propnames, 'Kmax')
+    call add_pilotpoint_aquifer_parameter('KvI', before=i+1)
+
+    ! Add output parameters as well
+    call vstrlist_replace(this%parnames, 'SS', 'SSKEC')
+    call vstrlist_append (this%parnames, "SSKEF" )
+    call vstrlist_append (this%parnames, "SSKVF" )
+    call vstrlist_append (this%parnames, "KVF" )
+    call vstrlist_append (this%parnames, "BEQ" )
+    call vstrlist_append (this%parnames, "NEQ" )
+    this%npar = vstrlist_length(this%parnames)
+
+  end subroutine setup_subsidence
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine check_major_inputs(this)
@@ -569,6 +683,7 @@ module m_T2P
       ! Check pilot point zones
       ! Doesn't ensure they are the same ID values...
       if (this%pilot_points%nppzones /= this%fmodel%get_active_ppzones()) then
+        print*, this%pilot_points%nppzones, this%fmodel%get_active_ppzones()
         call error_handler(1,opt_msg="Mismatch between Pilot Point Zones assigned to Pilot Points vs Model Grid")
       end if
 
@@ -578,6 +693,8 @@ module m_T2P
         call error_handler(1,opt_msg="Mismatch in aquitard existance between Pilot Points and Model")
       end if
     end if
+
+    if (this%opt%SUBSIDENCE_ON) call check_subsidence_inputs(this%opt)
 
   end subroutine check_major_inputs
 
@@ -591,7 +708,7 @@ module m_T2P
     use m_grid, only: t_grid
     implicit none
     class(t_T2P), intent(inout)   :: this
-    class(t_grid),pointer         :: pp_to                                      ! Where we interpolate the pilot points to
+    class(t_grid),pointer         :: pp_to,ib_to                                ! Where we interpolate to (for PP and IB)
     type(t_category),pointer      :: cat_to                                     ! Categories the pilot points are interpolated using
     logical,allocatable           :: active_to(:)                               ! Whether the given to point is active (skipped if inactive)
     type(t_pilotpoints)           :: pp_intermediate(this%fmodel%ppzones%narr)  ! The pilot point data interpolated to pp_to (by ppzone array)
@@ -604,7 +721,7 @@ module m_T2P
       ! If just texture, our jobs is very easy
       allocate(this%dset_intermediate(1,this%fmodel%nlayers))
       call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid", nblank)
-      call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
+      call this%interpolate_model(this%datasets, this%dset_intermediate)
       RETURN
     end if
 
@@ -612,7 +729,7 @@ module m_T2P
     if (this%opt%INTERP_ORDER=="BEFORE") then
       call this%write_status("Interpolating Pilot Point Parameters to "//trim(this%fmodel%name)//" Grid")
       ! T2P 1.0 Default Method
-      allocate(this%dset_intermediate(1,this%fmodel%nlayers))
+      if (.not.this%opt%READ_GRID) allocate(this%dset_intermediate(1,this%fmodel%nlayers))
       allocate(active_to(this%fmodel%grid(1)%ptrgrid%n))
       ! Uses layer 1 grid
       pp_to => this%fmodel%grid(1)%ptrgrid
@@ -633,21 +750,37 @@ module m_T2P
     ! Interpolate PP to PPTO_grid
     call this%interpolate_pp(pp_to, cat_to, active_to, pp_intermediate)
 
-    if (this%opt%INTERP_ORDER=="BEFORE") then
-      ! Krige textures to fmodel grid
-      call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid", nblank)
-      call this%interpolate_model(this%datasets, this%dset_intermediate(1,1:))
-      ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
-      call this%write_status("Calculating Hydraulic Parameters", nblank)
-      call this%calc_block_parameters(pp_intermediate, this%dset_intermediate(1,1:), this%par)
+    ! If subsidence is on, interpolate interbed counts/thicknesses
+    ! These always go to the model grid: they are grid-scale properties
+    if (this%opt%SUBSIDENCE_ON) then
+      allocate(this%interbed_final(this%fmodel%nlayers))
+      ib_to => this%fmodel%grid(1)%ptrgrid
+      call this%write_status("Interpolating Interbed Parameters to "//trim(this%fmodel%name)//" Grid")
+      call this%interpolate_ib(ib_to, this%fmodel%hsus, this%fmodel%active_nodes_flat, this%interbed_final)
+    end if
 
-    else if (this%opt%INTERP_ORDER=="AFTER") then
-      ! Calc parameters at data locations
-    call this%write_status("Calculating Hydraulic Parameters", nblank)
-      call this%calc_block_parameters(pp_intermediate, this%datasets(1,1:), this%dset_intermediate(1,1:))
-      ! Krige parameters to fmodel grid
-      call this%write_status("Interpolating Hydraulic Parameters to "//trim(this%fmodel%name)//" Grid")
-      call this%interpolate_model(this%dset_intermediate, this%par)
+    if (this%opt%READ_GRID) then ! read in pre-interpolated data on fmodel grid
+
+      call this%write_status("Calculating Hydraulic Parameters", nblank)
+      call this%calc_block_parameters(pp_intermediate, this%dset_intermediate, this%par)
+
+    else  ! Do interpolation
+      if (this%opt%INTERP_ORDER=="BEFORE") then
+        ! Krige textures to fmodel grid
+        call this%write_status("Interpolating Datasets to "//trim(this%fmodel%name)//" Grid", nblank)
+        call this%interpolate_model(this%datasets, this%dset_intermediate)
+        ! Calc parameters at fmodel grid locations (pp,texture,result)  Kh, Kv, Ss, Sy
+        call this%write_status("Calculating Hydraulic Parameters", nblank)
+        call this%calc_block_parameters(pp_intermediate, this%dset_intermediate, this%par)
+
+      else if (this%opt%INTERP_ORDER=="AFTER") then
+        ! Calc parameters at data locations
+        call this%write_status("Calculating Hydraulic Parameters", nblank)
+        call this%calc_block_parameters(pp_intermediate, this%datasets, this%dset_intermediate)
+        ! Krige parameters to fmodel grid
+        call this%write_status("Interpolating Hydraulic Parameters to "//trim(this%fmodel%name)//" Grid")
+        call this%interpolate_model(this%dset_intermediate, this%par)
+      end if
     end if
     call this%write_status("Calculations finished!", nblank)
 
@@ -671,9 +804,14 @@ module m_T2P
     type(t_pilotpoints)             :: obs_data(1)  ! a little trick to appease calc_weights
     character(5)                    :: temp
     real,pointer                    :: obs_vec(:)
-    integer                         :: nrows, m
+    integer                         :: nrows, m, glo_dim
 
     class_idx(1) = 1
+
+    ! Store INTERP_DIM, temporarily set to 2D (Pilot Points are hardwired to 2D, at least for now)
+    ! TODO separate INTERP_DIM for PP/data; have interp::setup() take a DIM argument; implement PP 3D kriging
+    glo_dim = this%opt%INTERP_DIM
+    this%opt%INTERP_DIM = 2
 
     ! Go by pilot point zone arrays (up to nlayers)
     do k=1, this%fmodel%ppzones%narr
@@ -694,8 +832,8 @@ module m_T2P
 
       ! Check if we have precalculated weights for the pilot point interpolation
       if (this%opt%READ_PP_WEIGHTS) then
-        write(temp,'(i0)') k
-        call weights%load_from_file('t2p_ppweights_arr'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
+        write(temp,'(i2.2)') k
+        call weights%load_from_file(trim(this%opt%PROJECT_NAME)//'_ppweights_arr'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
       else
         call this%interp_pp%calc_weights(obs_data, &
                                          class_idx,  &
@@ -704,36 +842,27 @@ module m_T2P
                                          weights%values, &
                                          to_categories%catlist(1:to_categories%arrncat(k),k), &
                                          to_categories%array(:,k),&
-                                         this%opt)
+                                         this%opt,&
+                                         'pp')
       end if
 
       ! Write PP weights
       if (this%opt%WRITE_PP_WEIGHTS) then
-        write(temp,'(i0)') k
-        call weights%save_to_file('t2p_ppweights_arr'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
+        write(temp,'(i2.2)') k
+        call weights%save_to_file(trim(this%opt%PROJECT_NAME)//'_ppweights_arr'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
       end if
 
-      ! Apply weights and create results
-      if (.not. this%fmodel%pparr_aqtard(k)) then
-        do i=1, this%ntexclasses
-          do j=1, nproperties
-            !results(k)%values(:,j,i) = matmul(weights%values,obs_data(1)%values(:,j,i))
-            ! Avoid copying
-            call dgemv('N', to_grid%n, obs_data(1)%grid%n, 1.0, weights%values, to_grid%n, obs_data(1)%values(:,j,i), 1, 0.0, results(k)%values(:,j,i), 1)
-          end do
+      do i=1, this%ntexclasses
+        do j=1, obs_data(1)%nactive
+          call sgemv('N', to_grid%n, obs_data(1)%grid%n, 1.0, weights%values, to_grid%n, obs_data(1)%values(:,obs_data(1)%active(j),i), 1, 0.0, results(k)%values(:,obs_data(1)%active(j),i), 1)
         end do
-      else ! Aquitard - subset of parameters
-        do i=1, this%ntexclasses
-          do j=1, naquitard_props
-            !results(k)%values(:,aquitard_props(j),i) = matmul(weights%values,this%pilot_points_aquitard%values(:,aquitard_props(j),i))
-            ! Avoid copying
-            call dgemv('N', to_grid%n, this%pilot_points_aquitard%grid%n, 1.0, weights%values, to_grid%n, this%pilot_points_aquitard%values(:,aquitard_props(j),i), 1, 0.0, results(k)%values(:,aquitard_props(j),i), 1)
-          end do
-        end do
-      end if
+      end do
+
       ! reset weights
       weights%values = 0.0
     end do
+
+    this%opt%INTERP_DIM = glo_dim
 
   end subroutine interpolate_pp
 
@@ -784,14 +913,17 @@ module m_T2P
                                             modelgrid,  &
                                             this%fmodel%active_nodes_bylay(1:,k), &
                                             dout(k)%values(i,1:), &
+                                            dout(k)%variance(i,1:), &
                                             this%fmodel%hsus%catlist(1:this%fmodel%hsus%arrncat(x),x), &
                                             this%fmodel%hsus%array(1:,x),&
                                             this%opt,&
                                             k)
         ! Enforce values must be greater than zero
-        where(dout(k)%values(i,1:) < 0.0) dout(k)%values(i,1:) = 0.0
-        ! If we're kriging texture - must be below 1.0
-        if (this%opt%INTERP_ORDER=="BEFORE") where(dout(k)%values(i,1:) > 1.0) dout(k)%values(i,1:) = 1.0
+        if (.not. this%opt%NO_TEX_BOUNDS) then
+          where(dout(k)%values(i,1:) < 0.0) dout(k)%values(i,1:) = 0.0
+          ! If we're kriging texture - must be below 1.0
+          if (this%opt%INTERP_ORDER=="BEFORE") where(dout(k)%values(i,1:) > 1.0) dout(k)%values(i,1:) = 1.0
+        end if
         ! Inactive cells should be NODATA
         where(.not.this%fmodel%active_nodes_bylay(1:,k)) dout(k)%values(i,1:) = NODATA
       end do
@@ -828,17 +960,113 @@ module m_T2P
       obslayer = k
       if (this%fmodel%get_layer_id(k)==1) modelgrid => this%fmodel%grid(1)%ptrgrid
     end if
+
+    if (this%opt%BLOCK_KRIGE > 0) then
+      modelgrid%active_blocks => this%fmodel%layer_blocks(k)
+    end if
+
   end subroutine
+
 !-------------------------------------------------------------------------------------------------!
 
+  subroutine interpolate_ib(this, to_grid, to_categories, to_active, results)
+    use m_grid, only: t_grid
+    use m_weights, only: t_weights
+    implicit none
+    class(t_T2P), intent(inout)     :: this
+    type(t_layerdata)               :: results(this%fmodel%nlayers)
+    class(t_grid),pointer           :: to_grid
+    type(t_category)                :: to_categories
+    logical                         :: to_active(:)
+    type(t_weights)                 :: weights
+    integer                         :: i,j,k,x
+    integer                         :: class_idx(1)
+    character(5)                    :: temp
+    real,pointer                    :: obs_vec(:)
+    integer                         :: nrows, m, glo_dim
+
+    class_idx(1) = 1
+
+    ! Store INTERP_DIM, temporarily set to 2D (Interbeds are hardwired to 2D, at least for now)
+    glo_dim = this%opt%INTERP_DIM
+    this%opt%INTERP_DIM = 2
+
+    ! Go by pilot point zone arrays (up to nlayers)
+    do k=1, this%fmodel%nlayers
+      call this%write_minor_status('- Layer:',this%fmodel%get_layer_id(k))
+
+      ! Initialize weights & results for this array
+      call weights%initialize(this%interbed_count(1)%grid%n, to_grid%n)  !input_n, output_n
+      call results(k)%initialize(this%fmodel%grid(1)%ptrgrid%n, 3, default_value=NODATA)
+
+      ! Check if layer is active (generally IWFM: means it has thickness)
+      if (.not. this%fmodel%is_active_layer(k)) cycle
+
+      ! Check if we have precalculated weights for the interbed interpolation
+      if (this%opt%READ_IB_WEIGHTS) then
+        write(temp,'(i2.2)') k
+        call weights%load_from_file(trim(this%opt%PROJECT_NAME)//'_ibweights_lay'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
+      else
+        x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
+        call interp_ib%calc_weights(this%interbed_count(k:k), &
+                                    class_idx,  &
+                                    to_grid,  &
+                                    to_active, &
+                                    weights%values, &
+                                    to_categories%catlist(1:this%fmodel%hsus%arrncat(x),x), &
+                                    to_categories%array(1:,x),&
+                                    this%opt,&
+                                    'ib')
+      end if
+
+      ! Write PP weights
+      if (this%opt%WRITE_IB_WEIGHTS) then
+        write(temp,'(i2.2)') k
+        call weights%save_to_file(trim(this%opt%PROJECT_NAME)//'_ibweights_lay'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
+      end if
+
+      ! Apply weights for counts, thicknesses, and square thicknesses
+      call sgemv('N', to_grid%n, this%interbed_count(k)%grid%n, 1.0, weights%values, to_grid%n, this%interbed_count(k)%values(1,:), 1, 0.0, results(k)%values(1,:), 1)
+      call sgemv('N', to_grid%n, this%interbed_thick(k)%grid%n, 1.0, weights%values, to_grid%n, this%interbed_thick(k)%values(1,:), 1, 0.0, results(k)%values(2,:), 1)
+      call sgemv('N', to_grid%n, this%interbed_thick(k)%grid%n, 1.0, weights%values, to_grid%n, this%interbed_thick(k)%values(2,:), 1, 0.0, results(k)%values(3,:), 1)
+
+      ! reset weights
+      weights%values = 0.0
+    end do
+
+    this%opt%INTERP_DIM = glo_dim
+
+  end subroutine interpolate_ib
+
+  !-------------------------------------------------------------------------------------------------!
+
   subroutine calc_block_parameters(this, pp_obj, tex_obs, par_out)
+    use m_pilotpoints, only: propnames
     implicit none
     class(t_T2P), intent(inout)    :: this
     type(t_pilotpoints),intent(in) :: pp_obj(this%fmodel%ppzones%narr) ! Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, STp
     type(t_layerdata),intent(inout):: tex_obs(this%fmodel%nlayers)  !  values(ntexclasses, npoints)
-    type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !values([Kh, Kv, Ss, Sy], npoints)
+    type(t_layerdata),intent(out)  :: par_out(this%fmodel%nlayers)  !values([Kh, Kv, Ss, Sy], npoints) subsidence = [Kh, Kv, Sskec, Sy, Sskef, Sskvf, Kvf,BEQ,NEQ]
     integer                        :: i, k, r
-    real    ,allocatable           :: depths(:),KhD(:,:),KvD(:,:)
+    integer                        :: Kmin, Kmax, Ss, Sy, Aniso, Kd, KHp, KVp, Stp, Sske, Sskv, KvI
+    real                           :: wf_sum, wc_sum, beq, thk_adj, thk_sf, n_adj
+    real    ,allocatable           :: depths(:),thk(:),KhD(:,:),KvD(:,:)
+
+    ! Get parameter ids (indices in matrix, not the actual values)
+    Kmin  = vstrlist_search(propnames, 'Kmin')   ! 1
+    Kmax  = vstrlist_search(propnames, 'Kmax')   ! 2
+    Ss    = vstrlist_search(propnames, 'Ss')     ! 3
+    Sy    = vstrlist_search(propnames, 'Sy')     ! 4
+    Aniso = vstrlist_search(propnames, 'Aniso')  ! 5
+    Kd    = vstrlist_search(propnames, 'Kd')     ! 6
+    KHp   = vstrlist_search(propnames, 'KHp')    ! 7
+    KVp   = vstrlist_search(propnames, 'KVp')    ! 8
+    STp   = vstrlist_search(propnames, 'STp')    ! 9
+    if (this%opt%SUBSIDENCE_ON) then
+      KvI  = vstrlist_search(propnames, 'KvI')
+      Sske = vstrlist_search(propnames, 'Sske')
+      Sskv = vstrlist_search(propnames, 'Sskv')
+    end if
 
     ! Loop over layers
     do k=1, this%fmodel%nlayers
@@ -854,11 +1082,16 @@ module m_T2P
       ! Allocate arrays
       if (allocated(depths)) deallocate(depths)
       allocate(depths(this%fmodel%nnodes(k)))
+      if (allocated(thk)) deallocate(thk)
+      if (this%opt%SUBSIDENCE_ON) allocate(thk(this%fmodel%nnodes(k)))
       allocate(KhD(this%fmodel%nnodes(k), this%ntexclasses))
       allocate(KvD(this%fmodel%nnodes(k), this%ntexclasses))
 
       ! Get node midpoint depths
       call this%fmodel%get_midpoint_depths(k, depths)
+
+      ! Get thicknesses
+      if (this%opt%SUBSIDENCE_ON) call this%fmodel%get_layer_thicknesses(k, thk)
 
       ! Get pilot point array  (point, parameter, class_id)
       r = this%fmodel%ppzones%lay2arr(k)
@@ -871,17 +1104,50 @@ module m_T2P
         ! Ensure classes add to one
         tex_obs(k)%values(:,i) = tex_obs(k)%values(:,i) / sum(tex_obs(k)%values(:,i))
         ! Kh - Depth adjusted
-        KhD(i,:) = pp_obj(r)%values(i, 1, :) + pp_obj(r)%values(i, 2, :) * exp(-1 *pp_obj(r)%values(i, 6, :) * depths(i))
+        KhD(i,:) = pp_obj(r)%values(i, Kmin, :) + pp_obj(r)%values(i, Kmax, :) * exp(-1 *pp_obj(r)%values(i, Kd, :) * depths(i))
         ! Kv - Depth adjusted, calculated from anisotropy
-        KvD(i,:) = KhD(i,:) / pp_obj(r)%values(i, 5, :)
+        KvD(i,:) = KhD(i,:) / pp_obj(r)%values(i, Aniso, :)
         ! Kh
-        par_out(k)%values(1,i) = DOT_PRODUCT(KhD(i,:)**pp_obj(r)%values(i, 7, :), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, 7, 1))
+        par_out(k)%values(1,i) = DOT_PRODUCT(KhD(i,:)**pp_obj(r)%values(i, KHp, 1), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, KHp, 1))
         ! Kv
-        par_out(k)%values(2,i) = DOT_PRODUCT(KvD(i,:)**pp_obj(r)%values(i, 8, :), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, 8, 1))
-        ! Ss
-        par_out(k)%values(3,i) = DOT_PRODUCT(pp_obj(r)%values(i,3,:)**pp_obj(r)%values(i, 9, :), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, 9, 1))
+        par_out(k)%values(2,i) = DOT_PRODUCT(KvD(i,:)**pp_obj(r)%values(i, KVp, 1), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, KVp, 1))
+        if (this%opt%SUBSIDENCE_ON) then
+          ! Calculate total "weights" for fine and coarse
+          wf_sum = sum( tex_obs(k)%values(this%fine_classes,  i) )
+          wc_sum = sum( tex_obs(k)%values(this%coarse_classes,i) )
+          if (wc_sum>0.0) then
+            ! SskeC
+            par_out(k)%values(3,i) = DOT_PRODUCT(pp_obj(r)%values(i,Sske,this%coarse_classes)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(this%coarse_classes,i)/wc_sum) ** (1.0 / pp_obj(r)%values(i, STp, 1))
+          else
+            par_out(k)%values(3,i) = 0.0
+          end if
+          if (wf_sum > 0.0                                                .and. &
+              this%interbed_final(k)%values(1,i) >= this%opt%MIN_IB_COUNT .and. &
+              this%interbed_final(k)%values(2,i) >= this%opt%MIN_IB_THICK) then
+            ! SskeF
+            par_out(k)%values(5,i) = DOT_PRODUCT(pp_obj(r)%values(i,Sske,this%fine_classes)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, STp, 1))
+            ! SskvF
+            par_out(k)%values(6,i) = DOT_PRODUCT(pp_obj(r)%values(i,Sskv,this%fine_classes)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, STp, 1))
+            ! KvI
+            !LS par_out(k)%values(7,i) = DOT_PRODUCT(KvD(i,this%fine_classes)**pp_obj(r)%values(i, KVp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, KVp, 1))
+            par_out(k)%values(7,i) = DOT_PRODUCT(pp_obj(r)%values(i,KvI,this%fine_classes)**pp_obj(r)%values(i, KVp, 1), tex_obs(k)%values(this%fine_classes,i)/wf_sum) ** (1.0 / pp_obj(r)%values(i, KVp, 1))
+            ! B equivalent (BEQ) and N equivalent (NEQ) calculations
+            thk_adj = min(thk(i)*0.999, this%interbed_final(k)%values(2,i))     ! prevent interbed thicness exceeding layer thickness
+            thk_sf = thk_adj / this%interbed_final(k)%values(2,i)               ! scaling factor to adjust interpolated interbed thickness to layer thickness
+            n_adj   = max(this%interbed_final(k)%values(1,i), 1.0)              ! make sure the interbed count is larger than 1 to prevent inflating Beq
+            beq = thk_sf * sqrt(this%interbed_final(k)%values(3,i) / n_adj )    ! B equivalent (BEQ) sqrt(1/N * sum (b^2))
+            par_out(k)%values(8,i) = min(beq, thk_adj)                          ! limit BEQ to thickness
+            par_out(k)%values(9,i) = thk_adj / par_out(k)%values(8,i)           ! N equivalent (NEQ) sum(b) / BEQ
+          else
+            ! zero out subsidence parameters
+            par_out(k)%values(5:9,i) = 0.0
+          end if
+        else
+          ! Ss
+          par_out(k)%values(3,i) = DOT_PRODUCT(pp_obj(r)%values(i,Ss,:)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, STp, 1))
+        end if
         ! Sy
-        par_out(k)%values(4,i) = DOT_PRODUCT(pp_obj(r)%values(i,4,:)**pp_obj(r)%values(i, 9, :), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, 9, 1))
+        par_out(k)%values(4,i) = DOT_PRODUCT(pp_obj(r)%values(i,Sy,:)**pp_obj(r)%values(i, STp, 1), tex_obs(k)%values(:,i)) ** (1.0 / pp_obj(r)%values(i, STp, 1))
       end do
 
       deallocate(KhD, KvD)
@@ -907,14 +1173,24 @@ module m_T2P
     call this%write_status("Writing output files")
 
     ! Write parameters by node/cell, and if texture was kriged, textures by node/cell
+    if (this%opt%WRITE_ELEVATION_FILE) then
+      ! Write out the grid elevation file
+      call this%write_minor_status("Writing Grid Elevation File")
+      call this%fmodel%write_elev_file(trim(this%opt%PROJECT_NAME)//'_ELEVATION.csv')
+    end if
+
     if (.not. (this%opt%WRITE_NODE_FILES.and.this%opt%ONLY_TEXTURE)) then
       call this%write_minor_status('Writing Parameter Node Files')
-      call this%fmodel%write_node_files(this%par, this%parnames)
+      call this%fmodel%write_node_files(this%par, this%parnames, .false.)
     end if
     if (this%opt%WRITE_NODE_FILES.and.this%opt%INTERP_ORDER=="BEFORE") then
       call this%write_minor_status('Writing Class Node Files')
       p=>this%dset_intermediate(1,:)
-      call this%fmodel%write_node_files(p, vstrlist_range(this%class_names, 1, this%ntexclasses))
+      call this%fmodel%write_node_files(p, vstrlist_range(this%class_names, 1, this%ntexclasses), this%opt%write_variance)
+    end if
+    if (this%opt%WRITE_NODE_FILES.and.this%opt%SUBSIDENCE_ON) then
+      !p=>this%interbed_final
+      call this%fmodel%write_node_files(this%interbed_final, this%ibparnames, this%opt%write_variance)
     end if
 
     ! Write the observed datasets that were averaged by layer
@@ -927,7 +1203,7 @@ module m_T2P
     if (.not. this%opt%WRITE_NONE) then
       ! Write out flow model input files
       call this%write_minor_status("Writing "//trim(this%fmodel%name)//" Input Files")
-      call this%fmodel%write_fmodel_input(this%par)
+      call this%fmodel%write_fmodel_input(this%par, this%opt)
     end if
 
     call this%write_minor_status('Done Writing.')
@@ -939,7 +1215,7 @@ module m_T2P
     use m_file_io, only: item2char
     implicit none
     class(t_T2P), intent(inout)   :: this
-    integer                       :: i
+    integer                       :: i, idx
     character(100)                :: fname, suffix(2), temp
     type(t_layerdata),pointer     :: p(:)
 
@@ -969,6 +1245,25 @@ module m_T2P
       p=>this%datasets(1+i,:)
       call this%write_dataset_file(fname, p,1)
     end do
+
+    if (this%opt%SUBSIDENCE_ON) then
+      do i=1,vstrlist_length(this%ibparnames)
+        call item2char(this%ibparnames, i, temp)
+        write(fname,'(3a)') trim(this%opt%PROJECT_NAME)//'_', trim(temp), trim(suffix(1))
+        if (i==1) then
+          p=>this%interbed_count(:)
+          idx = 1
+        else
+          p=>this%interbed_thick(:)
+          idx = i-1
+        end if
+        call this%write_dataset_file(fname, p, idx)
+        if (this%fmodel%has_aquitards) then
+          write(fname,'(3a)') trim(this%opt%PROJECT_NAME)//'_', trim(temp), trim(suffix(2))
+          call this%write_dataset_file_aqtard(fname, p, idx)
+        end if
+      end do
+    end if
 
   end subroutine write_dataset_files
 
@@ -1019,6 +1314,7 @@ module m_T2P
       kstart,                           &
       kintrvl,                          &
       idx,                              &
+      .false.,                          &
       gridncol=this%fmodel%ncol,        &
       rownames=rownames,                &
       modelnodes=dataset(1)%fmodel_loc, &
@@ -1047,7 +1343,7 @@ module m_T2P
   end subroutine write_dataset_file_aqtard
 
 !-------------------------------------------------------------------------------------------------!
-  
+
   subroutine write_connections(this)
     use m_global, only: log
     use m_vstringlist
@@ -1056,7 +1352,7 @@ module m_T2P
     class(t_T2P), intent(inout)  :: this
     integer                      :: i,j
     character(128)               :: line, temp, id
-    
+
     if (this%has_covar) then
       call log%write_line('-- INTERPOLATION SETUP: [Primary] : [Secondary]', blank_start=1)
       do i=1, this%nprimary
@@ -1086,9 +1382,9 @@ module m_T2P
         call log%write_line(line)
       end do
     end if
-    
+
   end subroutine write_connections
-  
+
 !-------------------------------------------------------------------------------------------------!
 
   subroutine write_status(line, blank_start, blank_end)
@@ -1205,8 +1501,7 @@ module m_T2P
     integer,intent(in)      :: prime
     integer,allocatable     :: connlist(:)
 
-    if (allocated(connlist)) deallocate(connlist)
-    allocate(connlist(this%nsecondary_by_id(prime)))
+    allocate(connlist(1+this%nsecondary_by_id(prime)))
     connlist = this%connections(1:1+this%nsecondary_by_id(prime),prime)
     return
   end function
@@ -1254,6 +1549,22 @@ module m_T2P
 
 !-------------------------------------------------------------------------------------------------!
 
+  function is_inferred_class_fine(this) result (inferred_fine)  ! specific, no?
+    implicit none
+    class(t_T2P)            :: this
+    logical               :: inferred_fine
+    integer               :: i
+    inferred_fine = .false.
+    if (this%opt%INFER_LAST_CLASS) then
+      do i=1, size(this%fine_classes)
+        if (this%fine_classes(i)==this%ntexclasses) inferred_fine=.true.
+      end do
+    end if
+    return
+  end function
+
+!-------------------------------------------------------------------------------------------------!
+
   subroutine finalize(this)
     implicit none
     class(t_T2P)            :: this
@@ -1269,9 +1580,9 @@ module m_T2P
 
     ! Trackers
     if(allocated(this%class_dataset    )) deallocate(this%class_dataset   )
-    if(associated(this%class_names     )) deallocate(this%class_names     )
     if(associated(this%nsecondary_by_id)) deallocate(this%nsecondary_by_id)
-    if(associated(this%connections     )) deallocate(this%connections     )
+    if(associated(this%class_names     )) nullify(this%class_names     )
+    if(associated(this%connections     )) nullify(this%connections     )
     if(associated(this%dataset_ppzones )) deallocate(this%dataset_ppzones )
 
     ! close overwrite unit

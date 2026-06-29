@@ -1,6 +1,7 @@
 module m_datasets
   use m_global, only: NODATA
   use m_grid, only: t_grid, create_grid_object
+  use m_categories, only: CAT_ALL
   implicit none
 !-------------------------------------------------------------------------------------------------!
   type  :: t_dataset  ! Abstract Base Class
@@ -36,8 +37,9 @@ module m_datasets
     character(30)                  :: name             ! Class Name  (UNUSED? TODO)
     integer                        :: id               ! Index within t2p%datasets
     real    ,allocatable           :: values(:,:)      ! Data values associated with each grid point for each class (nclasses, npoints)
-    integer,allocatable            :: fmodel_loc(:)    ! Containing model element/cell
-    real    ,allocatable           :: mean(:)          ! Mean of values, used for cokriging standardization (generally globally, not by layer)
+    real    ,allocatable           :: variance(:,:)    ! Variance of each class dataset (nclasses, npoints). Can be a user input or interpolation result.
+    integer ,allocatable           :: fmodel_loc(:)    ! Containing model element/cell
+    real    ,allocatable           :: mean(:)          ! Mean of values, by class, for cokriging standardization (globally, not by layer)
 
     contains
       procedure                    :: init_layerdata
@@ -72,8 +74,9 @@ module m_datasets
     layerdata,     & ! array of layerdata
     coords,        & ! coordinates
     kstart,        & ! starting layer for ourput
-    kintrvl,       & ! layer step for ourput (used for IWFM)
+    kintrvl,       & ! layer step for output (used for IWFM)
     classid,       & ! index of values
+    write_variance,&
     gridncol,      & ! optional; number of columns for structured grid; default is 0 for unstructured grid
     lname,         & ! optional; prefix of layer name
     rownames,      & ! optional; row names written in the first column in the output file
@@ -88,6 +91,7 @@ module m_datasets
     integer,intent(in)         :: kstart, kintrvl, classid
     real   ,intent(in)         :: coords(:,:)
     integer,intent(in),optional:: gridncol, mdim, modelnodes(:)
+    logical,intent(in)         :: write_variance
     character(*),intent(in),optional :: lname, rownames(0:), nodecol
     ! local
     integer                    :: inode, igrid, i, k, row, col, unit, ncol, ndim, nlayers
@@ -141,6 +145,14 @@ module m_datasets
       header = header//trim(tmpstr)
     end do
     fmt = "("//fmt//",*(:',',G0.6))"
+    
+    if (write_variance) then
+      do k = 1, int(nlayers/kintrvl)
+        write(tmpstr,"(A,I0)") ",Var_Layer",k
+        header = header//trim(tmpstr)
+      end do
+      !fmt = "("//fmt//",*(:',',G0.6))"
+    end if
 
     open(newunit=unit, file=trim(fname), status='replace')
 
@@ -151,21 +163,38 @@ module m_datasets
     do inode = 1, nnodes
       igrid = inodes(inode)
       if (ncol>0) then
-        row = int((igrid-1)/ncol)+1
-        col = igrid-(row-1)*ncol
+        row = int((igrid-1)/ncol) + 1
+        col = igrid - (row-1)*ncol
         if (present(rownames)) then
-          write(unit,fmt) trim(rownames(inode)), row, col, coords(1:ndim,inode), (layerdata(k)%values(classid,inode), k=kstart,nlayers,kintrvl)
+          if (write_variance) then
+            write(unit,fmt) trim(rownames(inode)), row, col, coords(1:ndim,inode), (layerdata(k)%values(classid,inode),  k=kstart,nlayers,kintrvl), (layerdata(k)%variance(classid,inode), k=kstart,nlayers,kintrvl)
+          else
+            write(unit,fmt) trim(rownames(inode)), row, col, coords(1:ndim,inode), (layerdata(k)%values(classid,inode),  k=kstart,nlayers,kintrvl)
+          end if
         else
-          write(unit,fmt) row, col, coords(1:ndim,inode), (layerdata(k)%values(classid,inode), k=kstart,nlayers,kintrvl)
+          if (write_variance) then
+            write(unit,fmt) row, col, coords(1:ndim,inode), (layerdata(k)%values(classid,inode),  k=kstart,nlayers,kintrvl), (layerdata(k)%variance(classid,inode), k=kstart,nlayers,kintrvl)
+          else
+            write(unit,fmt) row, col, coords(1:ndim,inode), (layerdata(k)%values(classid,inode),  k=kstart,nlayers,kintrvl)
+          end if
         end if
       else
         if (present(rownames)) then
-          write(unit,fmt) trim(rownames(inode)), igrid, coords(1:ndim,inode), (layerdata(k)%values(classid,inode), k=kstart,nlayers,kintrvl)
+          if (write_variance) then
+            write(unit,fmt) trim(rownames(inode)), igrid, coords(1:ndim,inode), (layerdata(k)%values(classid,inode),  k=kstart,nlayers,kintrvl), (layerdata(k)%variance(classid,inode), k=kstart,nlayers,kintrvl)
+          else
+            write(unit,fmt) trim(rownames(inode)), igrid, coords(1:ndim,inode), (layerdata(k)%values(classid,inode),  k=kstart,nlayers,kintrvl)
+          end if
         else
-          write(unit,fmt) igrid, coords(1:ndim,inode), (layerdata(k)%values(classid,inode), k=kstart,nlayers,kintrvl)
+          if (write_variance) then
+            write(unit,fmt) igrid, coords(1:ndim,inode), (layerdata(k)%values(classid,inode),  k=kstart,nlayers,kintrvl), (layerdata(k)%variance(classid,inode), k=kstart,nlayers,kintrvl)
+          else
+            write(unit,fmt) igrid, coords(1:ndim,inode), (layerdata(k)%values(classid,inode),  k=kstart,nlayers,kintrvl)
+          end if
         end if
       end if
     end do
+    
     close(unit)
   end subroutine write_layerdata
 
@@ -196,7 +225,6 @@ module m_datasets
     has_data = .true.
     
     call this%grid%burn_tree()  ! Clear out previous tree
-    !allocate(catmask(this%grid%n), na_mask(this%grid%n))
     allocate(combined_mask(this%grid%n))
     
     ! Compute combined mask in a single loop - in category & not NA
@@ -204,18 +232,23 @@ module m_datasets
     select type(this)
       class is (t_layerdata)
         do i = 1, this%grid%n
-          combined_mask(i) = (this%category(i) == cat) .and. (this%values(class_idx, i) /= NODATA)
+          combined_mask(i) = ((this%category(i) == cat) .or. (this%category(i) == CAT_ALL)) .and. (this%values(class_idx, i) /= NODATA)
         end do
       class default
-        combined_mask = (this%category == cat)
+        do i = 1, this%grid%n
+          combined_mask(i) = (this%category(i) == cat) .or. (this%category(i) == CAT_ALL)
+        end do
     end select
     
     if (count(combined_mask) > 0) then  ! Should min_points be a setting??
-      call this%grid%build_tree(combined_mask, rotmat=rotmat)
+      if (present(rotmat)) then
+        call this%grid%build_tree(combined_mask, rotmat=rotmat)
+      else
+        call this%grid%build_tree(combined_mask)
+      end if
     else
       has_data = .false.
     end if
-    deallocate(combined_mask)
 
   end subroutine build_tree_by_category
 
@@ -236,7 +269,7 @@ module m_datasets
     select type(this)
       class is (t_layerdata)
         do i=1, this%grid%n
-          if ((this%values(class_idx,i) /= NODATA).and.(this%category(i)==cat)) then
+          if ((this%values(class_idx,i) /= NODATA).and.((this%category(i) == cat) .or. (this%category(i) == CAT_ALL))) then
             cat_idx(nidx) = i
             nidx = nidx + 1
           end if
@@ -271,6 +304,7 @@ module m_datasets
     allocate(this%category  (npoints), &
              this%fmodel_loc(npoints), &
              this%values    (nclasses, npoints), &
+             this%variance  (nclasses, npoints), &
              this%mean      (nclasses))
     allocate(this%grid)
 
@@ -278,6 +312,7 @@ module m_datasets
     this%category = 1
 
     if (present(default_value)) this%values = default_value
+    this%variance = 0.0
 
     !this%grid = create_grid_object(2, npoints)  ! X,Y,Z coords by n
 
@@ -312,6 +347,7 @@ module m_datasets
 
     if (allocated(this%category  )) deallocate(this%category  )
     if (allocated(this%values    )) deallocate(this%values    )
+    if (allocated(this%variance  )) deallocate(this%variance  )
     if (allocated(this%fmodel_loc)) deallocate(this%fmodel_loc)
     if (allocated(this%mean      )) deallocate(this%mean      )
     if (associated(this%grid     )) nullify(this%grid)

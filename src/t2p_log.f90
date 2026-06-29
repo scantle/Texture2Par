@@ -6,14 +6,13 @@ module m_log
 
 !-------------------------------------------------------------------------------------------------!
   subroutine log_init(log, main_input_file)
-    use m_file_io, only: log_unit
+    use m_file_io, only: log_unit, basename
     implicit none
     type(t_file_writer),pointer  :: log
     character(100)               :: main_input_file
     integer                      :: i
-    character(100)               :: basename
     ! Initialize
-    do i=max(1,len_trim(main_input_file)-20), len_trim(main_input_file)
+    do i=len_trim(main_input_file), 1, -1
       if (main_input_file(i:i)==".") basename=main_input_file(1:i-1)
     end do
     log => open_file_writer(trim(basename)//".out")
@@ -53,7 +52,7 @@ module m_log
     seconds = int(mod(elapsed_time, 60))
 
     if (hours > 0) then
-      write(line,'(a,i3,a,(i2,a))') "Elapsed time: ", hours, " hours, ", minutes, " minutes, ", seconds, " seconds."
+      write(line,'(a,i3,a,2(i2,a))') "Elapsed time: ", hours, " hours, ", minutes, " minutes, ", seconds, " seconds."
     else if (minutes > 0) then
       write(line,'(a,2(i2,a))') "Elapsed time: ", minutes, " minutes, ", seconds, " seconds."
     else
@@ -90,19 +89,19 @@ module m_log
     ! Pilot Points
     if (.not. t2p%opt%ONLY_TEXTURE) then
       call log%write_valueline('Number of Pilot Point Zones',       t2p%pilot_points%nppzones)
-      call log%write_valueline('Number of Aquifer Pilot Points',      t2p%pilot_points%npp)
+      call log%write_valueline('Number of Aquifer Pilot Points',    t2p%pilot_points%npp)
       if (t2p%has_pplocs_aquitards) then
-        call log%write_valueline('Number of Aquitard Pilot Points',  t2p%pilot_points_aquitard%npp)
+        call log%write_valueline('Number of Aquitard Pilot Points',   t2p%pilot_points_aquitard%npp)
       end if
       !call log%write_valueline('Number of Pilot Point Zones', t2p%pilot_points%nppzones)
     end if
 
     ! Options
-    call t2p%opt%write_input_summary() ! Move here?
-    
+    call t2p%opt%write_input_summary(t2p%ndatafiles) ! Move here?
+
     ! Connections Array
     call t2p%write_connections()
-    
+
     ! Variograms
     if (t2p%opt%INTERP_METHOD=='OK'.or.t2p%opt%INTERP_METHOD=='SK') then
       if (t2p%opt%INTERP_ORDER=="BEFORE") write(line,'(a)') '-- CLASS VARIOGRAMS --'
@@ -120,21 +119,130 @@ module m_log
         call t2p%interp_pp%write_summary()
       end if
     end if
-    
+
     ! Aquifer Class Pilot Points
     if (.not. t2p%opt%ONLY_TEXTURE) then
       call log%write_line('--- AQUIFER PILOT POINTS ---', blank_start=1)
-      call t2p%pilot_points%write_pp_table(is_aquitard=.false.)
-    
+      call t2p%pilot_points%write_pp_table()
+
       ! Aquitard Class Pilot Points
       if (t2p%fmodel%has_aquitards) then
         call log%write_line('--- AQUITARD PILOT POINTS ---', blank_start=1)
-        call t2p%pilot_points_aquitard%write_pp_table(is_aquitard=.true.)
+        call t2p%pilot_points_aquitard%write_pp_table()
       end if
     end if
     call log%write_line('')
 
   end subroutine write_input_summary
+
+!-------------------------------------------------------------------------------------------------!
+
+subroutine write_colmap(log, colmap, t2p, user_defined)
+  use m_T2P,     only: t_t2p
+  use m_colmap,  only: t_dataset_colmap
+  use m_file_io, only: item2char
+  implicit none
+
+  type(t_file_writer),pointer        :: log
+  type(t_dataset_colmap),intent(in)  :: colmap
+  type(t_t2p),intent(in)             :: t2p
+  logical                            :: user_defined
+
+  integer, parameter :: map_start = 16   ! column where mappings begin (1-based)
+
+  integer        :: i, nh, pos
+  character(256) :: cname
+  character(32)  :: sid
+  character(2048):: line
+  logical        :: have_var, have_hsu
+
+  if (colmap%nsets <= 0) return
+
+  have_var = allocated(colmap%col_var)
+  have_hsu = allocated(colmap%col_hsu)
+
+  if (user_defined) then
+    call log%write_line(' - (User-defined mapping) Columns Read:')
+  else
+    call log%write_line(' - Columns Read:')
+  end if
+
+  ! CLASSES: defines the order used by VALUES/VARIANCES lines
+  line = ' '
+  line(1:10) = '   CLASSES'
+  pos = map_start
+
+  do i = 1, colmap%nsets
+    call item2char(t2p%class_names, colmap%class_ids(i), cname)
+
+    if (i > 1) then
+      line(pos:pos+1) = ', '
+      pos = pos + 2
+    end if
+
+    ! Name only
+    write(line(pos:), '(a)') trim(cname)
+    pos = len_trim(line) + 1
+  end do
+
+  call log%write_line(trim(line))
+
+  ! VALUES: column numbers in the same order as CLASSES
+  line = ' '
+  line(1:10) = '   VALUES'
+  pos = map_start
+
+  do i = 1, colmap%nsets
+    if (i > 1) then
+      line(pos:pos+1) = ', '
+      pos = pos + 2
+    end if
+    write(line(pos:), '(i0)') colmap%col_val(i)
+    pos = len_trim(line) + 1
+  end do
+
+  call log%write_line(trim(line))
+
+  ! VARIANCES: column numbers in the same order as CLASSES (if present)
+  if (have_var) then
+    line = ' '
+    line(1:13) = '   VARIANCES'
+    pos = map_start
+
+    do i = 1, colmap%nsets
+      if (i > 1) then
+        line(pos:pos+1) = ', '
+        pos = pos + 2
+      end if
+      write(line(pos:), '(i0)') colmap%col_var(i)
+      pos = len_trim(line) + 1
+    end do
+
+    call log%write_line(trim(line))
+  end if
+
+  ! HSUS: list of column ids by layer (if present)
+  if (have_hsu) then
+    nh = size(colmap%col_hsu)
+    if (nh > 0) then
+      line = ' '
+      line(1:8) = '    HSUS'
+      pos = map_start
+
+      do i = 1, nh
+        if (i > 1) then
+          line(pos:pos) = ', '
+          pos = pos + 2
+        end if
+        write(line(pos:), '(i0)') colmap%col_hsu(i)
+        pos = len_trim(line) + 1
+      end do
+
+      call log%write_line(trim(line))
+    end if
+  end if
+
+end subroutine write_colmap
 
 !-------------------------------------------------------------------------------------------------!
 

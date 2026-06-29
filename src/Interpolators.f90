@@ -6,7 +6,7 @@ module m_interpolator
   use m_error_handler, only: error_handler
   use m_options, only: t_options
   use m_vario, only: t_vgm
-  use m_categories, only: t_category
+  use m_categories, only: t_category, CAT_ALL
   implicit none
 !-------------------------------------------------------------------------------------------------!
 ! ADDING A NEW INTERPOLATOR
@@ -129,7 +129,7 @@ module m_interpolator
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine calc_weights(this, obs_data, obs_idx, to_grid, active, weights, catlist, to_cats, opt)
+  subroutine calc_weights(this, obs_data, obs_idx, to_grid, active, weights, catlist, to_cats, opt, data_str)
     implicit none
     class(t_interpolator),intent(inout)   :: this
     class(t_dataset)                      :: obs_data(:)
@@ -137,8 +137,10 @@ module m_interpolator
     type(t_grid),intent(in)               :: to_grid
     logical,intent(in)                    :: active(:)    !1:to_grid%n
     real                                  :: weights(:,:) !(output_points, input_points)
+    real                                  :: variance
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
+    character(*),intent(in)               :: data_str
     integer                               :: i, j, cat, count_cat
     logical                               :: has_data
 
@@ -148,7 +150,7 @@ module m_interpolator
       count_cat = 0
       ! Count occurrences across datasets
       do j = 1, size(obs_data)
-        count_cat = count_cat + count(obs_data(j)%category == cat)
+        count_cat = count_cat + count((obs_data(j)%category == cat).or.(obs_data(j)%category == CAT_ALL))
         if (count_cat > 1) exit
       end do
 
@@ -156,14 +158,14 @@ module m_interpolator
         call this%setup(obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
         if (.not.has_data) then
           ! TODO - setup runtime warnings through Error Handler
-          write(*,'(a,i0)') 'Warning - no data for pp in this array for category ', cat
-          write(log%unit,'(a,i0)') 'Warning - no data for pp in this array for category ', cat
+          write(*,'(a,i0)') 'Warning - no data for '//trim(data_str)//' in this array for category ', cat
+          write(log%unit,'(a,i0)') 'Warning - no data for '//trim(data_str)//' in this array for category ', cat
           cycle
         end if
         do j=1, to_grid%n
           if (.not.active(j)) cycle
           ! Interpolate for each point
-          if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(:,j), obs_data, cat, weights(j,:))
+          if (to_cats(j)==cat) call this%predict_point(j, to_grid%coords(:,j), obs_data, cat, variance, weights(j,:))
         end do
       else  ! only one point!
         call this%single_point_full_weight(obs_data, cat, to_cats, weights)
@@ -174,14 +176,14 @@ module m_interpolator
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine calc(this, obs_data, obs_idx, val_idx, to_grid, active, results, catlist, to_cats, opt, layer)
+  subroutine calc(this, obs_data, obs_idx, val_idx, to_grid, active, results, variance, catlist, to_cats, opt, layer)
     use m_weights, only: t_sosa_weights
     implicit none
     class(t_interpolator),intent(inout)   :: this
     class(t_layerdata)                    :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:), val_idx(:)
     type(t_grid),intent(in)               :: to_grid
-    real                                  :: results(:)
+    real                                  :: results(:), variance(:)
     logical,intent(in)                    :: active(:)    !1:to_grid%n
     integer,intent(in)                    :: catlist(:), to_cats(:)
     type(t_options),intent(in)            :: opt
@@ -196,10 +198,11 @@ module m_interpolator
     ! TODO need to move all weight-related operations to separate routines. This is too messy.
 
     results = 0.0  ! necessary?
+    variance = 0.0
     call weights%initialize(this%wsize_estimate(obs_data, obs_idx, opt), size(obs_data))
     
     ! Open weights file if using (call does nothing if options are false)
-    write(wtfile, '(A,I0,A,I0,A)') 't2p_grdweights_arr', layer, '_obs', obs_idx(1), '.wts'
+    write(wtfile, '(A,I2.2,A,I0,A)') trim(opt%PROJECT_NAME)//'_grdweights_arr', layer, '_obs', obs_idx(1), '.wts'
     call weights%open_file(trim(wtfile), opt%WRITE_GRID_WEIGHTS, opt%READ_GRID_WEIGHTS, opt%GRID_WEIGHTS_TEXT)
     
     if (opt%READ_GRID_WEIGHTS) then
@@ -241,7 +244,7 @@ module m_interpolator
           if (.not.active(j)) cycle  ! does not predict or write weights for inactive cells
           ! Interpolate for each point
           if (to_cats(j)==cat) then
-            call this%predict_point(j, to_grid%coords(:,j), obs_data, cat, weights%values, weights%idx, weights%ppd)
+            call this%predict_point(j, to_grid%coords(:,j), obs_data, cat, variance(j), weights%values, weights%idx, weights%ppd)
             if (opt%WRITE_GRID_WEIGHTS) then
               call weights%save_to_file(j)
             end if
@@ -281,7 +284,7 @@ subroutine single_point_full_weight(this, obs_data, cat, to_cats, weights)
 
   ! Loop over datasets to find the index of the ASSUMED SINGLE observation that matches cat
   do i = 1, size(obs_data)
-    obs_idx = findloc(obs_data(i)%category, cat, dim=1)
+    obs_idx = findloc((obs_data(i)%category == cat).or.(obs_data(i)%category == CAT_ALL), .true., dim=1)
     if (obs_idx > 0) then  ! If found in dataset 'i'
       obs_idx = obs_idx + w_offset
       ! set weights for the found observation
@@ -313,7 +316,7 @@ end subroutine single_point_full_weight
     class(t_interpolator),intent(inout)   :: this
     class(t_dataset)                      :: obs_data(:)
     integer,intent(in)                    :: obs_idx(:)
-    type(t_grid),intent(in)               :: to_grid
+    type(t_grid),intent(in),target        :: to_grid
     real                                  :: weights(:,:)
     integer,intent(in)                    :: cat
     integer,intent(in)                    :: to_cats(:)
@@ -331,16 +334,18 @@ end subroutine single_point_full_weight
 !! @param p Coordinates of the point to predict.
 !! @param obs_data Observed data used for prediction.
 !! @param cat Category data.
+!! @param variance Variance of the prediction (where applicable)
 !! @param weights Weights for the prediction.
 !! @param widx Indices of the weights (optional).
 !! @param ppd Number of observations (optional).
-  subroutine predict_point(this, idx, p, obs_data, cat, weights, widx, ppd)
+  subroutine predict_point(this, idx, p, obs_data, cat, variance, weights, widx, ppd)
     ! Abstract Base Class method - should not be called
     implicit none
     class(t_interpolator),intent(inout)  :: this
     integer,intent(in)                   :: idx, cat
     real    ,intent(in)                  :: p(:)
     class(t_dataset)                     :: obs_data(:)
+    real                                 :: variance
     real                                 :: weights(:)
     integer, optional                    :: widx(:)              ! idx associated with weights
     integer, optional                    :: ppd(size(obs_data))  ! points per dataset
@@ -401,17 +406,17 @@ end subroutine single_point_full_weight
   subroutine setup_idw(this, obs_data, obs_idx, to_grid, cat, to_cats, weights, opt, has_data)
     use m_global, only             : NODATA
     implicit none
-    class(t_idw),intent(inout)    :: this
-    class(t_dataset)              :: obs_data(:)
-    integer,intent(in)            :: obs_idx(:)
-    type(t_grid),intent(in)       :: to_grid
-    real                          :: weights(:,:)
-    integer,intent(in)            :: cat
-    integer,intent(in)            :: to_cats(:)
-    type(t_options),intent(in)    :: opt
-    logical,intent(inout)         :: has_data
-    type(t_layerdata),pointer     :: p
-    logical                       :: na_mask(obs_data(1)%grid%n)
+    class(t_idw),intent(inout)     :: this
+    class(t_dataset)               :: obs_data(:)
+    integer,intent(in)             :: obs_idx(:)
+    type(t_grid),intent(in),target :: to_grid
+    real                           :: weights(:,:)
+    integer,intent(in)             :: cat
+    integer,intent(in)             :: to_cats(:)
+    type(t_options),intent(in)     :: opt
+    logical,intent(inout)          :: has_data
+    type(t_layerdata),pointer      :: p
+    logical                        :: na_mask(obs_data(1)%grid%n)
 
     this%nobs = obs_data(1)%grid%n
     this%power = opt%IDW_POWER
@@ -424,18 +429,19 @@ end subroutine single_point_full_weight
       class is (t_layerdata)
         na_mask = .not. any(p%values(1:, :) == NODATA, dim=1)
     end select
-    this%catmask = (obs_data(1)%category == cat) .and. (na_mask)
+    this%catmask = ((obs_data(1)%category == cat).or.(obs_data(1)%category == CAT_ALL)) .and. na_mask
     if (count(this%catmask)>1) has_data = .true.
   end subroutine setup_idw
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine predict_point_idw(this, idx, p, obs_data, cat, weights, widx, ppd)
+  subroutine predict_point_idw(this, idx, p, obs_data, cat, variance, weights, widx, ppd)
     implicit none
     class(t_idw),intent(inout)    :: this
     integer,intent(in)            :: idx, cat
     real    ,intent(in)           :: p(:)
     class(t_dataset)              :: obs_data(:)
+    real                          :: variance
     real                          :: weights(:)
     real                          :: distances(this%nobs)
     real                          :: total_weight
