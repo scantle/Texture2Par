@@ -161,6 +161,7 @@ t2p2 := \
     write_fmodel.f90 \
     kriging.f90 \
     PilotPoints.f90 \
+    InterpolationPackers.f90 \
     FlowModel.f90 \
     subsidence_funcs.f90 \
     sgsim.f90 \
@@ -285,6 +286,7 @@ $(OBJDIR)/Grid.obj: $(OBJDIR)/kdtree2.obj $(OBJDIR)/cellblocks.obj $(OBJDIR)/Err
 $(OBJDIR)/DataSets.obj: $(OBJDIR)/global.obj $(OBJDIR)/Grid.obj $(OBJDIR)/Categories.obj
 $(OBJDIR)/weights.obj: $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj
 $(OBJDIR)/PilotPoints.obj: $(OBJDIR)/DataSets.obj $(OBJDIR)/global.obj $(OBJDIR)/Grid.obj $(FLIB_DEP) $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj
+$(OBJDIR)/InterpolationPackers.obj: $(OBJDIR)/InterpolationTypes.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/Grid.obj $(OBJDIR)/PilotPoints.obj $(OBJDIR)/Categories.obj $(OBJDIR)/global.obj $(OBJDIR)/ErrorHandler.obj
 $(OBJDIR)/Options.obj: $(OBJDIR)/global.obj $(OBJDIR)/FileIO.obj $(FLIB_DEP) $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Tools.obj
 $(OBJDIR)/write_fmodel.obj: $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/FileIO.obj $(OBJDIR)/DataSets.obj $(MFUSG_LIB)
 $(OBJDIR)/Interpolators.obj: $(OBJDIR)/global.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Categories.obj
