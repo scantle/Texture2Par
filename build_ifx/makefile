@@ -50,8 +50,10 @@ else
 endif
 
 OBJDIR := $(BUILDDIR)/obj
+KRIGOBJDIR := $(BUILDDIR)/obj/libkriging
 MODDIR := $(BUILDDIR)/mod
 FLIBMODDIR := $(MODDIR)/flibs
+KRIGMODDIR := $(MODDIR)/libkriging
 T2PMODDIR := $(MODDIR)/Texture2Par
 LIBDIR := $(BUILDDIR)/lib
 BINDIR := ../bin
@@ -59,13 +61,15 @@ PROGRAM := $(BINDIR)/Texture2Par$(EXEEXT)
 MFUSGMODDIR := $(MODDIR)/mfUSGLib
 FLIB_LIB := $(LIBDIR)/flibs$(LIBEXT)
 MFUSG_LIB := $(LIBDIR)/mfUSGLib$(LIBEXT)
+KRIG_LIB := $(LIBDIR)/libkriging$(LIBEXT)
 FLIB_DEP = $(objflibs)
 
-LIBS := $(FLIB_LIB) $(MFUSG_LIB)
+LIBS := $(FLIB_LIB) $(MFUSG_LIB) $(KRIG_LIB)
 
 FLIBDIR := ../src/Libraries/flibs/src/strings
 MFUSGDIR := ../src/Libraries/mfUSGLib
 MFUSG2018DIR := ../src/Libraries/mfUSGLib/Jan_23_2018
+KRIGDIR := ../src/Libraries/libkriging
 SRCDIR := ../src
 ROOTDIR := ..
 
@@ -73,10 +77,15 @@ VPATH := $(FLIBDIR) $(MFUSGDIR) $(MFUSG2018DIR) $(SRCDIR) $(ROOTDIR)
 
 FLIB_MODFLAGS := $(subst $(MODDIR),$(FLIBMODDIR),$(IFX_MOD))
 MFUSG_MODFLAGS := $(subst $(MODDIR),$(MFUSGMODDIR),$(IFX_MOD))
-T2P_MODFLAGS := $(subst $(MODDIR),$(T2PMODDIR),$(IFX_MOD)) $(INC)$(FLIBMODDIR) $(INC)$(MFUSGMODDIR)
+KRIG_MODFLAGS := $(subst $(MODDIR),$(KRIGMODDIR),$(IFX_MOD))
+T2P_MODFLAGS := $(subst $(MODDIR),$(T2PMODDIR),$(IFX_MOD)) $(INC)$(FLIBMODDIR) $(INC)$(MFUSGMODDIR) $(INC)$(KRIGMODDIR)
 
 FLIB_FFLAGS := $(FLIB_COMMON) $(FLIB_MODFLAGS) $(INC)$(FLIBDIR) $(LIB_OPTFLAGS)
 MFUSG_FFLAGS := $(MFUSG_COMMON) $(MFUSG_MODFLAGS) $(LIB_OPTFLAGS)
+# Keep the candidate independent of an external Intel OpenMP DLL. The conda
+# regression environment ships an incompatible libiomp5md.dll; parallel
+# libkriging packaging can be revisited when the backend enters runtime use.
+KRIG_FFLAGS := $(FLIB_COMMON) $(KRIG_MODFLAGS) $(INC)$(KRIGDIR) $(LIB_OPTFLAGS) $(IFX_REAL8) /DKRIGEKIT_HCACHE_SLOTS=256 /DUSE_COV_TABLE
 T2P_FFLAGS := $(T2P_COMMON) $(T2P_MODFLAGS) $(INC)$(FLIBDIR) $(T2P_OPTFLAGS) $(IFX_REAL8)
 LDFLAGS := $(IFX_LINK) $(LINKDEBUG)
 
@@ -134,8 +143,27 @@ mfusg := \
     mf_t2p.f90 \
     glo2basu1.f
 
+# Native Fortran libkriging core.  C API wrappers are intentionally excluded.
+libkriging := \
+    common.f90 \
+    kriging_err.f90 \
+    progress_bar.F90 \
+    gaussian_quadrature.f90 \
+    solver.f90 \
+    lapack.f \
+    utils.F90 \
+    rotation.f90 \
+    vgmfunc.f90 \
+    nscore.f90 \
+    kdtree2_maxidx.f90 \
+    variogram.f90 \
+    variogram_st.f90 \
+    kriging_base.F90 \
+    kriging.F90 \
+    kriging_indicator.F90 \
+    kriging_st.F90
+
 t2p2 := \
-    sgemv.f \
     Tools.f90 \
     InterpolationTypes.f90 \
     ColMap.f90 \
@@ -150,6 +178,7 @@ t2p2 := \
     ErrorHandler.f90 \
     Options.f90 \
     variogram.f90 \
+    LibKrigingAdapter.f90 \
     weights.f90 \
     data_transformer.f90 \
     Grid.f90 \
@@ -157,10 +186,12 @@ t2p2 := \
     Categories.f90 \
     DataSets.f90 \
     Interpolators.f90 \
+    KrigingBase.f90 \
     write_fmodel.f90 \
     kriging.f90 \
     PilotPoints.f90 \
     InterpolationPackers.f90 \
+    LibKrigingInterpolator.f90 \
     FlowModel.f90 \
     subsidence_funcs.f90 \
     sgsim.f90 \
@@ -172,6 +203,7 @@ t2p2 := \
 
 objflibs := $(addprefix $(OBJDIR)/,$(addsuffix .obj,$(basename $(flibs))))
 objmfusg := $(addprefix $(OBJDIR)/,$(addsuffix .obj,$(basename $(mfusg))))
+objkriging := $(addprefix $(KRIGOBJDIR)/,$(addsuffix .obj,$(basename $(libkriging))))
 objt2p := $(addprefix $(OBJDIR)/,$(addsuffix .obj,$(basename $(t2p2))))
 objects := $(objt2p) $(LIBS)
 $(objflibs): FFLAGS := $(FLIB_FFLAGS)
@@ -196,8 +228,10 @@ rebuild:
 dirs:
 	$(call MKDIR_P,$(BUILDDIR))
 	$(call MKDIR_P,$(OBJDIR))
+	$(call MKDIR_P,$(KRIGOBJDIR))
 	$(call MKDIR_P,$(MODDIR))
 	$(call MKDIR_P,$(FLIBMODDIR))
+	$(call MKDIR_P,$(KRIGMODDIR))
 	$(call MKDIR_P,$(MFUSGMODDIR))
 	$(call MKDIR_P,$(T2PMODDIR))
 	$(call MKDIR_P,$(LIBDIR))
@@ -212,6 +246,9 @@ $(FLIB_LIB): $(objflibs) | dirs
 $(MFUSG_LIB): $(objmfusg) | dirs
 	$(AR) $(ARFLAGS) $(objmfusg)
 
+$(KRIG_LIB): $(objkriging) | dirs
+	$(AR) $(ARFLAGS) $(objkriging)
+
 $(OBJDIR)/T2P.res: $(SRCDIR)/T2P.rc $(SRCDIR)/resource.h $(SRCDIR)/T2P.ico | dirs
 	$(RC) $(RCFLAGS) /fo$@ $<
 
@@ -220,6 +257,15 @@ $(OBJDIR)/m_vstring.obj: m_vstring.f90 | dirs
 
 $(OBJDIR)/m_vstringlist.obj: m_vstringlist.F90 $(OBJDIR)/m_vstring.obj | dirs
 	$(FC) $(FLIB_FFLAGS) $(IFX_OBJ) -c $<
+
+$(KRIGOBJDIR)/%.obj: $(KRIGDIR)/%.f90 | dirs
+	$(FC) $(KRIG_FFLAGS) $(IFX_OBJ) -c $<
+
+$(KRIGOBJDIR)/%.obj: $(KRIGDIR)/%.F90 | dirs
+	$(FC) $(KRIG_FFLAGS) $(IFX_OBJ) -c $<
+
+$(KRIGOBJDIR)/%.obj: $(KRIGDIR)/%.f | dirs
+	$(FC) $(KRIG_FFLAGS) $(IFX_FIXED) $(IFX_OBJ) -c $<
 
 $(OBJDIR)/%.obj: %.f90 | dirs
 	$(FC) $(FFLAGS) $(IFX_OBJ) -c $<
@@ -274,6 +320,19 @@ $(OBJDIR)/parutl7.obj: $(OBJDIR)/gmodules.obj
 $(OBJDIR)/utl7u1.obj: $(OBJDIR)/gmodules.obj
 $(OBJDIR)/mf_t2p.obj: $(OBJDIR)/mf_fpath.obj $(OBJDIR)/gmodules.obj
 
+# libkriging module prerequisites.  These also make parallel builds safe.
+$(KRIGOBJDIR)/utils.obj: $(KRIGOBJDIR)/common.obj $(KRIGOBJDIR)/kriging_err.obj
+$(KRIGOBJDIR)/rotation.obj: $(KRIGOBJDIR)/common.obj
+$(KRIGOBJDIR)/vgmfunc.obj: $(KRIGOBJDIR)/common.obj $(KRIGOBJDIR)/utils.obj $(KRIGOBJDIR)/kriging_err.obj
+$(KRIGOBJDIR)/nscore.obj: $(KRIGOBJDIR)/kriging_err.obj
+$(KRIGOBJDIR)/kdtree2_maxidx.obj: $(KRIGOBJDIR)/kriging_err.obj
+$(KRIGOBJDIR)/variogram.obj: $(KRIGOBJDIR)/common.obj $(KRIGOBJDIR)/kriging_err.obj $(KRIGOBJDIR)/vgmfunc.obj $(KRIGOBJDIR)/rotation.obj
+$(KRIGOBJDIR)/variogram_st.obj: $(KRIGOBJDIR)/kriging_err.obj $(KRIGOBJDIR)/variogram.obj $(KRIGOBJDIR)/vgmfunc.obj
+$(KRIGOBJDIR)/kriging_base.obj: $(KRIGOBJDIR)/common.obj $(KRIGOBJDIR)/kriging_err.obj $(KRIGOBJDIR)/progress_bar.obj $(KRIGOBJDIR)/utils.obj $(KRIGOBJDIR)/gaussian_quadrature.obj $(KRIGOBJDIR)/kdtree2_maxidx.obj $(KRIGOBJDIR)/nscore.obj $(KRIGOBJDIR)/solver.obj
+$(KRIGOBJDIR)/kriging.obj: $(KRIGOBJDIR)/common.obj $(KRIGOBJDIR)/kriging_err.obj $(KRIGOBJDIR)/utils.obj $(KRIGOBJDIR)/progress_bar.obj $(KRIGOBJDIR)/rotation.obj $(KRIGOBJDIR)/variogram.obj $(KRIGOBJDIR)/kdtree2_maxidx.obj $(KRIGOBJDIR)/kriging_base.obj
+$(KRIGOBJDIR)/kriging_indicator.obj: $(KRIGOBJDIR)/kriging.obj $(KRIGOBJDIR)/kriging_base.obj $(KRIGOBJDIR)/utils.obj $(KRIGOBJDIR)/kriging_err.obj
+$(KRIGOBJDIR)/kriging_st.obj: $(KRIGOBJDIR)/common.obj $(KRIGOBJDIR)/kriging_err.obj $(KRIGOBJDIR)/utils.obj $(KRIGOBJDIR)/rotation.obj $(KRIGOBJDIR)/variogram_st.obj $(KRIGOBJDIR)/vgmfunc.obj $(KRIGOBJDIR)/kdtree2_maxidx.obj $(KRIGOBJDIR)/kriging_base.obj
+
 $(OBJDIR)/FileIO.obj: $(OBJDIR)/Str_Module.obj $(FLIB_DEP) $(OBJDIR)/Lists.obj
 $(OBJDIR)/global.obj: $(OBJDIR)/FileIO.obj
 $(OBJDIR)/ErrorHandler.obj: $(OBJDIR)/global.obj $(FLIB_DEP)
@@ -286,15 +345,18 @@ $(OBJDIR)/DataSets.obj: $(OBJDIR)/global.obj $(OBJDIR)/Grid.obj $(OBJDIR)/Catego
 $(OBJDIR)/weights.obj: $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj
 $(OBJDIR)/PilotPoints.obj: $(OBJDIR)/DataSets.obj $(OBJDIR)/global.obj $(OBJDIR)/Grid.obj $(FLIB_DEP) $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj
 $(OBJDIR)/InterpolationPackers.obj: $(OBJDIR)/InterpolationTypes.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/Grid.obj $(OBJDIR)/PilotPoints.obj $(OBJDIR)/Categories.obj $(OBJDIR)/global.obj $(OBJDIR)/ErrorHandler.obj
+$(OBJDIR)/LibKrigingAdapter.obj: $(OBJDIR)/InterpolationTypes.obj $(OBJDIR)/variogram.obj $(OBJDIR)/ErrorHandler.obj $(KRIG_LIB)
 $(OBJDIR)/Options.obj: $(OBJDIR)/global.obj $(OBJDIR)/FileIO.obj $(FLIB_DEP) $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Tools.obj
 $(OBJDIR)/write_fmodel.obj: $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/FileIO.obj $(OBJDIR)/DataSets.obj $(MFUSG_LIB)
 $(OBJDIR)/Interpolators.obj: $(OBJDIR)/global.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Categories.obj
-$(OBJDIR)/kriging.obj: $(OBJDIR)/global.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/variogram.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(FLIB_DEP)
+$(OBJDIR)/KrigingBase.obj: $(OBJDIR)/global.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Options.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/FileIO.obj $(FLIB_DEP)
+$(OBJDIR)/kriging.obj: $(OBJDIR)/KrigingBase.obj $(OBJDIR)/global.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/variogram.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(FLIB_DEP)
+$(OBJDIR)/LibKrigingInterpolator.obj: $(OBJDIR)/KrigingBase.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/Grid.obj $(OBJDIR)/Options.obj $(OBJDIR)/InterpolationTypes.obj $(OBJDIR)/InterpolationPackers.obj $(OBJDIR)/LibKrigingAdapter.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/global.obj
 $(OBJDIR)/sgsim.obj: $(OBJDIR)/global.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/variogram.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/Sparse_Symmetric.obj $(OBJDIR)/kriging.obj
 $(OBJDIR)/FlowModel.obj: $(OBJDIR)/FileIO.obj $(OBJDIR)/Grid.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Categories.obj $(OBJDIR)/Options.obj $(OBJDIR)/cellblocks.obj $(OBJDIR)/global.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/fpath.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/write_fmodel.obj $(MFUSG_LIB)
 $(OBJDIR)/subsidence_funcs.obj: $(OBJDIR)/global.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/kriging.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Options.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Grid.obj
-$(OBJDIR)/T2P.obj: $(OBJDIR)/global.obj $(FLIB_DEP) $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/FlowModel.obj $(OBJDIR)/PilotPoints.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/kriging.obj $(OBJDIR)/sgsim.obj $(OBJDIR)/Categories.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Grid.obj $(OBJDIR)/subsidence_funcs.obj $(OBJDIR)/ColMap.obj
+$(OBJDIR)/T2P.obj: $(OBJDIR)/global.obj $(FLIB_DEP) $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/FlowModel.obj $(OBJDIR)/PilotPoints.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/KrigingBase.obj $(OBJDIR)/kriging.obj $(OBJDIR)/LibKrigingInterpolator.obj $(OBJDIR)/sgsim.obj $(OBJDIR)/Categories.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Grid.obj $(OBJDIR)/subsidence_funcs.obj $(OBJDIR)/ColMap.obj
 $(OBJDIR)/t2p_log.obj: $(OBJDIR)/FileIO.obj $(OBJDIR)/version.obj $(OBJDIR)/time.obj $(OBJDIR)/T2P.obj $(OBJDIR)/ColMap.obj $(OBJDIR)/ErrorHandler.obj $(FLIB_DEP)
 $(OBJDIR)/Read_Datasets.obj: $(OBJDIR)/global.obj $(OBJDIR)/T2P.obj $(OBJDIR)/Str_Module.obj $(FLIB_DEP) $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Grid.obj $(OBJDIR)/data_transformer.obj $(OBJDIR)/subsidence_funcs.obj $(OBJDIR)/t2p_log.obj $(OBJDIR)/ColMap.obj
-$(OBJDIR)/Read_Main_Input.obj: $(OBJDIR)/T2P.obj $(FLIB_DEP) $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/FlowModel.obj $(OBJDIR)/ColMap.obj $(OBJDIR)/variogram.obj $(OBJDIR)/kriging.obj $(OBJDIR)/Tools.obj $(OBJDIR)/PilotPoints.obj $(OBJDIR)/global.obj $(OBJDIR)/subsidence_funcs.obj
+$(OBJDIR)/Read_Main_Input.obj: $(OBJDIR)/T2P.obj $(FLIB_DEP) $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/FlowModel.obj $(OBJDIR)/ColMap.obj $(OBJDIR)/variogram.obj $(OBJDIR)/KrigingBase.obj $(OBJDIR)/Tools.obj $(OBJDIR)/PilotPoints.obj $(OBJDIR)/global.obj $(OBJDIR)/subsidence_funcs.obj
 $(OBJDIR)/Texture2Par.obj: $(OBJDIR)/global.obj $(OBJDIR)/version.obj $(OBJDIR)/T2P.obj $(OBJDIR)/FileIO.obj $(OBJDIR)/Read_Main_Input.obj $(OBJDIR)/t2p_log.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Read_Datasets.obj

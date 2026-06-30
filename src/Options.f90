@@ -324,6 +324,8 @@ subroutine write_input_summary(this, ndatafiles)
     select case(this%INTERP_METHOD)
       case("OK")
         interp_text = "Ordinary Kriging (OK)"
+      case("OK_LIB")
+        interp_text = "Ordinary Kriging (experimental libkriging backend)"
       case("SK")
         interp_text = "Simple Kriging (SK)"
       case("IDW")

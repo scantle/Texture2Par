@@ -257,7 +257,13 @@ module m_read_main_input
     end if
 
     ! Ensure covariates are being used with a valid intepolation option
-    if (.not. t2p%opt%INTERP_SECOND_OK) call error_handler(4,opt_msg="Covariates are not supported for non-kriging options.")
+    if (.not. t2p%opt%INTERP_SECOND_OK) then
+      if (t2p%opt%INTERP_METHOD == "OK_LIB") then
+        call error_handler(4,opt_msg="OK_LIB Stage 6B does not support covariates/cokriging.")
+      else
+        call error_handler(4,opt_msg="Covariates are not supported for non-kriging options.")
+      end if
+    end if
 
     ! Loop over data class lines
     do i=1, nlines
@@ -418,7 +424,7 @@ end subroutine read_dataset_block
 
 subroutine read_variogram_block(t2p, reader)
   use m_vario, only: t_vgm, get_vgm_from_line
-  use m_kriging, only: t_krige
+  use m_kriging_base, only: t_kriging_base
   use tools, only: expand_int_array
   implicit none
   type(t_t2p),intent(inout)       :: t2p
@@ -513,7 +519,7 @@ subroutine read_variogram_block(t2p, reader)
           end if
           dim = t2p%opt%INTERP_DIM
           select type(p => t2p%interp_data)
-            class is(t_krige)
+            class is(t_kriging_base)
               if (t2p%opt%INTERP_ORDER=="BEFORE") then
                 prime_id = t2p%get_class_id(class_name, adjust_for_infer=.true.)
                 prime_vidx = t2p%get_class_id(class_name)

@@ -95,6 +95,61 @@ IBOUND constant 1
 FILES = {"dataset.csv": DATASET, "grid.grd": GRD}
 
 
+OK_LIB_2D_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W1,1,1,0.5,0.5,100,0,10,0.10
+W2,2,1,1.5,0.5,100,0,10,0.20
+W3,3,1,0.5,1.5,100,0,10,0.30
+W4,4,1,1.5,1.5,100,0,10,0.40
+"""
+
+
+OK_LIB_2D_GRD = """\
+NX    2
+NY    2
+NZ    1
+DX    1.0
+DY    1.0
+TOP   constant 100.0
+DZ    10.0
+IBOUND constant 1
+"""
+
+
+def _ok_lib_2d_t2p(options_extra="", flow_extra="") -> str:
+    return f"""\
+        BEGIN OPTIONS
+          MAX_VSTRUCT 1
+          INTERP_METHOD OK_LIB
+          INFER_LAST_CLASS
+          ONLY_TEXTURE
+          WRITE_NODE_FILES
+          WRITE_DATASET_FILES
+          {options_extra}
+        END OPTIONS
+
+        BEGIN CLASSES
+          Coarse
+          Fine
+        END CLASSES
+
+        BEGIN DATASET
+          FILE dataset.csv
+        END DATASET
+
+        BEGIN FLOW_MODEL
+          TYPE GRID
+          GRID_FILE grid.grd
+          {flow_extra}
+        END FLOW_MODEL
+
+        BEGIN VARIOGRAMS
+          CLASS Coarse
+            1 Sph 0.0 1.0 10.0 10.0 0.0 4
+        END VARIOGRAMS
+        """
+
+
 DUPLICATE_GRD = """\
 NX    3
 NY    3
@@ -797,7 +852,92 @@ class TestOrdinaryKriging:
 
 
 # ---------------------------------------------------------------------------
-# 2. CORRECT_WEIGHTS (non-negative kriging)
+# 2. Experimental libkriging ordinary-kriging backend
+# ---------------------------------------------------------------------------
+
+class TestLibKrigingOrdinary:
+
+    @staticmethod
+    def _files():
+        return {"dataset.csv": OK_LIB_2D_DATASET, "grid.grd": OK_LIB_2D_GRD}
+
+    def test_ok_lib_is_accepted_and_exact_hits_run_in_2d(self, run_t2p):
+        r = run_t2p(_ok_lib_2d_t2p(), extra_files=self._files())
+        assert r.returncode == 0, r.combined
+        assert "experimental libkriging backend" in r.log
+
+        candidates = sorted(r.workdir.glob("*Coarse*.csv"))
+        assert candidates, f"No OK_LIB texture output found.\n{r.combined}"
+        df = pd.read_csv(candidates[0])
+        expected = {
+            (0.5, 0.5): 0.10,
+            (1.5, 0.5): 0.20,
+            (0.5, 1.5): 0.30,
+            (1.5, 1.5): 0.40,
+        }
+        for row in df.itertuples(index=False):
+            assert row.Layer1 == pytest.approx(expected[(row.X, row.Y)], abs=1e-10)
+
+    def test_ok_lib_exact_vertical_hits_run_in_3d(self, run_t2p):
+        t2p = _ok3d_t2p().replace(
+            "MAX_VSTRUCT 1", "MAX_VSTRUCT 1\n          INTERP_METHOD OK_LIB"
+        )
+        r = run_t2p(
+            t2p,
+            extra_files={
+                "dataset.csv": _ok3d_exact_hit_dataset(),
+                "grid.grd": MAX_LOG_LENGTH_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+        row = _read_coarse_texture_output(r).iloc[0]
+        assert [row["Layer1"], row["Layer2"], row["Layer3"]] == pytest.approx(
+            [0.10, 0.50, 0.90], abs=1e-10
+        )
+
+    def test_ok_lib_keeps_legacy_pilot_point_interpolation(self, run_t2p):
+        r = run_t2p(
+            _grid_t2p(options_extra="INTERP_METHOD OK_LIB"),
+            extra_files=FILES,
+        )
+        assert r.returncode == 0, r.combined
+        assert list(r.workdir.glob("*KH*")), "Legacy pilot-point path produced no KH output"
+
+    def test_ok_lib_duplicate_conditioning_is_fatal(self, run_t2p):
+        t2p = _duplicate_conditioning_t2p(interp_dim=2).replace(
+            "MAX_VSTRUCT 1", "MAX_VSTRUCT 1\n          INTERP_METHOD OK_LIB"
+        )
+        r = run_t2p(
+            t2p,
+            extra_files={
+                "dataset.csv": DUPLICATE_2D_DATASET,
+                "grid.grd": DUPLICATE_GRD,
+            },
+        )
+        assert r.returncode != 0
+        assert "co-located data point" in r.combined.lower()
+
+    @pytest.mark.parametrize(
+        ("options_extra", "flow_extra", "diagnostic"),
+        [
+            ("SGSIM", "", "does not support SGSIM"),
+            ("WRITE_GRID_WEIGHTS", "", "does not support grid weight"),
+            ("", "BLOCK_MODE", "does not support block kriging"),
+        ],
+    )
+    def test_ok_lib_unsupported_combinations_are_fatal(
+        self, run_t2p, options_extra, flow_extra, diagnostic
+    ):
+        r = run_t2p(
+            _ok_lib_2d_t2p(options_extra=options_extra, flow_extra=flow_extra),
+            extra_files=self._files(),
+        )
+        assert r.returncode != 0
+        assert diagnostic.lower() in r.combined.lower()
+
+
+# ---------------------------------------------------------------------------
+# 3. CORRECT_WEIGHTS (non-negative kriging)
 # ---------------------------------------------------------------------------
 
 class TestCorrectWeights:

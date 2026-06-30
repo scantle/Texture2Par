@@ -8,7 +8,9 @@ module m_T2P
   use m_flow_model, only: t_flow_model, t_iwfm_model, get_layer_thicknesses
   use m_pilotpoints, only: t_pilotpoints, setup_pilotpoint_property_arrays, add_pilotpoint_aquifer_parameter
   use m_interpolator, only: t_interpolator, t_idw
-  use m_kriging, only: t_krige, t_globkrige, t_treekrige
+  use m_kriging_base, only: t_kriging_base
+  use m_kriging, only: t_globkrige, t_treekrige
+  use m_libkriging_interpolator, only: t_libkrige
   use m_sgsim, only: t_sgsim
   use m_categories, only: t_category
   use m_vario, only: t_vgm
@@ -22,6 +24,8 @@ module m_T2P
 #else
   integer :: nblank = 1
 #endif
+
+  private :: apply_dense_weights
 
   type t_T2P
     type(t_options)                    :: opt  ! avoid conflict with Fortran intrinsic 'options'
@@ -131,6 +135,27 @@ module m_T2P
   contains
 
 !-------------------------------------------------------------------------------------------------!
+  subroutine apply_dense_weights(a, x, y)
+    implicit none
+    real, intent(in)  :: a(:,:)
+    real, intent(in)  :: x(:)
+    real, intent(out) :: y(:)
+    integer           :: i, j
+
+    if (size(a,1) /= size(y) .or. size(a,2) /= size(x)) then
+      call error_handler(1, opt_msg='Invalid dimensions when applying dense interpolation weights')
+    end if
+
+    y = 0.0
+    do j=1, size(x)
+      do i=1, size(y)
+        y(i) = y(i) + a(i,j) * x(j)
+      end do
+    end do
+  end subroutine apply_dense_weights
+!-------------------------------------------------------------------------------------------------!
+
+!-------------------------------------------------------------------------------------------------!
 ! SETUP PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
@@ -212,6 +237,14 @@ module m_T2P
         allocate(t_globkrige::this%interp_data)
         allocate(t_treekrige::this%interp_pp)  ! Still should use OK - mean addition/subtraction not implemented!
         this%opt%INTERP_SECOND_OK = .true.
+      case("OK_LIB")
+        allocate(t_libkrige::this%interp_data)
+        ! Stage 6B keeps pilot-point interpolation and its weight reuse on the legacy OK backend.
+        allocate(t_treekrige::this%interp_pp)
+        if (this%opt%NSIM > 0) &
+          call error_handler(1,opt_msg='OK_LIB does not support SGSIM in Stage 6B')
+        if (this%opt%WRITE_GRID_WEIGHTS.or.this%opt%READ_GRID_WEIGHTS) &
+          call error_handler(1,opt_msg='OK_LIB does not support grid weight read/write in Stage 6B')
       case("IDW")
         allocate(t_idw::this%interp_data)
         allocate(t_idw::this%interp_pp)
@@ -381,7 +414,8 @@ module m_T2P
     this%nprimary = nprimaries
 
     ! No need to setup if we're not kriging
-    if (.not. (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK")) return
+    if (.not. (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK".or. &
+               this%opt%INTERP_METHOD=="OK_LIB")) return
 
     ! Initialize
     vidx = 0  ! Start variogram index counter
@@ -440,7 +474,7 @@ module m_T2P
     if (.not. this%opt%ONLY_TEXTURE) then
       vidx = vidx + 1
       select type(p => this%interp_pp)
-        class is(t_krige)
+        class is(t_kriging_base)
           if (.not. allocated(p%global_vario_idx)) allocate(p%global_vario_idx(1, 1, 1))
           p%global_vario_idx(1, 1, 1) = 1  ! Assign to pilot point interpolator
       end select
@@ -451,7 +485,7 @@ module m_T2P
 
     ! Pass variogram indices to the kriging object
     select type(p => this%interp_data)
-      class is(t_krige)
+      class is(t_kriging_base)
         if (allocated(p%global_vario_idx)) deallocate(p%global_vario_idx)
         allocate(p%global_vario_idx(0:1, size(vario_map, 1), size(vario_map, 2)))
         do i=0, 1
@@ -503,7 +537,7 @@ module m_T2P
 
     ! Place directly in the kriging interpolator objects
     select type(p => this%interp_data)
-      class is(t_krige)
+      class is(t_kriging_base)
         ! First n are for classes/properties
         p%nvario     = this%nvario
         if (.not. this%opt%ONLY_TEXTURE) p%nvario = this%nvario -1
@@ -514,7 +548,7 @@ module m_T2P
     ! PP is the last one
     if (.not. this%opt%ONLY_TEXTURE) then
       select type(p => this%interp_pp)
-        class is(t_krige)
+        class is(t_kriging_base)
           p%nvario     = 1
           p%nstruct    => nstruct(this%nvario:this%nvario)
           p%variograms => variograms(:,this%nvario:this%nvario)
@@ -568,7 +602,7 @@ module m_T2P
 
     ! Setup HSU categories
     select type(p => this%interp_data)
-      class is(t_krige)
+      class is(t_kriging_base)
         allocate(p%cat2zone(this%fmodel%hsus%ncat))
         p%cat2zone = 0
         call p%init_zones(this%fmodel%hsus%strlist_glo)
@@ -577,7 +611,7 @@ module m_T2P
     ! Setup PP zone categories - don't have different variograms (yet)
     if (.not. this%opt%ONLY_TEXTURE) then
       select type(p => this%interp_pp)
-        class is(t_krige)
+        class is(t_kriging_base)
           allocate(p%cat2zone(this%pilot_points%nppzones))
           p%cat2zone = 1
       end select
@@ -586,7 +620,7 @@ module m_T2P
     ! Subsidence categories (uses HSUs), if ON
     if (this%opt%SUBSIDENCE_ON) then
       select type(p => interp_ib)
-        class is(t_krige)
+        class is(t_kriging_base)
           allocate(p%cat2zone(this%fmodel%hsus%ncat))
           p%cat2zone = 1
           !call p%init_zones(this%fmodel%hsus%strlist_glo)  ! use only if we have HSU variograms for IB (not implemented)
@@ -669,8 +703,11 @@ module m_T2P
     if(.not. this%has_fmodel   ) call error_handler(1,opt_msg="Missing Required FLOW_MODEL Block")
     if(.not. this%has_datafiles) call error_handler(1,opt_msg="Missing Required DATASET Block(s)")
     if(.not. this%has_covar    ) call this%no_covariates()  ! Allowable, just needs to be handled
+    if(this%opt%INTERP_METHOD=="OK_LIB".and.this%opt%BLOCK_KRIGE>0) &
+      call error_handler(1,opt_msg="OK_LIB does not support block kriging in Stage 6B")
     if(.not. this%has_interp   ) then
-      if (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK") then
+      if (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK".or. &
+          this%opt%INTERP_METHOD=="OK_LIB") then
         call error_handler(1,opt_msg="Missing Required VARIOGRAMS Block")
       else  ! Unknown interpolator parameters required??
         call error_handler(1,opt_msg="Missing Required Interpolation Method Parameters")
@@ -854,7 +891,9 @@ module m_T2P
 
       do i=1, this%ntexclasses
         do j=1, obs_data(1)%nactive
-          call sgemv('N', to_grid%n, obs_data(1)%grid%n, 1.0, weights%values, to_grid%n, obs_data(1)%values(:,obs_data(1)%active(j),i), 1, 0.0, results(k)%values(:,obs_data(1)%active(j),i), 1)
+          call apply_dense_weights(weights%values, &
+                                   obs_data(1)%values(:,obs_data(1)%active(j),i), &
+                                   results(k)%values(:,obs_data(1)%active(j),i))
         end do
       end do
 
@@ -1026,9 +1065,12 @@ module m_T2P
       end if
 
       ! Apply weights for counts, thicknesses, and square thicknesses
-      call sgemv('N', to_grid%n, this%interbed_count(k)%grid%n, 1.0, weights%values, to_grid%n, this%interbed_count(k)%values(1,:), 1, 0.0, results(k)%values(1,:), 1)
-      call sgemv('N', to_grid%n, this%interbed_thick(k)%grid%n, 1.0, weights%values, to_grid%n, this%interbed_thick(k)%values(1,:), 1, 0.0, results(k)%values(2,:), 1)
-      call sgemv('N', to_grid%n, this%interbed_thick(k)%grid%n, 1.0, weights%values, to_grid%n, this%interbed_thick(k)%values(2,:), 1, 0.0, results(k)%values(3,:), 1)
+      call apply_dense_weights(weights%values, this%interbed_count(k)%values(1,:), &
+                               results(k)%values(1,:))
+      call apply_dense_weights(weights%values, this%interbed_thick(k)%values(1,:), &
+                               results(k)%values(2,:))
+      call apply_dense_weights(weights%values, this%interbed_thick(k)%values(2,:), &
+                               results(k)%values(3,:))
 
       ! reset weights
       weights%values = 0.0

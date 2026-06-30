@@ -1,36 +1,27 @@
 module m_kriging
   use m_global, only: log
-  use m_interpolator, only: t_interpolator
+  use m_kriging_base, only: t_kriging_base, finalize_kriging_base
   use m_weights, only: t_weights
   use m_grid, only: t_grid, create_grid_object
   use m_vario, only: t_vgm
   use m_datasets, only: t_dataset, t_layerdata
   use m_error_handler, only: error_handler
   use m_options, only: t_options
-  use m_vstringlist
 !  use m_sparse_symmetric, only: t_sparse_sym
   implicit none
 !-------------------------------------------------------------------------------------------------!
 
-  type, extends(t_interpolator) :: t_krige
-    integer                   :: nvario                  ! Number of variograms stored for interpolator
+  type, extends(t_kriging_base) :: t_krige
     integer                   :: maxnear                 ! Maximum number of nearest points used for interpolation for all classes
     integer                   :: nsets                   ! Number of datasets involved
     integer                   :: ndim                    ! Number of dimensions being kriged
     integer                   :: unbias                  ! Unbias term (0 - SK, 1 - OK)
     integer                   :: ndrift                  ! Unimplemented
-    integer                   :: nzones                  ! Tracks length of zones list (see below)
     real                      :: max_pdist               ! Maximum inclusion distance for primary data
     real                      :: max_sdist               ! Maximum inclusion distance for secondary data
     real   ,allocatable       :: matA(:)                 ! LHS obs-obs covariance matrix (lower triangle, stored as an array)
     real   ,allocatable       :: rhsB(:)                 ! RHS grid-obs covariance array
-    integer,pointer           :: nstruct(:)              ! Number of structures for each variogram
-    integer,pointer           :: nnear(:)                ! Number of nearest points used for interpolation, for each dataset/class (nvario) (0 for cross)
     integer,allocatable       :: obs_idx(:)              ! Indices of datasets
-    type(t_vstringlist)       :: zones                   ! List of HSUs, needed to track the order of HSUs in global_vario_idx (may not match global HSU id!)
-    integer,allocatable       :: cat2zone(:)             ! Map from global category id (hsu_id) to internal zone number (read at different times)
-    type(t_vgm),pointer       :: variograms(:,:)         ! (stuctures, variogram)
-    integer,allocatable       :: global_vario_idx(:,:,:) ! Variogram index given (hsu, class_id, class_id) for ALL classes
     integer,allocatable       :: vario_idx(:,:)          ! Variogram index given (class_id, class_id) for local classes passed to setup/point
     real   ,allocatable       :: w(:)                    ! Internally calculated weights
     integer,allocatable       :: pset_id(:)              ! ID vector used for kriging matrix
@@ -43,15 +34,12 @@ module m_kriging
     ! Attributes for KD-tree and search parameters could be added here
   contains
     procedure               :: intialize => initialize_kriging
-    procedure               :: add_zonal_variogram
-    procedure               :: init_zones
     procedure               :: setup => setup_krige
     procedure               :: pset_cok
     procedure               :: filter_near_points
     procedure               :: block_cov_rhs
     procedure               :: block_sill
     procedure               :: write_amat, write_rhs_array, write_inear
-    procedure               :: write_summary => write_summary_krige
     procedure               :: finalize => finalize_krige
   end type t_krige
 !-------------------------------------------------------------------------------------------------!
@@ -167,93 +155,6 @@ end subroutine doolittle
     class(t_krige)                :: this
 
   end subroutine initialize_kriging
-
-!-------------------------------------------------------------------------------------------------!
-
-  function add_zonal_variogram(this, zone_name, class1, class2, opt, glo_nvario) result(zone_id)
-    use m_vstring, only: t_vstring
-    implicit none
-
-    class(t_krige), intent(inout) :: this
-    type(t_vstring), intent(in)   :: zone_name
-    integer, intent(in)           :: class1, class2
-    integer, intent(inout)        :: glo_nvario
-    type(t_options),intent(in)    :: opt
-    integer                       :: zone_id
-    integer                       :: i, j
-    integer                       :: vgm_idx, old_nzone
-    integer, allocatable          :: tmp(:,:,:)
-
-    if (.not.vstrlist_exists(this%zones)) then
-      call vstrlist_new(this%zones)
-      this%nzones = 0
-    end if
-
-    ! Enforce symmetry
-    i = min(class1, class2)
-    j = max(class1, class2)
-
-    ! Check if zone name exists in zones
-    zone_id = vstrlist_search(this%zones,zone_name)
-
-    if (zone_id == VSTRINGLIST_INDEX_UNKNOWN) then
-      call vstrlist_append(this%zones, zone_name)
-      zone_id = vstrlist_length(this%zones)
-
-      old_nzone = this%nzones
-      this%nzones = zone_id
-
-      allocate(tmp(0:this%nzones, size(this%global_vario_idx,2), size(this%global_vario_idx,3)))
-      tmp = -1
-
-      ! Copy existing data
-      tmp(0:old_nzone,:,:) = this%global_vario_idx(0:old_nzone,:,:)
-      tmp(zone_id,:,:) = tmp(0,:,:)
-
-      call move_alloc(tmp, this%global_vario_idx)
-    end if
-
-    ! Increment GLOBAL T2P nvario
-    glo_nvario = glo_nvario + 1
-
-    ! Calculate new variogram index
-    if (opt%ONLY_TEXTURE) then
-      vgm_idx = glo_nvario
-    else
-      vgm_idx = glo_nvario - 1  ! Pilot Point is last
-    end if
-
-    ! Assign variogram index symmetrically
-    this%global_vario_idx(zone_id, i, j) = vgm_idx
-    this%global_vario_idx(zone_id, j, i) = vgm_idx
-  end function add_zonal_variogram
-
-!-------------------------------------------------------------------------------------------------!
-
-  subroutine init_zones(this, glo_zone_names)
-    use m_file_io, only: item2char
-    use m_vstring, only: t_vstring, vstring_toupper
-    implicit none
-    class(t_krige),intent(inout)   :: this
-    type(t_vstringlist),intent(in) :: glo_zone_names
-    integer                        :: i, cat_id
-    character(32)                  :: badzone
-
-    ! Goal is to fill cat2zone so that the global HSUs can be mapped to the kriging object zones (HSUs)
-    ! (and check that all the kriging zones passed exist!)
-    if (.not. vstrlist_exists(this%zones)) return
-
-    do i=1, vstrlist_length(this%zones)
-      cat_id = vstrlist_search(glo_zone_names, vstring_toupper(vstrlist_index(this%zones,i)))
-      if (cat_id==VSTRINGLIST_INDEX_UNKNOWN) then
-        call item2char(this%zones, i, badzone)
-        call error_handler(1,opt_msg="Invalid HSU Variogram Used: "//badzone)
-      else
-        this%cat2zone(cat_id) = i
-      end if
-    end do
-
-  end subroutine init_zones
 
 !-------------------------------------------------------------------------------------------------!
 
@@ -445,45 +346,18 @@ end subroutine doolittle
 
 !-------------------------------------------------------------------------------------------------!
 
-subroutine write_summary_krige(this)
-  implicit none
-  class(t_krige),intent(inout)  :: this
-  integer                       :: i,j
-  character(len=512)            :: line, struct
-  integer, dimension(3)         :: idx
-
-  do i=1, this%nvario
-    idx = findloc(this%global_vario_idx, i)
-
-    write(line, '(A9,I2,A6,I2,A13,I2,A1,I2,A1)') " * Vario ", i, ": HSU=", idx(1), " Class Pair=(", idx(2), ",", idx(3), ")"
-    do j=1, this%nstruct(i)
-      if (j==1) then
-        write(struct, '(i5,2x,a)') j, trim(adjustl(this%variograms(j,i)%write_variogram()))
-        call log%write_line(trim(line) // ' - ' // trim(struct))
-      else
-        write(struct, '(41x,i5,2x,a)') j, this%variograms(j,i)%write_variogram()
-        call log%write_line(trim(struct))
-      end if
-    end do
-  end do
-end subroutine write_summary_krige
-
-!-------------------------------------------------------------------------------------------------!
-
   subroutine finalize_krige(this)
     implicit none
     class(t_krige),intent(inout)  :: this
 
-    if (associated(this%nnear)) deallocate(this%nnear)
     if (allocated(this%matA))    deallocate(this%matA)
     if (allocated(this%rhsB))    deallocate(this%rhsB)
     if (allocated(this%obs_idx)) deallocate(this%obs_idx)
-    if (associated(this%nstruct)) deallocate(this%nstruct)
-    if (associated(this%variograms)) deallocate(this%variograms)
-    if (allocated(this%global_vario_idx)) deallocate(this%global_vario_idx)
     if (allocated(this%vario_idx)) deallocate(this%vario_idx)
     if (allocated(this%w)) deallocate(this%w)
     if (allocated(this%pset_id)) deallocate(this%pset_id)
+
+    call finalize_kriging_base(this)
 
   end subroutine finalize_krige
 
