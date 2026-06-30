@@ -22,11 +22,11 @@ import pytest
 # ---------------------------------------------------------------------------
 
 def _find_exe() -> str:
-    if os.path.exists("bin/Texture2Par.exe"):
-        return os.path.abspath("bin/Texture2Par.exe")
     exe = os.environ.get("T2P_EXE")
     if exe:
-        return exe
+        return os.path.abspath(exe)
+    if os.path.exists("bin/Texture2Par.exe"):
+        return os.path.abspath("bin/Texture2Par.exe")
     for name in ("Texture2Par.exe", "Texture2Par", "texture2par"):
         found = shutil.which(name)
         if found:
@@ -35,6 +35,11 @@ def _find_exe() -> str:
 
 
 T2P_EXE = _find_exe()
+
+
+def pytest_report_header(config):
+    """Make the end-to-end executable under test explicit in every run."""
+    return f"Texture2Par executable: {T2P_EXE}"
 
 
 # ---------------------------------------------------------------------------

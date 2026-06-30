@@ -40,6 +40,10 @@ export T2P_EXE=/path/to/Texture2Par.exe   # Linux / macOS
 set T2P_EXE=C:\path\to\Texture2Par.exe    # Windows
 ```
 
+`T2P_EXE` takes precedence over both the repository's `bin/Texture2Par.exe`
+and executables found on `PATH`. Pytest prints the resolved executable path in
+its session header so regression baselines can be audited.
+
 **Option B – add the binary to PATH**  
 The suite searches for `Texture2Par.exe`, `Texture2Par`, and `texture2par` in
 that order.
@@ -104,6 +108,7 @@ pytest --tb=long
 |---|---|
 | `TestOrdinaryKriging` | run completes; KH written; texture bounded [0,1]; INFER classes |
 | `TestCorrectWeights` | CORRECT_WEIGHTS flag |
+| `TestCoincidentLocations` | duplicate XY/XYZ conditioning points are fatal; exact target hits remain valid |
 | `TestSGS` | flag accepted; different seeds differ; same seed reproducible; SGS + weight write incompatibility |
 | `TestWeightCaching` | WRITE/READ_GRID_WEIGHTS; WRITE/READ_PP_WEIGHTS; TEXT suffix |
 | `TestOnlyTexture` | no pilot points required; no hydraulic property files written |
@@ -131,10 +136,20 @@ a very large `MAX_SECONDARY_DIST`, such as `1e10`. Tests for default or
 restricted secondary-distance behavior should use their own reference logic or
 be treated as separate behavior/regression tests.
 
-The 3D CK Python reference follows Texture2Par's current 3D anisotropy
-convention, including the positive-downward dip / Fortran rotation-matrix
-convention. A compact traced-pair covariance regression guards against future
-dip-sign regressions in that reference helper.
+The 3D OK and CK Python references intentionally follow Texture2Par's **legacy**
+3D anisotropy convention, including the positive-downward dip / Fortran
+rotation-matrix convention. This convention is unconventional and differs from
+libkriging/scipy/GSLIB-style rotation. The current expected values, including
+those for `ANISOTROPIC_SEARCH`, must not be updated casually. They are expected
+to change deliberately during the libkriging migration, with the convention
+change reviewed as such. A compact traced-pair covariance regression guards
+the CK reference against accidental dip-sign changes in the meantime.
+
+In `INTERP_DIM 3`, processed observations remain XYZ support points; they are
+not reduced to the per-model-layer XY averages used by 2D layer interpolation.
+Grid target Z coordinates are model-layer center elevations. Duplicate
+conditioning support coordinates are fatal in either dimension, while a grid
+target coincident with one observation is a valid exact hit.
 
 ---
 

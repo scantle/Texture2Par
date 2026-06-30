@@ -80,13 +80,13 @@
 		</Filter>
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
 			<Filter Name="Data Structures">
-				<File RelativePath=".\src\Grid.f90">
-				</File>
+				<File RelativePath=".\src\Grid.f90"/>
 				<File RelativePath=".\src\Lists.f90"/>
 				<File RelativePath=".\src\Sparse_Symmetric.f90"/>
 			</Filter>
 			<Filter Name="File IO">
-				<File RelativePath=".\src\FileIO.f90"/>
+				<File RelativePath=".\src\FileIO.f90">
+				</File>
 				<File RelativePath=".\src\fpath.f90"/>
 				<File RelativePath=".\src\Read_Datasets.f90"/>
 				<File RelativePath=".\src\Read_Main_Input.f90"/>
@@ -107,8 +107,7 @@
 				<File RelativePath=".\src\FlowModel.f90"/>
 				<File RelativePath=".\src\Options.f90"/>
 				<File RelativePath=".\src\PilotPoints.f90"/>
-				<File RelativePath=".\src\T2P.f90">
-				</File>
+				<File RelativePath=".\src\T2P.f90"/>
 				<File RelativePath=".\src\weights.f90"/>
 			</Filter>
 			<Filter Name="Tools">
@@ -121,7 +120,7 @@
 				<File RelativePath=".\src\Tools.f90"/>
 			</Filter>
 			<File RelativePath=".\src\global.f90"/>
-			<File RelativePath=".\src\sgemv.f"/>
+			<File RelativePath=".\libkriging_import_test.f90"/>
 			<File RelativePath=".\src\Texture2Par.f90"/>
 			<File RelativePath=".\version.f90"/>
 		</Filter>

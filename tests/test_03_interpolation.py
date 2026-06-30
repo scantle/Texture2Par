@@ -95,6 +95,71 @@ IBOUND constant 1
 FILES = {"dataset.csv": DATASET, "grid.grd": GRD}
 
 
+DUPLICATE_GRD = """\
+NX    3
+NY    3
+NZ    1
+DX    1.0
+DY    1.0
+TOP   constant 100.0
+DZ    10.0
+IBOUND constant 1
+"""
+
+
+def _duplicate_conditioning_t2p(interp_dim: int) -> str:
+    if interp_dim == 2:
+        variogram = "Sph 0.0 1.0 10.0 10.0 0.0 10"
+    else:
+        variogram = "Sph 0.0 1.0 10.0 10.0 10.0 0.0 0.0 0.0 10"
+    return f"""\
+        BEGIN OPTIONS
+          MAX_VSTRUCT 1
+          INFER_LAST_CLASS
+          ONLY_TEXTURE
+          WRITE_NODE_FILES
+          INTERP_DIM {interp_dim}
+        END OPTIONS
+
+        BEGIN CLASSES
+          Coarse
+          Fine
+        END CLASSES
+
+        BEGIN DATASET
+          FILE dataset.csv
+        END DATASET
+
+        BEGIN FLOW_MODEL
+          TYPE GRID
+          GRID_FILE grid.grd
+        END FLOW_MODEL
+
+        BEGIN VARIOGRAMS
+          CLASS Coarse
+            1 {variogram}
+        END VARIOGRAMS
+        """
+
+
+DUPLICATE_2D_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W1,1,1,0.5,0.5,100,0,10,0.10
+W2,2,1,0.5,0.5,100,0,10,0.90
+W3,3,1,2.5,0.5,100,0,10,0.30
+W4,4,1,0.5,2.5,100,0,10,0.40
+"""
+
+
+DUPLICATE_3D_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W1,1,1,0.5,0.5,100,4,6,0.10
+W2,2,1,0.5,0.5,100,4,6,0.90
+W3,3,1,2.5,0.5,100,4,6,0.30
+W4,4,1,0.5,2.5,100,4,6,0.40
+"""
+
+
 def _read_csv_column(path: Path, col: str) -> list[float]:
     rows = list(csv.DictReader(path.read_text().splitlines()))
     return [float(r[col]) for r in rows if r.get(col, "").strip() not in ("", "nan")]
@@ -743,7 +808,53 @@ class TestCorrectWeights:
 
 
 # ---------------------------------------------------------------------------
-# 3. Sequential Gaussian Simulation (SGS)
+# 3. Conditioning/target coincidence contracts
+# ---------------------------------------------------------------------------
+
+class TestCoincidentLocations:
+
+    @staticmethod
+    def _assert_duplicate_conditioning_is_fatal(r):
+        assert r.returncode != 0, (
+            "Co-located conditioning observations must be fatal, but "
+            f"Texture2Par returned success.\n{r.combined}"
+        )
+        fatal_terms = (
+            "duplicate", "co-locat", "decompos", "factor", "singular",
+            "positive definite", "kriging matrix",
+        )
+        assert any(term in r.combined.lower() for term in fatal_terms), (
+            "Duplicate conditioning was fatal but emitted no recognizable "
+            f"diagnostic.\n{r.combined}"
+        )
+
+    def test_duplicate_xy_conditioning_is_fatal_in_2d(self, run_t2p):
+        # W1 and W2 are distinct observations that collapse to the same 2D
+        # support point after normal layer preprocessing. This is invalid.
+        r = run_t2p(
+            _duplicate_conditioning_t2p(interp_dim=2),
+            extra_files={
+                "dataset.csv": DUPLICATE_2D_DATASET,
+                "grid.grd": DUPLICATE_GRD,
+            },
+        )
+        self._assert_duplicate_conditioning_is_fatal(r)
+
+    def test_duplicate_xyz_conditioning_is_fatal_in_3d(self, run_t2p):
+        # Equal X/Y and equal interval midpoint elevation give W1 and W2 the
+        # same 3D support coordinate. Unlike an exact target hit, this is fatal.
+        r = run_t2p(
+            _duplicate_conditioning_t2p(interp_dim=3),
+            extra_files={
+                "dataset.csv": DUPLICATE_3D_DATASET,
+                "grid.grd": DUPLICATE_GRD,
+            },
+        )
+        self._assert_duplicate_conditioning_is_fatal(r)
+
+
+# ---------------------------------------------------------------------------
+# 4. Sequential Gaussian Simulation (SGS)
 # ---------------------------------------------------------------------------
 
 class TestSGS:
@@ -806,7 +917,7 @@ class TestSGS:
 
 
 # ---------------------------------------------------------------------------
-# 4. Weight caching (WRITE_*/READ_*)
+# 5. Weight caching (WRITE_*/READ_*)
 # ---------------------------------------------------------------------------
 
 class TestWeightCaching:
@@ -902,7 +1013,7 @@ IBOUND constant 1
 
 
 # ---------------------------------------------------------------------------
-# 5. ONLY_TEXTURE (Data2Texture mode)
+# 6. ONLY_TEXTURE (Data2Texture mode)
 # ---------------------------------------------------------------------------
 
 class TestOnlyTexture:
@@ -968,7 +1079,7 @@ class TestOnlyTexture:
 
 
 # ---------------------------------------------------------------------------
-# 6. MAX_LOG_LENGTH (3D log preprocessing)
+# 7. MAX_LOG_LENGTH (3D log preprocessing)
 # ---------------------------------------------------------------------------
 
 class TestMaxLogLength:
@@ -1019,12 +1130,15 @@ class TestMaxLogLength:
 
 
 # ---------------------------------------------------------------------------
-# 7. INTERP_DIM 3 grid geometry
+# 8. INTERP_DIM 3 grid geometry
 # ---------------------------------------------------------------------------
 
 class TestInterpDim3GridGeometry:
 
     def test_elevation_file_writes_top_bottoms_and_layer_centers(self, run_t2p):
+        # INTERP_DIM 3 targets the actual model-layer center elevations. Its
+        # conditioning records remain XYZ support points rather than being
+        # reduced to the per-layer XY averages used by 2D interpolation.
         r = run_t2p(
             _interp_dim3_geometry_t2p(),
             extra_files={
@@ -1052,7 +1166,7 @@ class TestInterpDim3GridGeometry:
 
 
 # ---------------------------------------------------------------------------
-# 8. Ordinary kriging in 3D
+# 9. Ordinary kriging in 3D
 # ---------------------------------------------------------------------------
 
 class TestOrdinaryKriging3D:
@@ -1074,6 +1188,10 @@ class TestOrdinaryKriging3D:
         assert schur_var == pytest.approx(aug_var, abs=1e-12)
 
     def test_variogram_rotation_metric_sanity_checks(self):
+        # Migration note: these assertions intentionally lock down the legacy
+        # Texture2Par rotation/dip convention. libkriging/scipy/GSLIB-style
+        # conventions differ, so this reference is expected to change only as
+        # an explicit migration step, not as incidental test maintenance.
         assert _effective_distance([1, 0, 0], 1.0, 4.0, 20.0) == pytest.approx(1.0)
         assert _effective_distance([0, 1, 0], 1.0, 4.0, 20.0) == pytest.approx(0.25)
         assert _effective_distance([0, 0, 1], 1.0, 4.0, 20.0) == pytest.approx(0.05)
@@ -1106,6 +1224,8 @@ class TestOrdinaryKriging3D:
             assert rotated == pytest.approx(unrotated, abs=1e-12)
 
     def test_exact_vertical_hits_preserve_layer_sequence(self, run_t2p):
+        # A target coincident with one observation is valid and must reproduce
+        # it; only duplicate conditioning support points are forbidden.
         r = run_t2p(
             _ok3d_t2p(),
             extra_files={
@@ -1285,6 +1405,8 @@ class TestOrdinaryKriging3D:
         assert np.max(np.abs(ref_est - all_ref)) > 0.01
 
     def test_anisotropic_search_changes_3d_neighbor_selection(self, run_t2p):
+        # The anisotropic search metric below uses the same legacy rotation/dip
+        # convention as the 3D covariance reference above.
         dataset = _ok3d_irregular_dataset()
         files = {"dataset.csv": dataset, "grid.grd": OK3D_INTERIOR_GRD}
 
@@ -1366,7 +1488,7 @@ class TestOrdinaryKriging3D:
 
 
 # ---------------------------------------------------------------------------
-# 9. READ_GRIDDED mode
+# 10. READ_GRIDDED mode
 # ---------------------------------------------------------------------------
 
 class TestReadGridded:
@@ -1423,7 +1545,7 @@ class TestReadGridded:
 
 
 # ---------------------------------------------------------------------------
-# 10. ANISOTROPIC_SEARCH
+# 11. ANISOTROPIC_SEARCH
 # ---------------------------------------------------------------------------
 
 class TestAnisotropicSearch:
@@ -1434,7 +1556,7 @@ class TestAnisotropicSearch:
 
 
 # ---------------------------------------------------------------------------
-# 11. NO_TEX_BOUNDS
+# 12. NO_TEX_BOUNDS
 # ---------------------------------------------------------------------------
 
 class TestNoTexBounds:
