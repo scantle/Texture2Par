@@ -137,6 +137,7 @@ mfusg := \
 t2p2 := \
     sgemv.f \
     Tools.f90 \
+    InterpolationTypes.f90 \
     kdtree2.f90 \
     ColMap.f90 \
     version.f90 \
