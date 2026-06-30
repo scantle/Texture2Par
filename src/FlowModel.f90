@@ -5,7 +5,6 @@ module m_flow_model
   use m_categories, only: t_category
   use m_options, only: t_options
   use m_cellblocks
-  !use kdtree2_module, only: kdtree2, kdtree2_create
 !-------------------------------------------------------------------------------------------------!
 ! ADDING A NEW FLOW MODEL OR GRID TYPE
 ! 1. Create a new child class inheriting from t_flow_model or t_flow_fdmodel
@@ -297,7 +296,7 @@ module m_flow_model
   !-------------------------------------------------------------------------------------------------!
 
   subroutine build_tree(this)
-    ! build KDtree for model grid
+    ! Initialize nearest-neighbor search state for model grids.
     implicit none
     class(t_flow_model)       :: this
 

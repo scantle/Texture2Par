@@ -138,7 +138,6 @@ t2p2 := \
     sgemv.f \
     Tools.f90 \
     InterpolationTypes.f90 \
-    kdtree2.f90 \
     ColMap.f90 \
     version.f90 \
     fpath.f90 \
@@ -282,7 +281,7 @@ $(OBJDIR)/variogram.obj: $(OBJDIR)/global.obj $(OBJDIR)/FileIO.obj $(FLIB_DEP) $
 $(OBJDIR)/data_transformer.obj: $(FLIB_DEP) $(OBJDIR)/ErrorHandler.obj
 $(OBJDIR)/Sparse_Symmetric.obj: $(OBJDIR)/ErrorHandler.obj
 $(OBJDIR)/Categories.obj: $(FLIB_DEP) $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj
-$(OBJDIR)/Grid.obj: $(OBJDIR)/kdtree2.obj $(OBJDIR)/cellblocks.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Tools.obj
+$(OBJDIR)/Grid.obj: $(OBJDIR)/cellblocks.obj $(OBJDIR)/ErrorHandler.obj
 $(OBJDIR)/DataSets.obj: $(OBJDIR)/global.obj $(OBJDIR)/Grid.obj $(OBJDIR)/Categories.obj
 $(OBJDIR)/weights.obj: $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj
 $(OBJDIR)/PilotPoints.obj: $(OBJDIR)/DataSets.obj $(OBJDIR)/global.obj $(OBJDIR)/Grid.obj $(FLIB_DEP) $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj
@@ -291,7 +290,7 @@ $(OBJDIR)/Options.obj: $(OBJDIR)/global.obj $(OBJDIR)/FileIO.obj $(FLIB_DEP) $(O
 $(OBJDIR)/write_fmodel.obj: $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/FileIO.obj $(OBJDIR)/DataSets.obj $(MFUSG_LIB)
 $(OBJDIR)/Interpolators.obj: $(OBJDIR)/global.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Categories.obj
 $(OBJDIR)/kriging.obj: $(OBJDIR)/global.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/variogram.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(FLIB_DEP)
-$(OBJDIR)/sgsim.obj: $(OBJDIR)/global.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/variogram.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/Sparse_Symmetric.obj $(OBJDIR)/kriging.obj $(OBJDIR)/kdtree2.obj
+$(OBJDIR)/sgsim.obj: $(OBJDIR)/global.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/variogram.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/Sparse_Symmetric.obj $(OBJDIR)/kriging.obj
 $(OBJDIR)/FlowModel.obj: $(OBJDIR)/FileIO.obj $(OBJDIR)/Grid.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Categories.obj $(OBJDIR)/Options.obj $(OBJDIR)/cellblocks.obj $(OBJDIR)/global.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/fpath.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/write_fmodel.obj $(MFUSG_LIB)
 $(OBJDIR)/subsidence_funcs.obj: $(OBJDIR)/global.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/kriging.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Options.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Grid.obj
 $(OBJDIR)/T2P.obj: $(OBJDIR)/global.obj $(FLIB_DEP) $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/FlowModel.obj $(OBJDIR)/PilotPoints.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/kriging.obj $(OBJDIR)/sgsim.obj $(OBJDIR)/Categories.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Grid.obj $(OBJDIR)/subsidence_funcs.obj $(OBJDIR)/ColMap.obj

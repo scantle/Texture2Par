@@ -9,7 +9,6 @@ module m_sgsim
   use m_options, only: t_options
   use m_sparse_symmetric, only: t_sparse_sym
   use m_kriging, only: t_treekrige, decomp, doolittle, setup_krige
-  use kdtree2_module, only: kdtree2_create, kdtree2, kdtree2_result, kdtree2_n_nearest
   implicit none
 !-------------------------------------------------------------------------------------------------!
   type, extends(t_grid)     :: t_simgrid
@@ -60,7 +59,7 @@ module m_sgsim
     type(t_simgrid),intent(inout)         :: gridxy
 
     ! Local
-    integer                     :: i,class_id, mat_tot, success, k, addsim, vidx
+    integer                     :: i,class_id, mat_tot, k, addsim, vidx
     integer, allocatable        :: igrid(:)
 
     igrid = pack([(i,i=1,to_grid%n)], to_cats==cat)
@@ -121,10 +120,10 @@ module m_sgsim
         end if
         if (opt%ANISOTROPIC_SEARCH) then
           vidx = this%vario_idx(1,k)
-          obsxy(k)%tree => kdtree2_create(obsxy(k)%coords, success, dim=obsxy(k)%dim, sort=.false., rearrange=.false., &
-                                          rotmat=this%variograms(1,vidx)%rotmat(1:this%ndim,1:this%ndim))
+          call obsxy(k)%build_tree( &
+            rotmat=this%variograms(1,vidx)%rotmat(1:this%ndim,1:this%ndim))
         else
-          obsxy(k)%tree => kdtree2_create(obsxy(k)%coords, success, dim=obsxy(k)%dim, sort=.false., rearrange=.false.)
+          call obsxy(k)%build_tree()
         end if
 
       end block
@@ -152,7 +151,6 @@ module m_sgsim
 !-------------------------------------------------------------------------------------------------!
 
   function predict_point_sgsim(this, idx, obsxy, gridxy, nsim) result(res)
-    use kdtree2_module
     implicit none
     class(t_sgsim),intent(inout)    :: this
     type(t_simgrid)                 :: obsxy(:)
@@ -166,7 +164,6 @@ module m_sgsim
     integer                         :: iset
     integer                         :: inear(this%maxnear,this%nsets), loc_usenear(this%nsets)
     real                            :: dist(this%maxnear,this%nsets), maxdist
-    type(kdtree2_result)            :: kdnearest(this%maxnear)
     real                            :: newloc(this%ndim), var0, var_reduce
 
     ! local
@@ -181,9 +178,9 @@ module m_sgsim
     do iset=1, this%nsets
       loc_usenear(iset) = min(loc_usenear(iset), count(obsxy(iset)%mask))
       if (loc_usenear(iset) == 0) cycle
-      call kdtree2_n_nearest(obsxy(iset)%tree, newloc, loc_usenear(iset), kdnearest(:loc_usenear(iset)), mask=obsxy(iset)%mask)
-      inear(:loc_usenear(iset),iset) = kdnearest(:loc_usenear(iset))%idx
-      dist (:loc_usenear(iset),iset) = kdnearest(:loc_usenear(iset))%dis
+      call obsxy(iset)%get_nnear( &
+        newloc, loc_usenear(iset), inear(:loc_usenear(iset),iset), &
+        dist(:loc_usenear(iset),iset), mask=obsxy(iset)%mask)
 
       block
         logical :: valid(loc_usenear(iset))
@@ -362,7 +359,6 @@ module m_sgsim
 
   subroutine calc_sgsim(this, obs_data, obs_idx, val_idx, to_grid, active, results, variance, catlist, to_cats, opt, layer)
     use m_weights, only: t_sosa_weights
-    use kdtree2_module
     implicit none
     class(t_sgsim),intent(inout)          :: this
     class(t_layerdata)                    :: obs_data(:)
@@ -427,8 +423,7 @@ module m_sgsim
     if (associated(this%mask))       deallocate(this%mask)
     if (associated(this%values))     deallocate(this%values)
     if (allocated (this%coords))     deallocate(this%coords)
-    if (allocated (this%true_idx))   deallocate(this%true_idx)
-    if (associated(this%tree))       deallocate(this%tree)
+    call this%burn_tree()
   end subroutine
 
   function scramble( number_of_values ) result(array)

@@ -1,6 +1,5 @@
 module InterpTests
   use assert
-  use kdtree2_module
   use m_vario
   !use m_kriging
   implicit none
