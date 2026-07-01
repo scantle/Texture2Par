@@ -3,7 +3,9 @@ module m_subsidence
   use m_global, only: log, NODATA
   use m_datasets, only: t_layerdata
   use m_interpolator, only: t_interpolator, t_idw
-  use m_kriging, only: t_krige, t_treekrige
+  use m_kriging, only: t_treekrige
+  use m_kriging_base, only: t_kriging_base
+  use m_libkriging_interpolator, only: t_libkrige
   use m_vario, only: t_vgm
   use m_options, only: t_options
   use m_error_handler, only: error_handler
@@ -50,6 +52,8 @@ module m_subsidence
     select case (opt%INTERP_METHOD)
       case("OK","SK")
         allocate(t_treekrige::interp_ib)  ! Still should use OK - mean addition/subtraction not implemented!
+      case("OK_LIB")
+        allocate(t_libkrige::interp_ib)
       case("IDW")
         allocate(t_idw::interp_ib)
       case DEFAULT
@@ -58,7 +62,7 @@ module m_subsidence
     call interp_ib%initialize()
 
     select type(p => interp_ib)
-      class is(t_krige)
+      class is(t_kriging_base)
         p%nvario     = 1
         p%nstruct    => nstruct
         p%variograms => variograms
@@ -80,7 +84,8 @@ module m_subsidence
 
     if(.not. has_ib_classes) call error_handler(1,opt_msg="Missing FINE_CLASSES in SUBSIDENCE block")
 
-    if ((opt%INTERP_METHOD=="OK".or.opt%INTERP_METHOD=="SK").and. .not.has_ib_variogram) then
+    if ((opt%INTERP_METHOD=="OK".or.opt%INTERP_METHOD=="SK".or. &
+         opt%INTERP_METHOD=="OK_LIB").and. .not.has_ib_variogram) then
       call error_handler(1,opt_msg="Missing Required VARIOGRAM argument in SUBSIDENCE block")
     end if
 

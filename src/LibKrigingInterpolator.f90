@@ -7,7 +7,7 @@ module m_libkriging_interpolator
   use m_interpolation_types, only: t_interp_request, t_interp_result, INTERP_PURPOSE_MODEL
   use m_interpolation_packers, only: pack_grid_targets, pack_layerdata_observations, &
                                      validate_unique_observations
-  use m_libkriging_adapter, only: libkriging_solve
+  use m_libkriging_adapter, only: libkriging_solve, libkriging_interpolate_many
   use m_error_handler, only: error_handler
   use m_global, only: log
   implicit none
@@ -22,6 +22,7 @@ module m_libkriging_interpolator
     real    :: sk_mean = 0.0
   contains
     procedure :: calc => calc_libkrige
+    procedure :: interpolate_many => interpolate_many_libkrige
   end type t_libkrige
 
 contains
@@ -43,7 +44,7 @@ contains
     type(t_interp_result)  :: batch
     integer                :: i, cat, zone, vgm_idx, nmax, unbias
 
-    call validate_stage6b_scope(obs_data, obs_idx, val_idx, opt)
+    call validate_ok_lib_scope(obs_data, obs_idx, val_idx, opt)
     call validate_metadata(this, obs_idx(1))
 
     results = 0.0
@@ -107,21 +108,74 @@ contains
   end subroutine calc_libkrige
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine validate_stage6b_scope(obs_data, obs_idx, val_idx, opt)
+  ! Batch values share one packed geometry. value_matrix is (observation,
+  ! value-column); estimates and variance are returned as (target,value-column).
+  subroutine interpolate_many_libkrige(this, request, value_matrix, opt, estimates, variance)
+    class(t_libkrige), intent(inout)  :: this
+    type(t_interp_request), intent(inout) :: request
+    real, intent(in)                  :: value_matrix(:,:)
+    type(t_options), intent(in)       :: opt
+    real, allocatable, intent(out)    :: estimates(:,:), variance(:,:)
+
+    integer :: zone, vgm_idx, nmax, unbias
+
+    call validate_metadata(this, request%class_id)
+    if (size(value_matrix,1) /= size(request%observation_coordinates,2)) &
+      call error_handler(4, opt_msg='OK_LIB many-value observation geometry/value shape mismatch')
+    call validate_unique_observations(request)
+    if (.not. allocated(request%observation_variance)) then
+      allocate(request%observation_variance(size(value_matrix,1)))
+      request%observation_variance = 0.0
+    end if
+
+    select case (this%kriging_mode)
+      case (LIBKRIGE_MODE_ORDINARY); unbias = 1
+      case (LIBKRIGE_MODE_SIMPLE);   unbias = 0
+      case default
+        call error_handler(4, opt_msg='OK_LIB has an invalid kriging mode')
+    end select
+
+    zone = 0
+    if (allocated(this%cat2zone)) then
+      if (request%category_id < 1 .or. request%category_id > size(this%cat2zone)) &
+        call error_handler(4, opt_msg='OK_LIB category is outside the category-to-zone map')
+      zone = this%cat2zone(request%category_id)
+    end if
+    if (zone < lbound(this%global_vario_idx,1) .or. &
+        zone > ubound(this%global_vario_idx,1)) &
+      call error_handler(4, opt_msg='OK_LIB category has no variogram zone mapping')
+    vgm_idx = this%global_vario_idx(zone, request%class_id, request%class_id)
+    if (vgm_idx < 1 .or. vgm_idx > this%nvario) &
+      call error_handler(4, opt_msg='OK_LIB could not map the category and class to a variogram')
+
+    nmax = min(this%nnear(request%class_id), size(value_matrix,1))
+    if (nmax < 1) call error_handler(4, opt_msg='OK_LIB requires NNEAR to be at least one')
+    request%zone_id = zone
+    request%search%n_nearest_primary = nmax
+    request%search%max_primary_distance = opt%MAX_PRIMARY_DIST
+    request%search%anisotropic_search = opt%ANISOTROPIC_SEARCH
+
+    call libkriging_interpolate_many(request, this%variograms(:,vgm_idx), &
+                                      this%nstruct(vgm_idx), unbias, this%sk_mean, &
+                                      value_matrix, estimates, variance)
+  end subroutine interpolate_many_libkrige
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine validate_ok_lib_scope(obs_data, obs_idx, val_idx, opt)
     class(t_layerdata)          :: obs_data(:)
     integer, intent(in)         :: obs_idx(:), val_idx(:)
     type(t_options), intent(in) :: opt
 
     if (size(obs_data) /= 1 .or. size(obs_idx) /= 1 .or. size(val_idx) /= 1) then
-      call error_handler(4, opt_msg='OK_LIB Stage 6B supports one primary variable and no covariates/cokriging')
+      call error_handler(4, opt_msg='OK_LIB currently supports one primary variable; cokriging is not supported')
     end if
     if (opt%NSIM > 0) &
-      call error_handler(1, opt_msg='OK_LIB does not support SGSIM in Stage 6B')
+      call error_handler(1, opt_msg='OK_LIB does not currently support SGSIM')
     if (opt%BLOCK_KRIGE > 0) &
-      call error_handler(1, opt_msg='OK_LIB does not support block kriging in Stage 6B')
+      call error_handler(1, opt_msg='OK_LIB does not currently support block kriging')
     if (opt%READ_GRID_WEIGHTS .or. opt%WRITE_GRID_WEIGHTS) &
-      call error_handler(1, opt_msg='OK_LIB does not support READ_GRID_WEIGHTS or WRITE_GRID_WEIGHTS in Stage 6B')
-  end subroutine validate_stage6b_scope
+      call error_handler(1, opt_msg='OK_LIB does not support READ_GRID_WEIGHTS or WRITE_GRID_WEIGHTS currently')
+  end subroutine validate_ok_lib_scope
 !-------------------------------------------------------------------------------------------------!
 
   subroutine validate_metadata(this, class_id)

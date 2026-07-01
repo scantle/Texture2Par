@@ -116,11 +116,13 @@ IBOUND constant 1
 """
 
 
-def _ok_lib_2d_t2p(options_extra="", flow_extra="") -> str:
+def _ok_lib_2d_t2p(options_extra="", flow_extra="", method="OK_LIB",
+                   variogram_lines="1 Sph 0.0 1.0 10.0 10.0 0.0 4",
+                   max_vstruct=1) -> str:
     return f"""\
         BEGIN OPTIONS
-          MAX_VSTRUCT 1
-          INTERP_METHOD OK_LIB
+          MAX_VSTRUCT {max_vstruct}
+          INTERP_METHOD {method}
           INFER_LAST_CLASS
           ONLY_TEXTURE
           WRITE_NODE_FILES
@@ -145,9 +147,35 @@ def _ok_lib_2d_t2p(options_extra="", flow_extra="") -> str:
 
         BEGIN VARIOGRAMS
           CLASS Coarse
-            1 Sph 0.0 1.0 10.0 10.0 0.0 4
+            {variogram_lines}
         END VARIOGRAMS
         """
+
+
+OK_LIB_2D_PARITY_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W1,1,1,0.10,0.20,100,0,10,0.10
+W2,2,1,1.90,0.10,100,0,10,0.35
+W3,3,1,0.20,1.80,100,0,10,0.65
+W4,4,1,1.80,1.90,100,0,10,0.90
+W5,5,1,1.10,1.60,100,0,10,0.55
+"""
+
+
+OK_LIB_NNEAR_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W1,1,1,0.40,0.50,100,0,10,0.11
+W2,2,1,1.80,0.40,100,0,10,0.33
+W3,3,1,0.30,1.80,100,0,10,0.66
+W4,4,1,1.90,1.90,100,0,10,0.88
+"""
+
+
+OK_LIB_ANISO_SEARCH_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+MinorAxis,1,1,0.50,0.70,100,0,10,0.10
+MajorAxis,2,1,1.60,0.50,100,0,10,0.90
+"""
 
 
 DUPLICATE_GRD = """\
@@ -577,7 +605,9 @@ def _ok3d_multi_t2p(vgm=OK3D_MULTI_VGM, extra_options="") -> str:
         """
 
 
-def _read_coarse_texture_output(r) -> pd.DataFrame:
+def _read_coarse_texture_output(
+    r, required_layers=("Layer1", "Layer2", "Layer3")
+) -> pd.DataFrame:
     candidates = sorted(
         path for path in r.workdir.glob("*Coarse*.csv")
         if all(
@@ -590,7 +620,7 @@ def _read_coarse_texture_output(r) -> pd.DataFrame:
         pytest.fail(f"No Coarse texture node output found. Workdir files:\n{files}")
 
     df = pd.read_csv(candidates[0])
-    required = {"Layer1", "Layer2", "Layer3"}
+    required = set(required_layers)
     missing = required - set(df.columns)
     if missing:
         pytest.fail(
@@ -671,6 +701,86 @@ def _ok3d_covariance(vtype, hr):
     if vtype == "gau":
         return np.exp(-49.0 / 16.0 * hr**2)
     raise ValueError(f"Unsupported covariance function {vtype!r}")
+
+
+def _libkriging_gslib_rotmat(
+    hmin, hmax, hvert, azimuth=0.0, dip=0.0, plunge=0.0
+):
+    """Return libkriging's GSLIB-style lag rotation and range scaling."""
+    transform = np.diag([1.0 / hmin, 1.0 / hmax, 1.0 / hvert])
+
+    plunge_rad = np.deg2rad(-plunge)
+    cp, sp = np.cos(plunge_rad), np.sin(plunge_rad)
+    rotate_y = np.array([
+        [cp, 0.0, sp],
+        [0.0, 1.0, 0.0],
+        [-sp, 0.0, cp],
+    ])
+
+    dip_rad = np.deg2rad(dip)
+    cd, sd = np.cos(dip_rad), np.sin(dip_rad)
+    rotate_x = np.array([
+        [1.0, 0.0, 0.0],
+        [0.0, cd, sd],
+        [0.0, -sd, cd],
+    ])
+
+    azimuth_rad = np.deg2rad(azimuth)
+    ca, sa = np.cos(azimuth_rad), np.sin(azimuth_rad)
+    rotate_z = np.array([
+        [ca, -sa, 0.0],
+        [sa, ca, 0.0],
+        [0.0, 0.0, 1.0],
+    ])
+    return transform @ rotate_y @ rotate_x @ rotate_z
+
+
+def _ok_lib_gslib_reference(
+    obsloc,
+    obsval,
+    newloc,
+    *,
+    vtype="sph",
+    nugget=0.0,
+    sill=1.0,
+    hmin,
+    hmax,
+    hvert,
+    azimuth=0.0,
+    dip=0.0,
+    plunge=0.0,
+):
+    """Ordinary kriging with libkriging's convention, independent of legacy OK."""
+    obsloc = np.asarray(obsloc, dtype=float)
+    obsval = np.asarray(obsval, dtype=float)
+    newloc = np.asarray(newloc, dtype=float)
+    ndim = obsloc.shape[1]
+    transform = _libkriging_gslib_rotmat(
+        hmin, hmax, hvert, azimuth, dip, plunge
+    )[:ndim, :ndim]
+    scaled_obs = (transform @ obsloc.T).T
+    scaled_new = (transform @ newloc.T).T
+
+    cov0 = nugget + sill
+    c_obs = _ok3d_covariance(vtype, squareform(pdist(scaled_obs))) * sill
+    np.fill_diagonal(c_obs, cov0)
+    rhs_dist = cdist(scaled_obs, scaled_new)
+    c_rhs = _ok3d_covariance(vtype, rhs_dist) * sill
+    if nugget > 0.0:
+        c_rhs = c_rhs + np.where(rhs_dist < 1e-10, nugget, 0.0)
+
+    nobs = len(obsloc)
+    lhs = np.zeros((nobs + 1, nobs + 1))
+    lhs[:nobs, :nobs] = c_obs
+    lhs[:nobs, nobs] = 1.0
+    lhs[nobs, :nobs] = 1.0
+    rhs = np.vstack([c_rhs, np.ones((1, len(newloc)))])
+    solved = np.linalg.solve(lhs, rhs)
+    weights = solved[:nobs, :]
+    mu = solved[nobs, :]
+    estimates = obsval @ weights
+    variance = np.maximum(0.0, cov0 - (weights * c_rhs).sum(axis=0) - mu)
+    return estimates, variance
 
 
 def _ok_reference_3d(obsloc, obsval, newloc, vgm):
@@ -895,34 +1005,326 @@ class TestLibKrigingOrdinary:
             [0.10, 0.50, 0.90], abs=1e-10
         )
 
-    def test_ok_lib_keeps_legacy_pilot_point_interpolation(self, run_t2p):
+    def test_ok_lib_matches_legacy_ok_for_isotropic_2d(self, run_t2p):
+        # Isotropic parity is intentional. Anisotropic OK and OK_LIB use
+        # different rotation conventions and must not share this assertion.
+        files = {
+            "dataset.csv": OK_LIB_2D_PARITY_DATASET,
+            "grid.grd": OK_LIB_2D_GRD,
+        }
+        legacy = run_t2p(
+            _ok_lib_2d_t2p(method="OK", options_extra="WRITE_VARIANCE"),
+            extra_files=files,
+        )
+        lib = run_t2p(
+            _ok_lib_2d_t2p(options_extra="WRITE_VARIANCE"),
+            extra_files=files,
+        )
+        assert legacy.returncode == 0, legacy.combined
+        assert lib.returncode == 0, lib.combined
+        legacy_values = _read_coarse_texture_output(
+            legacy, ("Layer1",)
+        ).sort_values(["X", "Y"])
+        lib_values = _read_coarse_texture_output(
+            lib, ("Layer1",)
+        ).sort_values(["X", "Y"])
+        assert lib_values["Layer1"].tolist() == pytest.approx(
+            legacy_values["Layer1"].tolist(), abs=2e-6
+        )
+
+    def test_ok_lib_matches_legacy_ok_for_isotropic_3d(self, run_t2p):
+        isotropic_vgm = "Sph 0.01 0.99 20.0 20.0 20.0 0.0 0.0 0.0 20"
+        files = {
+            "dataset.csv": _ok3d_irregular_dataset(),
+            "grid.grd": OK3D_INTERIOR_GRD,
+        }
+        legacy = run_t2p(
+            _ok3d_multi_t2p(vgm=isotropic_vgm), extra_files=files
+        )
+        lib = run_t2p(
+            _ok3d_multi_t2p(
+                vgm=isotropic_vgm, extra_options="INTERP_METHOD OK_LIB"
+            ),
+            extra_files=files,
+        )
+        assert legacy.returncode == 0, legacy.combined
+        assert lib.returncode == 0, lib.combined
+        legacy_values = _read_coarse_texture_output(legacy).sort_values(["X", "Y"])
+        lib_values = _read_coarse_texture_output(lib).sort_values(["X", "Y"])
+        for layer in ("Layer1", "Layer2", "Layer3"):
+            assert lib_values[layer].tolist() == pytest.approx(
+                legacy_values[layer].tolist(), abs=3e-6
+            )
+
+    def test_ok_lib_nnear_one_uses_nearest_observation(self, run_t2p):
+        r = run_t2p(
+            _ok_lib_2d_t2p(
+                variogram_lines="1 Sph 0.0 1.0 10.0 10.0 0.0 1"
+            ),
+            extra_files={
+                "dataset.csv": OK_LIB_NNEAR_DATASET,
+                "grid.grd": OK_LIB_2D_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+        df = _read_coarse_texture_output(r, ("Layer1",))
+        target = df[(df["X"] == 0.5) & (df["Y"] == 0.5)].iloc[0]
+        assert target["Layer1"] == pytest.approx(0.11, abs=1e-10)
+
+    def test_ok_lib_2d_anisotropy_matches_gslib_reference(self, run_t2p):
+        # This is intentionally a libkriging/GSLIB-convention test, not a
+        # parity comparison with legacy Texture2Par OK.
+        rows = list(csv.DictReader(OK_LIB_2D_PARITY_DATASET.splitlines()))
+        obsloc = np.array([[float(row["X"]), float(row["Y"])] for row in rows])
+        obsval = np.array([float(row["Coarse"]) for row in rows])
+        params = dict(hmin=0.6, hmax=4.0, hvert=4.0, azimuth=35.0)
+        r = run_t2p(
+            _ok_lib_2d_t2p(
+                options_extra="WRITE_VARIANCE",
+                variogram_lines="1 Sph 0.0 1.0 0.6 4.0 35.0 5",
+            ),
+            extra_files={
+                "dataset.csv": OK_LIB_2D_PARITY_DATASET,
+                "grid.grd": OK_LIB_2D_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+        df = _read_coarse_texture_output(r, ("Layer1",)).sort_values(["X", "Y"])
+        targets = df[["X", "Y"]].to_numpy(dtype=float)
+        ref_est, ref_var = _ok_lib_gslib_reference(
+            obsloc, obsval, targets, **params
+        )
+        iso_est, _ = _ok_lib_gslib_reference(
+            obsloc, obsval, targets, hmin=4.0, hmax=4.0, hvert=4.0
+        )
+
+        assert df["Layer1"].to_numpy() == pytest.approx(ref_est, abs=3e-6)
+        assert df["Var_Layer1"].to_numpy() == pytest.approx(ref_var, abs=6e-6)
+        assert np.max(np.abs(ref_est - iso_est)) > 0.01
+
+    def test_ok_lib_3d_dip_anisotropy_matches_gslib_reference(self, run_t2p):
+        # Positive dip and angle order follow libkriging/GSLIB here. The legacy
+        # _ok_reference_3d helper is deliberately not used.
+        dataset = _ok3d_irregular_dataset()
+        vgm = "Sph 0.0 1.0 1.2 4.0 12.0 25.0 20.0 -15.0 20"
+        r = run_t2p(
+            _ok3d_multi_t2p(
+                vgm=vgm, extra_options="INTERP_METHOD OK_LIB"
+            ),
+            extra_files={"dataset.csv": dataset, "grid.grd": OK3D_INTERIOR_GRD},
+        )
+        assert r.returncode == 0, r.combined
+        df = _read_coarse_texture_output(r).sort_values(["X", "Y"])
+        targets, t2p_est, t2p_var = _coarse_output_to_arrays(df)
+        obsloc, obsval = _ok3d_observations_from_dataset(dataset)
+        params = dict(
+            hmin=1.2,
+            hmax=4.0,
+            hvert=12.0,
+            azimuth=25.0,
+            dip=20.0,
+            plunge=-15.0,
+        )
+        ref_est, ref_var = _ok_lib_gslib_reference(
+            obsloc, obsval, targets, **params
+        )
+        zero_angle_est, _ = _ok_lib_gslib_reference(
+            obsloc, obsval, targets, hmin=1.2, hmax=4.0, hvert=12.0
+        )
+
+        assert t2p_est.ravel() == pytest.approx(ref_est, abs=6e-6)
+        assert t2p_var.ravel() == pytest.approx(ref_var, abs=6e-6)
+        assert np.max(np.abs(ref_est - zero_angle_est)) > 0.01
+
+    def test_ok_lib_anisotropic_search_uses_first_structure_and_angle(
+        self, run_t2p
+    ):
+        # At (0.5, 0.5), the 0.10 observation is Euclidean-nearest, while the
+        # 0.90 observation is nearest after rotating the GSLIB search ellipse
+        # 90 degrees (minor=1, major=10). The isotropic second structure must
+        # not replace the first structure's transitional search parameters.
+        files = {
+            "dataset.csv": OK_LIB_ANISO_SEARCH_DATASET,
+            "grid.grd": OK_LIB_2D_GRD,
+        }
+        variogram = (
+            "1 Sph 0.0 0.6 1.0 10.0 90.0 1\n"
+            "            2 Sph 0.0 0.4 10.0 10.0 0.0 1"
+        )
+        isotropic_search = run_t2p(
+            _ok_lib_2d_t2p(variogram_lines=variogram, max_vstruct=2),
+            extra_files=files,
+        )
+        assert isotropic_search.returncode == 0, isotropic_search.combined
+        isotropic_df = _read_coarse_texture_output(
+            isotropic_search, ("Layer1",)
+        )
+        isotropic_value = isotropic_df[
+            (isotropic_df["X"] == 0.5) & (isotropic_df["Y"] == 0.5)
+        ].iloc[0]["Layer1"]
+
+        anisotropic_search = run_t2p(
+            _ok_lib_2d_t2p(
+                options_extra="ANISOTROPIC_SEARCH",
+                variogram_lines=variogram,
+                max_vstruct=2,
+            ),
+            extra_files=files,
+        )
+        assert anisotropic_search.returncode == 0, anisotropic_search.combined
+        anisotropic_df = _read_coarse_texture_output(
+            anisotropic_search, ("Layer1",)
+        )
+        anisotropic_value = anisotropic_df[
+            (anisotropic_df["X"] == 0.5) & (anisotropic_df["Y"] == 0.5)
+        ].iloc[0]["Layer1"]
+
+        assert isotropic_value == pytest.approx(0.10, abs=1e-10)
+        assert anisotropic_value == pytest.approx(0.90, abs=1e-10)
+
+    def test_ok_lib_nested_structures_match_legacy_ok(self, run_t2p):
+        structures = (
+            "1 Sph 0.02 0.58 2.5 2.5 0.0 5\n"
+            "            2 Exp 0.00 0.40 6.0 6.0 0.0 5"
+        )
+        files = {
+            "dataset.csv": OK_LIB_2D_PARITY_DATASET,
+            "grid.grd": OK_LIB_2D_GRD,
+        }
+        legacy = run_t2p(
+            _ok_lib_2d_t2p(
+                method="OK", variogram_lines=structures, max_vstruct=2
+            ),
+            extra_files=files,
+        )
+        lib = run_t2p(
+            _ok_lib_2d_t2p(variogram_lines=structures, max_vstruct=2),
+            extra_files=files,
+        )
+        assert legacy.returncode == 0, legacy.combined
+        assert lib.returncode == 0, lib.combined
+        legacy_values = _read_coarse_texture_output(
+            legacy, ("Layer1",)
+        ).sort_values(["X", "Y"])
+        lib_values = _read_coarse_texture_output(
+            lib, ("Layer1",)
+        ).sort_values(["X", "Y"])
+        assert lib_values["Layer1"].tolist() == pytest.approx(
+            legacy_values["Layer1"].tolist(), abs=3e-6
+        )
+
+    @pytest.mark.parametrize(
+        "vtype", ["Sph", "Exp", "Hol", "Gau", "Pow", "Cir", "Lin"]
+    )
+    def test_ok_lib_supported_variogram_mapping_exact_hits(self, run_t2p, vtype):
+        r = run_t2p(
+            _ok_lib_2d_t2p(
+                variogram_lines=f"1 {vtype} 0.0 1.0 10.0 10.0 0.0 1"
+            ),
+            extra_files=self._files(),
+        )
+        assert r.returncode == 0, r.combined
+        values = _read_coarse_texture_output(
+            r, ("Layer1",)
+        ).sort_values(["X", "Y"])["Layer1"]
+        assert values.tolist() == pytest.approx([0.10, 0.30, 0.20, 0.40], abs=1e-10)
+
+    def test_ok_lib_pilot_point_run_writes_hydraulic_files(self, run_t2p):
         r = run_t2p(
             _grid_t2p(options_extra="INTERP_METHOD OK_LIB"),
             extra_files=FILES,
         )
         assert r.returncode == 0, r.combined
-        assert list(r.workdir.glob("*KH*")), "Legacy pilot-point path produced no KH output"
+        for property_name in ("KH", "KV", "SS", "SY"):
+            assert list(r.workdir.glob(f"*{property_name}*")), (
+                f"OK_LIB pilot-point run produced no {property_name} output"
+            )
 
-    def test_ok_lib_duplicate_conditioning_is_fatal(self, run_t2p):
-        t2p = _duplicate_conditioning_t2p(interp_dim=2).replace(
+    def test_ok_lib_pilot_points_match_legacy_ok_isotropic(self, run_t2p):
+        def two_pilot_input(method=""):
+            t2p = _grid_t2p(options_extra=method)
+            t2p = t2p.replace(
+                "1 5050.0 4005.0 1",
+                "1 5050.0 4005.0 1\n          2 8050.0 4005.0 1",
+            )
+            t2p = t2p.replace(
+                "1  0.5  -0.5  0.0",
+                "1  0.5  -0.5  0.0\n          2  0.8  -0.2  0.2",
+            )
+            t2p = t2p.replace(
+                "1 Coarse  0.1  100.0  1e-5  0.15  10.0  0.001",
+                "1 Coarse  0.1  100.0  1e-5  0.15  10.0  0.001\n"
+                "          2 Coarse  0.2  120.0  2e-5  0.18   8.0  0.002",
+            )
+            t2p = t2p.replace(
+                "1 Fine  0.001    0.5  1e-4  0.05   5.0  0.001",
+                "1 Fine  0.001    0.5  1e-4  0.05   5.0  0.001\n"
+                "          2 Fine  0.002    0.8  2e-4  0.08   4.0  0.002",
+            )
+            return t2p
+
+        legacy = run_t2p(two_pilot_input(), extra_files=FILES)
+        lib = run_t2p(
+            two_pilot_input("INTERP_METHOD OK_LIB"),
+            extra_files=FILES,
+        )
+        assert legacy.returncode == 0, legacy.combined
+        assert lib.returncode == 0, lib.combined
+        for property_name in ("KH", "KV", "SS", "SY"):
+            legacy_files = sorted(legacy.workdir.glob(f"*{property_name}*"))
+            lib_files = sorted(lib.workdir.glob(f"*{property_name}*"))
+            assert legacy_files and lib_files
+            legacy_values = pd.read_csv(legacy_files[0])
+            lib_values = pd.read_csv(lib_files[0])
+            pd.testing.assert_frame_equal(
+                lib_values, legacy_values, check_exact=False, atol=2e-6, rtol=2e-6
+            )
+
+    def test_ok_lib_cokriging_request_is_fatal(self, run_t2p):
+        t2p = _ok_lib_2d_t2p().replace(
+            "END CLASSES",
+            "END CLASSES\n\n"
+            "        BEGIN COVARIATES\n"
+            "          Coarse Rho\n"
+            "        END COVARIATES",
+            1,
+        )
+        r = run_t2p(t2p, extra_files=self._files())
+        assert r.returncode != 0
+        assert "does not" in r.combined.lower()
+        assert "cokriging" in r.combined.lower()
+
+    @pytest.mark.parametrize(
+        ("interp_dim", "dataset"),
+        [(2, DUPLICATE_2D_DATASET), (3, DUPLICATE_3D_DATASET)],
+    )
+    def test_ok_lib_duplicate_conditioning_is_fatal(
+        self, run_t2p, interp_dim, dataset
+    ):
+        t2p = _duplicate_conditioning_t2p(interp_dim=interp_dim).replace(
             "MAX_VSTRUCT 1", "MAX_VSTRUCT 1\n          INTERP_METHOD OK_LIB"
         )
         r = run_t2p(
             t2p,
             extra_files={
-                "dataset.csv": DUPLICATE_2D_DATASET,
+                "dataset.csv": dataset,
                 "grid.grd": DUPLICATE_GRD,
             },
         )
         assert r.returncode != 0
-        assert "co-located data point" in r.combined.lower()
+        assert "co-located" in r.combined.lower()
 
     @pytest.mark.parametrize(
         ("options_extra", "flow_extra", "diagnostic"),
         [
-            ("SGSIM", "", "does not support SGSIM"),
-            ("WRITE_GRID_WEIGHTS", "", "does not support grid weight"),
-            ("", "BLOCK_MODE", "does not support block kriging"),
+            ("SGSIM", "", "support SGSIM"),
+            ("WRITE_GRID_WEIGHTS", "", "grid weight"),
+            ("READ_GRID_WEIGHTS", "", "grid weight"),
+            ("READ_PP_WEIGHTS", "", "pilot-point weight"),
+            ("WRITE_PP_WEIGHTS", "", "pilot-point weight"),
+            ("READ_IB_WEIGHTS", "", "interbed weight"),
+            ("WRITE_IB_WEIGHTS", "", "interbed weight"),
+            ("", "BLOCK_MODE", "block kriging"),
         ],
     )
     def test_ok_lib_unsupported_combinations_are_fatal(

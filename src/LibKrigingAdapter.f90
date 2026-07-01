@@ -19,6 +19,7 @@ module m_libkriging_adapter
 
   public :: libkriging_adapter_smoke_test
   public :: libkriging_solve
+  public :: libkriging_interpolate_many
 
 contains
 
@@ -107,6 +108,111 @@ contains
       call error_handler(4, opt_msg='OK_LIB: '//trim(failure))
     end if
   end subroutine libkriging_solve
+!-------------------------------------------------------------------------------------------------!
+
+  ! Interpolate many value columns over one packed observation/target geometry.
+  ! value_matrix is (observation, value-column); estimates and variance are
+  ! (target, value-column).
+  subroutine libkriging_interpolate_many(request, variograms, nstruct, unbias, sk_mean, &
+                                         value_matrix, estimates, variance)
+    type(t_interp_request), intent(in)   :: request
+    type(t_vgm), intent(in)              :: variograms(:)
+    integer, intent(in)                  :: nstruct, unbias
+    real, intent(in)                     :: sk_mean
+    real, intent(in)                     :: value_matrix(:,:)
+    real, allocatable, intent(out)       :: estimates(:,:), variance(:,:)
+
+    type(t_kriging)        :: solver
+    character(3)           :: vtype
+    character(:), allocatable :: failure
+    integer                :: column, i, nobs, ntarget, nvalues
+    logical                :: initialized, succeeded
+
+    initialized = .false.
+    succeeded = .false.
+    nobs = size(request%observation_coordinates, 2)
+    ntarget = size(request%target_coordinates, 2)
+    nvalues = size(value_matrix, 2)
+    if (size(value_matrix, 1) /= nobs) then
+      call error_handler(4, opt_msg='OK_LIB many-value observation geometry/value shape mismatch')
+    end if
+
+    allocate(estimates(ntarget, nvalues), variance(ntarget, nvalues))
+    estimates = 0.0
+    variance = 0.0
+    if (ntarget == 0 .or. nvalues == 0) return
+
+    if (request%dimension < 2 .or. request%dimension > 3) then
+      call error_handler(4, opt_msg='OK_LIB supports only 2D and 3D interpolation')
+    end if
+    if (nstruct < 1 .or. nstruct > size(variograms)) then
+      call error_handler(4, opt_msg='OK_LIB received an invalid variogram structure count')
+    end if
+
+    call kriging_clear_error()
+    ! store_weight retains the first solve's neighbours, weights, and variances
+    ! for value columns sharing the same observation and target geometry.
+    call solver%initialize(ndim=request%dimension, nvar=1, unbias=unbias, &
+                           anisotropic_search=request%search%anisotropic_search, &
+                           store_weight=nvalues > 1, verbose=.false.)
+    initialized = .true.
+    if (kriging_failed()) goto 900
+
+    if (unbias == 0) then
+      call solver%set_obs(1, request%observation_coordinates, value_matrix(:,1), &
+                          request%observation_variance, sk_mean=sk_mean)
+    else
+      call solver%set_obs(1, request%observation_coordinates, value_matrix(:,1), &
+                          request%observation_variance)
+    end if
+    if (kriging_failed()) goto 900
+
+    call solver%set_grid(request%target_coordinates)
+    if (kriging_failed()) goto 900
+
+    do i = 1, nstruct
+      vtype = libkriging_variogram_type(variograms(i)%itype)
+      call solver%set_vgm(1, 1, vtype=vtype, nugget=variograms(i)%nugget, &
+                          sill=variograms(i)%sill, a_major=variograms(i)%a_hmax, &
+                          a_minor1=variograms(i)%a_hmin, a_minor2=variograms(i)%a_vert, &
+                          azimuth=variograms(i)%ang1, dip=variograms(i)%ang2, &
+                          plunge=variograms(i)%ang3)
+      if (kriging_failed()) goto 900
+    end do
+
+    if (request%search%anisotropic_search) then
+      call set_search_anisotropic(solver, request, variograms(1))
+    else
+      call set_search_isotropic(solver, request)
+    end if
+    if (kriging_failed()) goto 900
+
+    call solver%solve(nthread=1)
+    if (kriging_failed() .or. .not. solver%solved) goto 900
+    estimates(:,1) = solver%block%value(1,1,:)
+    variance(:,1) = solver%block%variance(1,1,:)
+
+    do column = 2, nvalues
+      ! update_obs_value preserves observation variance and activates reuse of
+      ! the populated in-memory weights. External Texture2Par READ/WRITE weight
+      ! files remain a separate compatibility task.
+      call solver%update_obs_value(1, value_matrix(:,column))
+      if (kriging_failed()) goto 900
+      call solver%solve(nthread=1)
+      if (kriging_failed() .or. .not. solver%solved) goto 900
+      estimates(:,column) = solver%block%value(1,1,:)
+      variance(:,column) = solver%block%variance(1,1,:)
+    end do
+    succeeded = .true.
+
+900 continue
+    if (.not. succeeded) failure = kriging_last_error()
+    if (initialized) call solver%finalize()
+    if (.not. succeeded) then
+      if (len_trim(failure) == 0) failure = 'libkriging many-value solve did not complete'
+      call error_handler(4, opt_msg='OK_LIB: '//trim(failure))
+    end if
+  end subroutine libkriging_interpolate_many
 !-------------------------------------------------------------------------------------------------!
 
   subroutine set_search_isotropic(solver, request)

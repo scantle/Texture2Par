@@ -107,6 +107,7 @@ pytest --tb=long
 | Class | What it checks |
 |---|---|
 | `TestOrdinaryKriging` | run completes; KH written; texture bounded [0,1]; INFER classes |
+| `TestLibKrigingOrdinary` | optional OK_LIB data and pilot-point interpolation; 2D/3D isotropic parity; explicit libkriging/GSLIB anisotropy and anisotropic-search coverage; NNEAR; nested structures; supported variogram mappings; duplicate and unsupported-feature diagnostics |
 | `TestCorrectWeights` | CORRECT_WEIGHTS flag |
 | `TestCoincidentLocations` | duplicate XY/XYZ conditioning points are fatal; exact target hits remain valid |
 | `TestSGS` | flag accepted; different seeds differ; same seed reproducible; SGS + weight write incompatibility |
@@ -144,6 +145,29 @@ those for `ANISOTROPIC_SEARCH`, must not be updated casually. They are expected
 to change deliberately during the libkriging migration, with the convention
 change reviewed as such. A compact traced-pair covariance regression guards
 the CK reference against accidental dip-sign changes in the meantime.
+
+`OK_LIB` parity tests are therefore deliberately isotropic. `OK_LIB` passes
+angles to libkriging using its GSLIB-style rotation convention, while legacy
+`OK` retains Texture2Par's historical convention. Any anisotropic `OK_LIB`
+test must state which convention it validates and must not reuse legacy
+anisotropic expectations without explicitly documenting the expected
+difference. The two sets of anisotropic tests must not be merged into one
+parity expectation. Cutting over default `OK` to libkriging will intentionally
+change anisotropic results where the historical rotation convention differs.
+
+`ANISOTROPIC_SEARCH` controls only the `OK_LIB` neighbor-selection metric;
+covariance evaluation continues to use every structure's own variogram
+anisotropy regardless of that flag. Search currently uses the first variogram
+structure's major/minor range ratios and angles. Sector search remains a TODO
+and is not exposed by Texture2Par in this migration stage.
+
+At this migration stage, `OK_LIB` is optional and applies to dataset,
+pilot-point, and interbed ordinary kriging. The pilot-point and interbed paths
+pack geometry once per category and interpolate multiple value columns through
+the libkriging adapter. The first solve stores libkriging's in-memory weights;
+later columns update only the observation values and reuse those weights.
+Legacy PP/IB weight files are intentionally unsupported under `OK_LIB`; normal
+`OK` continues to use its existing dense-weight paths.
 
 In `INTERP_DIM 3`, processed observations remain XYZ support points; they are
 not reduced to the per-model-layer XY averages used by 2D layer interpolation.

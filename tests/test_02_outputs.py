@@ -406,6 +406,52 @@ class TestSubsidenceOutputs:
         assert all(v >= 0 for v in vals if not math.isnan(v)), \
             "IB_THK contains negative values"
 
+    def test_ok_lib_subsidence_outputs_are_complete_and_sane(self, run_t2p):
+        t2p = self._sub_t2p().replace(
+            "MAX_VSTRUCT 1",
+            "MAX_VSTRUCT 1\n              INTERP_METHOD OK_LIB",
+            1,
+        )
+        r = run_t2p(
+            t2p,
+            extra_files={"dataset.csv": SUBSIDENCE_DATASET, "grid.grd": GRD},
+        )
+        assert r.returncode == 0, r.combined
+
+        interbed_files = sorted(
+            set(r.workdir.glob("*IB_*")) | set(r.workdir.glob("*ib_*"))
+        )
+        assert interbed_files, "OK_LIB subsidence run produced no interbed outputs"
+        active_by_output = {}
+        for path in interbed_files:
+            rows = _csv_rows(path)
+            assert len(rows) == 25, f"Unexpected grid-row count in {path.name}"
+            active_values = []
+            for row in rows:
+                for key, raw in row.items():
+                    if key.upper() in (
+                        "X", "Y", "LAYER", "NODE", "ROW", "COL", "COLUMN"
+                    ):
+                        continue
+                    value = float(raw)
+                    assert math.isfinite(value), f"Non-finite value in {path.name}"
+                    if value > -999.0:
+                        active_values.append(value)
+                        assert value >= 0.0, f"Negative interbed value in {path.name}"
+            assert active_values, f"No active interbed values in {path.name}"
+            active_by_output[path.stem.upper()] = active_values
+
+        expected = {"IB_COUNT": 1.0, "IB_THICK": 2.0, "IB_THICKSQ": 4.0}
+        for output_name, expected_value in expected.items():
+            matches = [
+                values for name, values in active_by_output.items()
+                if name.endswith(output_name)
+            ]
+            assert len(matches) == 1, f"Missing OK_LIB {output_name} output"
+            assert matches[0] == pytest.approx(
+                [expected_value] * len(matches[0]), abs=1e-10
+            )
+
 
 # ---------------------------------------------------------------------------
 # 7. Row count sanity (5×5 grid, 2 layers = 50 nodes per layer file)

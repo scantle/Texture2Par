@@ -1,5 +1,5 @@
 module m_T2P
-  use m_global, only: NODATA
+  use m_global, only: NODATA, log
   use m_vstringlist
   use m_vstring, only: t_vstring, vstring_toupper
   use m_error_handler, only: error_handler,warning_handler,warnings
@@ -11,6 +11,10 @@ module m_T2P
   use m_kriging_base, only: t_kriging_base
   use m_kriging, only: t_globkrige, t_treekrige
   use m_libkriging_interpolator, only: t_libkrige
+  use m_interpolation_types, only: t_interp_request, INTERP_PURPOSE_PILOT_POINT, &
+                                   INTERP_PURPOSE_INTERBED
+  use m_interpolation_packers, only: pack_grid_targets, pack_layerdata_observations, &
+                                     pack_pilotpoint_observations
   use m_sgsim, only: t_sgsim
   use m_categories, only: t_category
   use m_vario, only: t_vgm
@@ -239,12 +243,15 @@ module m_T2P
         this%opt%INTERP_SECOND_OK = .true.
       case("OK_LIB")
         allocate(t_libkrige::this%interp_data)
-        ! Stage 6B keeps pilot-point interpolation and its weight reuse on the legacy OK backend.
-        allocate(t_treekrige::this%interp_pp)
+        allocate(t_libkrige::this%interp_pp)
         if (this%opt%NSIM > 0) &
-          call error_handler(1,opt_msg='OK_LIB does not support SGSIM in Stage 6B')
+          call error_handler(1,opt_msg='OK_LIB does not currently support SGSIM')
         if (this%opt%WRITE_GRID_WEIGHTS.or.this%opt%READ_GRID_WEIGHTS) &
-          call error_handler(1,opt_msg='OK_LIB does not support grid weight read/write in Stage 6B')
+          call error_handler(1,opt_msg='OK_LIB does not support grid weight read/write currently')
+        if (this%opt%WRITE_PP_WEIGHTS.or.this%opt%READ_PP_WEIGHTS) &
+          call error_handler(1,opt_msg='OK_LIB does not support pilot-point weight read/write currently')
+        if (this%opt%WRITE_IB_WEIGHTS.or.this%opt%READ_IB_WEIGHTS) &
+          call error_handler(1,opt_msg='OK_LIB does not support interbed weight read/write currently')
       case("IDW")
         allocate(t_idw::this%interp_data)
         allocate(t_idw::this%interp_pp)
@@ -704,7 +711,7 @@ module m_T2P
     if(.not. this%has_datafiles) call error_handler(1,opt_msg="Missing Required DATASET Block(s)")
     if(.not. this%has_covar    ) call this%no_covariates()  ! Allowable, just needs to be handled
     if(this%opt%INTERP_METHOD=="OK_LIB".and.this%opt%BLOCK_KRIGE>0) &
-      call error_handler(1,opt_msg="OK_LIB does not support block kriging in Stage 6B")
+      call error_handler(1,opt_msg="OK_LIB does not currently support block kriging")
     if(.not. this%has_interp   ) then
       if (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK".or. &
           this%opt%INTERP_METHOD=="OK_LIB") then
@@ -861,11 +868,21 @@ module m_T2P
         obs_data(1) = this%pilot_points_aquitard
       end if
 
-      ! Initialize weights & results for this array
-      call weights%initialize(obs_data(1)%grid%n, to_grid%n)  !input_n, output_n
+      ! Initialize results for this array. OK_LIB writes values directly and
+      ! does not materialize the legacy dense weight matrix.
       call results(k)%initialize(to_grid%n, to_grid) ! Copies grid over
       allocate(results(k)%values(to_grid%n, size(obs_data(1)%values,2), this%ntexclasses))
       results(k)%values = NODATA
+
+      select type(lib => this%interp_pp)
+        type is(t_libkrige)
+          call interpolate_pp_libkriging(this, lib, obs_data(1), to_grid, to_active, &
+                                         to_categories%catlist(1:to_categories%arrncat(k),k), &
+                                         to_categories%array(:,k), results(k))
+          cycle
+      end select
+
+      call weights%initialize(obs_data(1)%grid%n, to_grid%n)  !input_n, output_n
 
       ! Check if we have precalculated weights for the pilot point interpolation
       if (this%opt%READ_PP_WEIGHTS) then
@@ -904,6 +921,68 @@ module m_T2P
     this%opt%INTERP_DIM = glo_dim
 
   end subroutine interpolate_pp
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine interpolate_pp_libkriging(this, lib, observations, to_grid, active, &
+                                        catlist, to_cats, results)
+    class(t_T2P), intent(inout)      :: this
+    class(t_libkrige), intent(inout) :: lib
+    type(t_pilotpoints), intent(in)  :: observations
+    class(t_grid), intent(in)        :: to_grid
+    logical, intent(in)              :: active(:)
+    integer, intent(in)              :: catlist(:), to_cats(:)
+    type(t_pilotpoints), intent(inout) :: results
+
+    type(t_interp_request) :: request
+    real, allocatable       :: value_matrix(:,:), estimates(:,:), variance(:,:)
+    integer                 :: cat, cat_idx, class_id, active_idx, parameter_idx
+    integer                 :: column, nvalues
+
+    if (observations%nactive < 1) &
+      call error_handler(4, opt_msg='OK_LIB pilot-point interpolation has no active value columns')
+    nvalues = observations%nactive * this%ntexclasses
+
+    do cat_idx = 1, size(catlist)
+      cat = catlist(cat_idx)
+      call pack_pilotpoint_observations(request, observations, observations%active(1), &
+                                        1, cat)
+      if (size(request%observation_values) == 0) then
+        write(*,'(a,i0)') 'Warning - no pilot-point data in this array for category ', cat
+        write(log%unit,'(a,i0)') 'Warning - no pilot-point data in this array for category ', cat
+        cycle
+      end if
+      call pack_grid_targets(request, to_grid, active, 2, to_cats, cat)
+      if (size(request%target_index) == 0) cycle
+
+      if (allocated(value_matrix)) deallocate(value_matrix)
+      allocate(value_matrix(size(request%observation_values), nvalues))
+      column = 0
+      do class_id = 1, this%ntexclasses
+        do active_idx = 1, observations%nactive
+          parameter_idx = observations%active(active_idx)
+          column = column + 1
+          value_matrix(:,column) = observations%values( &
+            request%observation_source_index, parameter_idx, class_id)
+          if (any(value_matrix(:,column) == NODATA)) &
+            call error_handler(4, opt_msg='OK_LIB pilot-point value column contains missing data')
+        end do
+      end do
+
+      request%purpose = INTERP_PURPOSE_PILOT_POINT
+      request%class_id = 1
+      call lib%interpolate_many(request, value_matrix, this%opt, estimates, variance)
+
+      column = 0
+      do class_id = 1, this%ntexclasses
+        do active_idx = 1, observations%nactive
+          parameter_idx = observations%active(active_idx)
+          column = column + 1
+          results%values(request%target_index,parameter_idx,class_id) = estimates(:,column)
+        end do
+      end do
+    end do
+  end subroutine interpolate_pp_libkriging
 
 !-------------------------------------------------------------------------------------------------!
 
@@ -1034,12 +1113,23 @@ module m_T2P
     do k=1, this%fmodel%nlayers
       call this%write_minor_status('- Layer:',this%fmodel%get_layer_id(k))
 
-      ! Initialize weights & results for this array
-      call weights%initialize(this%interbed_count(1)%grid%n, to_grid%n)  !input_n, output_n
+      ! Initialize results. OK_LIB directly interpolates the three value
+      ! columns without constructing the legacy dense weight matrix.
       call results(k)%initialize(this%fmodel%grid(1)%ptrgrid%n, 3, default_value=NODATA)
 
       ! Check if layer is active (generally IWFM: means it has thickness)
       if (.not. this%fmodel%is_active_layer(k)) cycle
+
+      select type(lib => interp_ib)
+        type is(t_libkrige)
+          x = this%fmodel%hsus%lay2arr(k)
+          call interpolate_ib_libkriging(this, lib, k, to_grid, to_active, &
+                                         to_categories%catlist(1:this%fmodel%hsus%arrncat(x),x), &
+                                         to_categories%array(1:,x), results(k))
+          cycle
+      end select
+
+      call weights%initialize(this%interbed_count(1)%grid%n, to_grid%n)  !input_n, output_n
 
       ! Check if we have precalculated weights for the interbed interpolation
       if (this%opt%READ_IB_WEIGHTS) then
@@ -1079,6 +1169,57 @@ module m_T2P
     this%opt%INTERP_DIM = glo_dim
 
   end subroutine interpolate_ib
+
+  !-------------------------------------------------------------------------------------------------!
+
+  subroutine interpolate_ib_libkriging(this, lib, layer, to_grid, active, &
+                                        catlist, to_cats, results)
+    class(t_T2P), intent(inout)      :: this
+    class(t_libkrige), intent(inout) :: lib
+    integer, intent(in)              :: layer
+    class(t_grid), intent(in)        :: to_grid
+    logical, intent(in)              :: active(:)
+    integer, intent(in)              :: catlist(:), to_cats(:)
+    type(t_layerdata), intent(inout) :: results
+
+    type(t_interp_request) :: request
+    real, allocatable       :: value_matrix(:,:), estimates(:,:), variance(:,:)
+    integer                 :: cat, cat_idx, value_idx
+    integer                 :: class_idx(1), dataval_idx(1)
+
+    class_idx = 1
+    dataval_idx = 1
+    do cat_idx = 1, size(catlist)
+      cat = catlist(cat_idx)
+      call pack_layerdata_observations(request, this%interbed_count(layer:layer), &
+                                       class_idx, dataval_idx, 2, cat)
+      if (size(request%observation_values) == 0) then
+        write(*,'(a,i0)') 'Warning - no interbed data in this layer for category ', cat
+        write(log%unit,'(a,i0)') 'Warning - no interbed data in this layer for category ', cat
+        cycle
+      end if
+      call pack_grid_targets(request, to_grid, active, 2, to_cats, cat)
+      if (size(request%target_index) == 0) cycle
+
+      if (allocated(value_matrix)) deallocate(value_matrix)
+      allocate(value_matrix(size(request%observation_values), 3))
+      value_matrix(:,1) = this%interbed_count(layer)%values( &
+        1, request%observation_source_index)
+      value_matrix(:,2) = this%interbed_thick(layer)%values( &
+        1, request%observation_source_index)
+      value_matrix(:,3) = this%interbed_thick(layer)%values( &
+        2, request%observation_source_index)
+      if (any(value_matrix == NODATA)) &
+        call error_handler(4, opt_msg='OK_LIB interbed value columns contain missing data')
+
+      request%purpose = INTERP_PURPOSE_INTERBED
+      request%class_id = 1
+      call lib%interpolate_many(request, value_matrix, this%opt, estimates, variance)
+      do value_idx = 1, 3
+        results%values(value_idx,request%target_index) = estimates(:,value_idx)
+      end do
+    end do
+  end subroutine interpolate_ib_libkriging
 
   !-------------------------------------------------------------------------------------------------!
 
