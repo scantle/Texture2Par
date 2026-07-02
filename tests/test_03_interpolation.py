@@ -104,6 +104,29 @@ W4,4,1,1.5,1.5,100,0,10,0.40
 """
 
 
+def _ok_lib_variance_dataset(first_variance: float) -> str:
+    return f"""\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse,var_Coarse
+W1,1,1,0.5,0.5,100,0,10,0.10,{first_variance}
+W2,2,1,1.5,0.5,100,0,10,0.20,0.0
+W3,3,1,0.5,1.5,100,0,10,0.30,0.0
+W4,4,1,1.5,1.5,100,0,10,0.40,0.0
+"""
+
+
+def _ck_variance_primary_dataset(first_variance: float) -> str:
+    return _ok_lib_variance_dataset(first_variance)
+
+
+CK_VARIANCE_SECONDARY_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Rho,var_Rho
+S1,1,1,0.5,0.5,100,0,10,0.90,0.0
+S2,2,1,1.5,0.5,100,0,10,0.30,0.0
+S3,3,1,0.5,1.5,100,0,10,0.40,0.0
+S4,4,1,1.5,1.5,100,0,10,0.60,0.0
+"""
+
+
 OK_LIB_2D_GRD = """\
 NX    2
 NY    2
@@ -167,6 +190,16 @@ BLOCK_FILES = {
 }
 
 
+def _block_variance_dataset(first_variance: float) -> str:
+    return f"""\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse,var_Coarse
+W1,1,1,0.1,0.1,100,0,10,0.10,{first_variance}
+W2,2,1,1.9,0.1,100,0,10,0.30,0.0
+W3,3,1,0.1,1.9,100,0,10,0.65,0.0
+W4,4,1,1.9,1.9,100,0,10,0.90,0.0
+"""
+
+
 SK_2D_DATASET = """\
 Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
 W1,1,1,0.2,0.4,100,0,10,0.10
@@ -220,6 +253,52 @@ def _ok_lib_2d_t2p(options_extra="", flow_extra="", method="OK",
         BEGIN VARIOGRAMS
           CLASS Coarse
             {variogram_lines}
+        END VARIOGRAMS
+        """
+
+
+def _ck_variance_t2p() -> str:
+    return """\
+        BEGIN OPTIONS
+          MAX_VSTRUCT 1
+          INTERP_METHOD OK
+          CK_MEAN_MODE LIBKRIGING
+          INFER_LAST_CLASS
+          ONLY_TEXTURE
+          WRITE_NODE_FILES
+          WRITE_VARIANCE
+          KVME
+        END OPTIONS
+
+        BEGIN CLASSES
+          Coarse
+          Fine
+        END CLASSES
+
+        BEGIN COVARIATES
+          Coarse Rho
+        END COVARIATES
+
+        BEGIN DATASET
+          FILE primary.csv
+        END DATASET
+
+        BEGIN DATASET
+          FILE secondary.csv
+        END DATASET
+
+        BEGIN FLOW_MODEL
+          TYPE GRID
+          GRID_FILE grid.grd
+        END FLOW_MODEL
+
+        BEGIN VARIOGRAMS
+          CLASS Coarse
+            1 Sph 0.0 1.0 10.0 10.0 0.0 4
+          CLASS Rho
+            1 Sph 0.0 1.0 10.0 10.0 0.0 4
+          CLASS Coarse:Rho
+            1 Sph 0.0 0.25 10.0 10.0 0.0
         END VARIOGRAMS
         """
 
@@ -1172,6 +1251,77 @@ class TestLibKrigingOrdinary:
         for row in df.itertuples(index=False):
             assert row.Layer1 == pytest.approx(expected[(row.X, row.Y)], abs=1e-10)
 
+    def test_zero_observation_variance_preserves_exact_hit_and_zero_kriging_variance(
+        self, run_t2p
+    ):
+        r = run_t2p(
+            _ok_lib_2d_t2p(
+                method="OK", options_extra="KVME\n          WRITE_VARIANCE"
+            ),
+            extra_files={
+                "dataset.csv": _ok_lib_variance_dataset(0.0),
+                "grid.grd": OK_LIB_2D_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+        df = _read_coarse_texture_output(r, ("Layer1",))
+        hit = df[(df["X"] == 0.5) & (df["Y"] == 0.5)].iloc[0]
+        assert hit["Layer1"] == pytest.approx(0.10, abs=1e-10)
+        assert hit["Var_Layer1"] == pytest.approx(0.0, abs=1e-10)
+
+    def test_nonzero_observation_variance_changes_estimate_and_kriging_variance(
+        self, run_t2p
+    ):
+        t2p = _ok_lib_2d_t2p(
+            method="OK", options_extra="KVME\n          WRITE_VARIANCE"
+        )
+        exact = run_t2p(
+            t2p,
+            extra_files={
+                "dataset.csv": _ok_lib_variance_dataset(0.0),
+                "grid.grd": OK_LIB_2D_GRD,
+            },
+        )
+        assert exact.returncode == 0, exact.combined
+        exact_df = _read_coarse_texture_output(exact, ("Layer1",)).copy()
+
+        noisy = run_t2p(
+            t2p,
+            extra_files={
+                "dataset.csv": _ok_lib_variance_dataset(1.0),
+                "grid.grd": OK_LIB_2D_GRD,
+            },
+        )
+        assert noisy.returncode == 0, noisy.combined
+        noisy_df = _read_coarse_texture_output(noisy, ("Layer1",))
+        exact_hit = exact_df[(exact_df["X"] == 0.5) & (exact_df["Y"] == 0.5)].iloc[0]
+        noisy_hit = noisy_df[(noisy_df["X"] == 0.5) & (noisy_df["Y"] == 0.5)].iloc[0]
+
+        assert abs(noisy_hit["Layer1"] - exact_hit["Layer1"]) > 1e-3
+        assert noisy_hit["Var_Layer1"] > exact_hit["Var_Layer1"] + 1e-3
+
+    def test_cokriging_retains_primary_observation_variance(self, run_t2p):
+        files = {
+            "primary.csv": _ck_variance_primary_dataset(0.0),
+            "secondary.csv": CK_VARIANCE_SECONDARY_DATASET,
+            "grid.grd": OK_LIB_2D_GRD,
+        }
+        exact = run_t2p(_ck_variance_t2p(), extra_files=files)
+        assert exact.returncode == 0, exact.combined
+        exact_df = _read_coarse_texture_output(exact, ("Layer1",)).copy()
+
+        files["primary.csv"] = _ck_variance_primary_dataset(1.0)
+        noisy = run_t2p(_ck_variance_t2p(), extra_files=files)
+        assert noisy.returncode == 0, noisy.combined
+        noisy_df = _read_coarse_texture_output(noisy, ("Layer1",))
+        exact_hit = exact_df[(exact_df["X"] == 0.5) & (exact_df["Y"] == 0.5)].iloc[0]
+        noisy_hit = noisy_df[(noisy_df["X"] == 0.5) & (noisy_df["Y"] == 0.5)].iloc[0]
+
+        assert exact_hit["Layer1"] == pytest.approx(0.10, abs=1e-10)
+        assert exact_hit["Var_Layer1"] == pytest.approx(0.0, abs=1e-10)
+        assert abs(noisy_hit["Layer1"] - exact_hit["Layer1"]) > 1e-3
+        assert noisy_hit["Var_Layer1"] > exact_hit["Var_Layer1"] + 1e-3
+
     def test_ok_legacy_escape_hatch_is_rejected(self, run_t2p):
         r = run_t2p(
             _ok_lib_2d_t2p(method="OK_LEGACY"), extra_files=self._files()
@@ -1436,6 +1586,30 @@ class TestBlockKriging:
         assert df["Var_Layer1"].to_numpy() == pytest.approx(
             expected_var, abs=2e-6
         )
+
+    def test_modflow_block_ok_retains_observation_variance(self, run_t2p):
+        t2p = _block_modflow_t2p(options_extra="KVME")
+        exact_files = {**BLOCK_FILES, "dataset.csv": _block_variance_dataset(0.0)}
+        exact = run_t2p(t2p, extra_files=exact_files)
+        assert exact.returncode == 0, exact.combined
+        exact_df = _read_coarse_texture_output(
+            exact, required_layers=("Layer1",)
+        ).sort_values(["X", "Y"]).copy()
+
+        noisy_files = {**BLOCK_FILES, "dataset.csv": _block_variance_dataset(1.0)}
+        noisy = run_t2p(t2p, extra_files=noisy_files)
+        assert noisy.returncode == 0, noisy.combined
+        noisy_df = _read_coarse_texture_output(
+            noisy, required_layers=("Layer1",)
+        ).sort_values(["X", "Y"])
+
+        assert np.max(np.abs(
+            noisy_df["Layer1"].to_numpy() - exact_df["Layer1"].to_numpy()
+        )) > 1e-3
+        assert np.max(np.abs(
+            noisy_df["Var_Layer1"].to_numpy()
+            - exact_df["Var_Layer1"].to_numpy()
+        )) > 1e-3
 
     @pytest.mark.parametrize("method", ["OK_LIB", "SK"])
     def test_modflow_block_shared_libkriging_modes_run(self, run_t2p, method):
