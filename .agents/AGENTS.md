@@ -53,6 +53,7 @@ A `.pytest_tmp` cleanup/cache warning may occur due to Windows ACL issues. Do no
 
 ## Migration guardrails
 
+- Do not permanently remove Texture2Par features merely because the legacy kriging implementation is being retired. Preserve supported behavior by migrating it to libkriging through staged, tested changes; if a correct migration is not yet available, keep the feature explicitly pending rather than treating removal as the end state.
 - Keep existing `OK`, `SK`, `IDW`, and SGSIM behavior unchanged unless the task explicitly says to change them.
 - `OK_LIB` is the experimental libkriging ordinary-kriging path.
 - Do not reproduce the old OK/SK duplication in new libkriging code. libkriging uses one `t_kriging` type with OK/SK as configuration.

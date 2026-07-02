@@ -2,7 +2,7 @@ module m_kriging
   use m_global, only: log
   use m_kriging_base, only: t_kriging_base, finalize_kriging_base
   use m_weights, only: t_weights
-  use m_grid, only: t_grid, create_grid_object
+  use m_grid, only: t_grid
   use m_vario, only: t_vgm
   use m_datasets, only: t_dataset, t_layerdata
   use m_error_handler, only: error_handler
@@ -25,11 +25,9 @@ module m_kriging
     integer,allocatable       :: vario_idx(:,:)          ! Variogram index given (class_id, class_id) for local classes passed to setup/point
     real   ,allocatable       :: w(:)                    ! Internally calculated weights
     integer,allocatable       :: pset_id(:)              ! ID vector used for kriging matrix
-    type(t_grid),pointer      :: grid                    ! Pointer to result grid
     ! Some kriging-specific settings
     logical                   :: no_negative_weights     ! Flag to zero negative weights and rebalance (True = zero, rebalance)
     logical                   :: write_matrix            ! Flag to write AMAT and RHS to log file
-    logical                   :: block_krige             ! Flag to block krige
     logical                   :: kvme_enabled            ! Kriging with variance of measurement error
     ! Attributes for KD-tree and search parameters could be added here
   contains
@@ -37,8 +35,6 @@ module m_kriging
     procedure               :: setup => setup_krige
     procedure               :: pset_cok
     procedure               :: filter_near_points
-    procedure               :: block_cov_rhs
-    procedure               :: block_sill
     procedure               :: write_amat, write_rhs_array, write_inear
     procedure               :: finalize => finalize_krige
   end type t_krige
@@ -171,10 +167,8 @@ end subroutine doolittle
     this%nsets  = size(obs_data)
     this%no_negative_weights = opt%CORRECT_WEIGHTS
     this%write_matrix = opt%WRITE_MATRIX
-    this%block_krige = opt%BLOCK_KRIGE > 0
     this%kvme_enabled = opt%KVME
     has_data = .true.
-    this%grid => to_grid
     if (allocated(this%obs_idx)) deallocate(this%obs_idx)
     this%obs_idx = obs_idx
 
@@ -230,47 +224,6 @@ end subroutine doolittle
     ! Update usenear to the new count of valid points
     usenear = count
   end subroutine filter_near_points
-
-!-------------------------------------------------------------------------------------------------!
-
-  function block_cov_rhs(this,inode,obs_coord,vidx) result(sum)
-    implicit none
-    class(t_krige), intent(in) :: this
-    integer, intent(in)        :: inode, vidx
-    real   , intent(in)        :: obs_coord(:)
-    real                        :: sum
-    integer                     :: q, j, npts
-
-    npts = this%grid%active_blocks%nblockpts(inode)
-    sum  = 0.0
-    do j = 1, this%nstruct(vidx)
-      do q = 1, npts
-        sum = sum + this%grid%active_blocks%block_wts(q,inode)*this%variograms(j,vidx)%cov(this%grid%active_blocks%block_coords(:,q,inode),obs_coord)
-      end do
-    end do
-  end function block_cov_rhs
-
-!-------------------------------------------------------------------------------------------------!
-
-  function block_sill(this,inode,vidx) result(sill)
-    implicit none
-    class(t_krige), intent(in) :: this
-    integer, intent(in)        :: inode, vidx
-    real                        :: sill
-    integer                     :: q, r, j, npts
-
-    npts = this%grid%active_blocks%nblockpts(inode)
-    sill = 0.0
-    do j = 1, this%nstruct(vidx)
-      do q = 1, npts
-        do r = 1, npts
-          sill = sill + this%grid%active_blocks%block_wts(q,inode) * &
-                 this%grid%active_blocks%block_wts(r,inode) * &
-                 this%variograms(j,vidx)%cov(this%grid%active_blocks%block_coords(:,q,inode),this%grid%active_blocks%block_coords(:,r,inode))
-        end do
-      end do
-    end do
-  end function block_sill
 
 !-------------------------------------------------------------------------------------------------!
 
@@ -491,15 +444,10 @@ end subroutine doolittle
       vidx = this%vario_idx(1,d)
       ! loop over data points
       do i=1, loc_usenear(d)
-        if (.not. this%block_krige) then    ! Point kriging
-          do j=1, this%nstruct(vidx)
-            value = this%variograms(j,vidx)%cov(p,obs_data(d)%grid%coords(1:,inear(i,d)))
-            this%rhsB(rcount) = this%rhsB(rcount) + value
-          end do
-        else  ! Block kriging
-          value = this%block_cov_rhs(idx, obs_data(d)%grid%coords(:, inear(i,d)), vidx)
-          this%rhsB(rcount) = value
-        end if
+        do j=1, this%nstruct(vidx)
+          value = this%variograms(j,vidx)%cov(p,obs_data(d)%grid%coords(1:,inear(i,d)))
+          this%rhsB(rcount) = this%rhsB(rcount) + value
+        end do
         rcount = rcount + 1
       end do
     end do
@@ -516,13 +464,9 @@ end subroutine doolittle
     ! Variance
     vidx  = this%vario_idx(1,1)
     c0 = 0.0
-    if (.not. this%block_krige) then    ! Point kriging
-      do i = 1, this%nstruct(vidx)
-        c0 = c0 + this%variograms(i,vidx)%cov(p,p)  ! Max covariance
-      end do
-    else  ! Block kriging
-      c0 = this%block_sill(idx, vidx)
-    end if
+    do i = 1, this%nstruct(vidx)
+      c0 = c0 + this%variograms(i,vidx)%cov(p,p)  ! Max covariance
+    end do
     variance = c0 - dot_product(this%w(1:osize), this%rhsB(1:osize))
     if (this%unbias==1) variance = variance - this%w(matsize)
     variance = max(0.0, variance)

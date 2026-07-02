@@ -171,12 +171,23 @@ module m_read_main_input
           call check_id_validity(id, t2p%fmodel, 3) ! only MODFLOW2000
           t2p%fmodel%rot= item2dp(strings, 2)
         case('BLOCK_MODE')
+          if (.not. associated(t2p%fmodel)) &
+            call error_handler(1,opt_msg='BLOCK_MODE requires TYPE MODFLOW to be specified first')
+          if (trim(t2p%fmodel%name) /= 'MODFLOW') &
+            call error_handler(1,opt_msg='BLOCK_MODE is currently supported only for structured MODFLOW models')
           t2p%opt%BLOCK_KRIGE = 1
           ! TODO custom point/weight file
         case DEFAULT
           call error_handler(1,reader%file,"Unknown Flow Model option: " // trim(id))
       end select
     end do
+
+    if (t2p%opt%BLOCK_KRIGE > 0) then
+      if (t2p%opt%NSIM > 0) &
+        call error_handler(1,opt_msg='BLOCK_MODE is unsupported with SGSIM; no legacy fallback is available')
+      if (t2p%opt%INTERP_METHOD == 'IDW') &
+        call error_handler(1,opt_msg='BLOCK_MODE requires libkriging OK, OK_LIB, or SK; IDW has no block implementation')
+    end if
 
     ! Hook for T2P to process flowmodel entries
     call t2p%setup_flow_model()

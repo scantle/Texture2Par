@@ -99,7 +99,8 @@ contains
         cycle
       end if
 
-      call pack_grid_targets(request, to_grid, active, opt%INTERP_DIM, to_cats, cat)
+      call pack_grid_targets(request, to_grid, active, opt%INTERP_DIM, to_cats, cat, &
+                             include_block_support=opt%BLOCK_KRIGE > 0)
       if (size(request%target_index) == 0) cycle
 
       zone = 0
@@ -236,8 +237,6 @@ contains
       call error_handler(4, opt_msg='libkriging CK requires symmetric cross-variograms; ASYMMETRIC_COV is unsupported')
     if (opt%NSIM > 0) &
       call error_handler(1, opt_msg='libkriging OK/SK does not currently support SGSIM')
-    if (opt%BLOCK_KRIGE > 0) &
-      call error_handler(1, opt_msg='libkriging OK/SK does not currently support block kriging')
     if (opt%READ_GRID_WEIGHTS .or. opt%WRITE_GRID_WEIGHTS) &
       call error_handler(1, opt_msg='libkriging OK/SK does not support READ_GRID_WEIGHTS or WRITE_GRID_WEIGHTS currently')
   end subroutine validate_libkriging_scope

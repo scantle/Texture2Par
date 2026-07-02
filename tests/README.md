@@ -108,6 +108,7 @@ pytest --tb=long
 |---|---|
 | `TestOrdinaryKriging` | run completes; KH written; texture bounded [0,1]; INFER classes |
 | `TestLibKrigingOrdinary` | default OK data, pilot-point, and interbed routing; OK_LIB alias; rejection of removed OK_LEGACY; explicit libkriging/GSLIB anisotropy and anisotropic-search coverage; NNEAR; nested structures; supported variogram mappings; duplicate and unsupported-feature diagnostics |
+| `TestBlockKriging` | structured-MODFLOW block OK estimate/variance against an independent weighted-support reference; shared OK_LIB/SK routing; diagnostics for other models, IDW, and SGSIM |
 | `TestLibKrigingSimple` | default SK routing through the shared libkriging backend; global-mean 2D/3D references; SK/OK distinction; retained legacy-OK pilot-point route; unsupported-feature diagnostics |
 | `TestCorrectWeights` | CORRECT_WEIGHTS flag |
 | `TestCoincidentLocations` | duplicate XY/XYZ conditioning points are fatal; exact target hits remain valid |
@@ -187,7 +188,7 @@ the removed `t_globkrige` assembled all observations in the current category.
 SK follows libkriging's GSLIB-style anisotropy convention, not Texture2Par's
 historical rotation behavior. Because PP/interbed methods default independently
 to OK, `INTERP_METHOD SK` no longer routes either workflow through legacy
-ordinary kriging. External saved weights, cokriging, SGSIM, block kriging, and
+ordinary kriging. External saved weights, cokriging, SGSIM, and
 `INTERP_ORDER AFTER` are rejected for SK rather than silently falling back;
 the latter generated parameter data never had an initialized legacy SK mean.
 
@@ -217,13 +218,32 @@ in the secondary auto-variogram. Full-secondary Python references must still
 set a large explicit value such as `1e10`.
 
 New-path CK follows libkriging/GSLIB-style covariance and search anisotropy.
-SK cokriging, asymmetric cross-variograms, block
-kriging, sector search, SGSIM through the direct libkriging alias, and external
+SK cokriging, asymmetric cross-variograms, sector search, SGSIM through the
+direct libkriging alias, and external
 saved-weight files remain unsupported. IDW and the existing `OK + SGSIM`
-routing are unchanged. `kriging.f90` remains in the build for SGSIM and block
-kriging support, but no longer supplies the PP/interbed fallback for model/data
-SK. Its block-kriging implementation is retained, although libkriging OK/SK
-currently reject block mode explicitly.
+routing are unchanged.
+
+`BLOCK_MODE` historically used 4-point Gaussian quadrature per spatial axis
+(16 support points in 2-D and 64 in 3-D) for structured MODFLOW cells. The
+legacy OK/SK/CK routines averaged observation-to-support covariance for the
+estimate and support-to-support covariance for the variance. It now maps to
+libkriging's native Gaussian block API (`block_type=-4`): Texture2Par supplies
+only block centres and half-dimensions, while libkriging generates the support
+points and weights and performs both covariance averages. Deterministic `OK`,
+`OK_LIB`, `SK`, and CK share the existing libkriging solve path in both 2-D and
+3-D.
+
+Texture2Par does not currently expose custom block support points or weights.
+That may be added later for irregular grids such as IWFM. For now, block mode
+remains restricted to structured MODFLOW because other flow-model readers do
+not define cell dimensions. IDW and SGSIM are rejected explicitly rather than
+performing point interpolation under a block label. Pilot-point and interbed
+interpolation remain point-support workflows even when model/data block mode is
+active.
+
+The old block covariance calculations and support-point storage have been
+removed. `kriging.f90` remains a compiled dependency because SGSIM extends
+`t_treekrige` and uses its setup, search, matrix, and linear-solver routines.
 
 In `INTERP_DIM 3`, processed observations remain XYZ support points; they are
 not reduced to the per-model-layer XY averages used by 2D layer interpolation.

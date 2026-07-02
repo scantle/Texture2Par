@@ -116,6 +116,57 @@ IBOUND constant 1
 """
 
 
+BLOCK_MODFLOW_NAM = """\
+LIST 2 model.list
+DIS 11 model.dis
+BAS6 13 model.bas
+LPF 15 model.lpf
+"""
+
+BLOCK_MODFLOW_DIS = """\
+1 2 2 1 4 2
+0
+CONSTANT 1.0
+CONSTANT 1.0
+CONSTANT 100.0
+CONSTANT 90.0
+1.0 1 1.0 SS
+"""
+
+BLOCK_MODFLOW_BAS = """\
+FREE
+CONSTANT 1
+-999.99
+CONSTANT 0.0
+"""
+
+BLOCK_MODFLOW_LPF = """\
+0 -1.0E+30 0
+0
+1.0
+0
+0
+CONSTANT 1.0
+CONSTANT 1.0
+"""
+
+BLOCK_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W1,1,1,0.1,0.1,100,0,10,0.10
+W2,2,1,1.9,0.1,100,0,10,0.30
+W3,3,1,0.1,1.9,100,0,10,0.65
+W4,4,1,1.9,1.9,100,0,10,0.90
+"""
+
+BLOCK_FILES = {
+    "dataset.csv": BLOCK_DATASET,
+    "model.nam": BLOCK_MODFLOW_NAM,
+    "model.dis": BLOCK_MODFLOW_DIS,
+    "model.bas": BLOCK_MODFLOW_BAS,
+    "model.lpf": BLOCK_MODFLOW_LPF,
+}
+
+
 SK_2D_DATASET = """\
 Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
 W1,1,1,0.2,0.4,100,0,10,0.10
@@ -169,6 +220,40 @@ def _ok_lib_2d_t2p(options_extra="", flow_extra="", method="OK",
         BEGIN VARIOGRAMS
           CLASS Coarse
             {variogram_lines}
+        END VARIOGRAMS
+        """
+
+
+def _block_modflow_t2p(method="OK", options_extra="") -> str:
+    return f"""\
+        BEGIN OPTIONS
+          MAX_VSTRUCT 1
+          INTERP_METHOD {method}
+          INFER_LAST_CLASS
+          ONLY_TEXTURE
+          WRITE_NODE_FILES
+          WRITE_VARIANCE
+          {options_extra}
+        END OPTIONS
+
+        BEGIN CLASSES
+          Coarse
+          Fine
+        END CLASSES
+
+        BEGIN DATASET
+          FILE dataset.csv
+        END DATASET
+
+        BEGIN FLOW_MODEL
+          TYPE MODFLOW
+          NAM_FILE model.nam
+          BLOCK_MODE
+        END FLOW_MODEL
+
+        BEGIN VARIOGRAMS
+          CLASS Coarse
+            1 Sph 0.0 1.0 10.0 10.0 0.0 4
         END VARIOGRAMS
         """
 
@@ -806,6 +891,54 @@ def _ok_lib_gslib_reference(
     return estimates, variance
 
 
+def _block_ok_reference(obsloc, obsval, centres, halfsize, hmax=10.0):
+    """Independent 2-D OK reference using Texture2Par's historical quadrature."""
+    obsloc = np.asarray(obsloc, dtype=float)
+    obsval = np.asarray(obsval, dtype=float)
+    centres = np.asarray(centres, dtype=float)
+    frac = np.array([0.4305681558, 0.1699905218,
+                     -0.1699905218, -0.4305681558])
+    wgq = np.array([0.1739274226, 0.3260725774,
+                    0.3260725774, 0.1739274226])
+    offsets = np.array([
+        (frac[ix] * halfsize[0], frac[iy] * halfsize[1])
+        for iy in range(4) for ix in range(4)
+    ])
+    support_weights = np.array([
+        wgq[ix] * wgq[iy] for iy in range(4) for ix in range(4)
+    ])
+
+    c_obs = _spherical_covariance(squareform(pdist(obsloc)) / hmax)
+    np.fill_diagonal(c_obs, 1.0)
+    nobs = len(obsloc)
+    lhs = np.zeros((nobs + 1, nobs + 1))
+    lhs[:nobs, :nobs] = c_obs
+    lhs[:nobs, nobs] = 1.0
+    lhs[nobs, :nobs] = 1.0
+
+    estimates = np.empty(len(centres))
+    variance = np.empty(len(centres))
+    for target, centre in enumerate(centres):
+        support = centre + offsets
+        cov_support = _spherical_covariance(
+            cdist(obsloc, support) / hmax
+        )
+        block_rhs = cov_support @ support_weights
+        solved = np.linalg.solve(lhs, np.r_[block_rhs, 1.0])
+        weights = solved[:nobs]
+        mu = solved[nobs]
+        support_cov = _spherical_covariance(
+            squareform(pdist(support)) / hmax
+        )
+        np.fill_diagonal(support_cov, 1.0)
+        block_cov0 = support_weights @ support_cov @ support_weights
+        estimates[target] = obsval @ weights
+        variance[target] = max(
+            0.0, block_cov0 - weights @ block_rhs - mu
+        )
+    return estimates, variance
+
+
 def _sk_lib_gslib_reference(obsloc, obsval, newloc, sk_mean, **vgm):
     """Simple kriging using the same covariance and angle conventions as libkriging."""
     obsloc = np.asarray(obsloc, dtype=float)
@@ -1268,7 +1401,6 @@ class TestLibKrigingOrdinary:
             ("WRITE_PP_WEIGHTS", "", "pilot-point weight"),
             ("READ_IB_WEIGHTS", "", "interbed weight"),
             ("WRITE_IB_WEIGHTS", "", "interbed weight"),
-            ("", "BLOCK_MODE", "block kriging"),
         ],
     )
     def test_default_ok_unsupported_combinations_are_fatal(
@@ -1283,7 +1415,68 @@ class TestLibKrigingOrdinary:
 
 
 # ---------------------------------------------------------------------------
-# 3. Libkriging simple-kriging backend
+# 3. Block kriging status
+# ---------------------------------------------------------------------------
+
+class TestBlockKriging:
+
+    def test_modflow_block_ok_matches_independent_reference(self, run_t2p):
+        r = run_t2p(_block_modflow_t2p(), extra_files=BLOCK_FILES)
+        assert r.returncode == 0, r.combined
+        df = _read_coarse_texture_output(r, required_layers=("Layer1",))
+        df = df.sort_values(["X", "Y"])
+        centres = df[["X", "Y"]].to_numpy()
+        obsloc = np.array([[0.1, 0.1], [1.9, 0.1],
+                           [0.1, 1.9], [1.9, 1.9]])
+        obsval = np.array([0.10, 0.30, 0.65, 0.90])
+        expected, expected_var = _block_ok_reference(
+            obsloc, obsval, centres, halfsize=(0.5, 0.5)
+        )
+        assert df["Layer1"].to_numpy() == pytest.approx(expected, abs=2e-6)
+        assert df["Var_Layer1"].to_numpy() == pytest.approx(
+            expected_var, abs=2e-6
+        )
+
+    @pytest.mark.parametrize("method", ["OK_LIB", "SK"])
+    def test_modflow_block_shared_libkriging_modes_run(self, run_t2p, method):
+        r = run_t2p(
+            _block_modflow_t2p(method=method), extra_files=BLOCK_FILES
+        )
+        assert r.returncode == 0, r.combined
+        df = _read_coarse_texture_output(r, required_layers=("Layer1",))
+        assert np.isfinite(df["Layer1"]).all()
+        assert np.isfinite(df["Var_Layer1"]).all()
+
+    def test_block_mode_rejects_non_modflow_model(self, run_t2p):
+        r = run_t2p(
+            _ok_lib_2d_t2p(flow_extra="BLOCK_MODE"),
+            extra_files=TestLibKrigingOrdinary._files(),
+        )
+        assert r.returncode != 0
+        assert "BLOCK_MODE" in r.combined
+        assert "only for structured MODFLOW" in r.combined
+
+    @pytest.mark.parametrize(
+        ("method", "options_extra", "diagnostic"),
+        [
+            ("IDW", "", "IDW has no block implementation"),
+            ("OK", "SGSIM", "unsupported with SGSIM"),
+        ],
+    )
+    def test_block_mode_rejects_point_only_routes(
+        self, run_t2p, method, options_extra, diagnostic
+    ):
+        r = run_t2p(
+            _block_modflow_t2p(method=method, options_extra=options_extra),
+            extra_files=BLOCK_FILES,
+        )
+        assert r.returncode != 0
+        assert diagnostic in r.combined
+        assert "legacy fallback" in r.combined or method == "IDW"
+
+
+# ---------------------------------------------------------------------------
+# 4. Libkriging simple-kriging backend
 # ---------------------------------------------------------------------------
 
 class TestLibKrigingSimple:

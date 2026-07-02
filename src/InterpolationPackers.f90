@@ -24,14 +24,17 @@ contains
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine pack_grid_targets(request, grid, active, dimension, target_categories, category_id)
+  subroutine pack_grid_targets(request, grid, active, dimension, target_categories, category_id, &
+                               include_block_support)
     type(t_interp_request), intent(inout) :: request
     type(t_grid), intent(in)              :: grid
     logical, intent(in)                   :: active(:)
     integer, intent(in)                   :: dimension
     integer, intent(in), optional         :: target_categories(:)
     integer, intent(in), optional         :: category_id
+    logical, intent(in), optional         :: include_block_support
     logical, allocatable                  :: pack_mask(:)
+    logical                               :: pack_blocks
     integer                               :: i, j, ntarget
 
     if (dimension < 2 .or. dimension > 3 .or. dimension > grid%dim) then
@@ -67,6 +70,27 @@ contains
       request%target_coordinates(:,j) = grid%coords(1:dimension,i)
       request%target_index(j) = i
     end do
+
+    pack_blocks = .false.
+    if (present(include_block_support)) pack_blocks = include_block_support
+    request%request_block_support = pack_blocks
+    if (request%request_block_support) then
+      if (.not. associated(grid%active_blocks)) &
+        call packer_error('block dimensions were requested but are not attached to the target grid')
+      if (.not. allocated(grid%active_blocks%block_size)) &
+        call packer_error('block target dimensions are incomplete')
+      if (size(grid%active_blocks%block_size,1) < dimension .or. &
+          size(grid%active_blocks%block_size,2) /= grid%n) &
+        call packer_error('block target dimensions do not match the target grid')
+
+      allocate(request%target_block_size(dimension,ntarget))
+      do j = 1, ntarget
+        request%target_block_size(:,j) = &
+          grid%active_blocks%block_size(1:dimension,request%target_index(j))
+      end do
+      if (any(request%target_block_size <= 0.0)) &
+        call packer_error('Gaussian block dimensions must be positive')
+    end if
 
     request%dimension = dimension
     if (present(category_id)) request%category_id = category_id
@@ -316,7 +340,9 @@ contains
 
     if (allocated(request%target_coordinates)) deallocate(request%target_coordinates)
     if (allocated(request%target_index)) deallocate(request%target_index)
+    if (allocated(request%target_block_size)) deallocate(request%target_block_size)
     if (allocated(request%target_active)) deallocate(request%target_active)
+    request%request_block_support = .false.
   end subroutine clear_targets
 
 !-------------------------------------------------------------------------------------------------!

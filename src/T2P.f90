@@ -754,10 +754,6 @@ module m_T2P
     if(.not. this%has_fmodel   ) call error_handler(1,opt_msg="Missing Required FLOW_MODEL Block")
     if(.not. this%has_datafiles) call error_handler(1,opt_msg="Missing Required DATASET Block(s)")
     if(.not. this%has_covar    ) call this%no_covariates()  ! Allowable, just needs to be handled
-    if(((this%opt%INTERP_METHOD=="OK".and.this%opt%NSIM==0).or. &
-        this%opt%INTERP_METHOD=="OK_LIB".or.this%opt%INTERP_METHOD=="SK").and. &
-        this%opt%BLOCK_KRIGE>0) &
-      call error_handler(1,opt_msg="libkriging OK/SK does not currently support block kriging")
     if(.not. this%has_interp   ) then
       if (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK".or. &
           this%opt%INTERP_METHOD=="OK_LIB") then

@@ -1729,48 +1729,27 @@ module m_flow_model
 
   subroutine build_blocks_mf(this, opt)
     use GLOBAL, ONLY : NROW, NCOL, DELR, DELC
-    use tools, only: gaussian_quadrature
     implicit none
     class(t_modflow_model)      :: this
     class(t_options),intent(in) :: opt
-    integer                     :: dim, ngq, iqp,i,k,row,col
-    real                        :: blocksize(3), zc
-    real, allocatable           :: gqdelxyz(:,:)
-    type(t_Grid), pointer :: grid
+    integer                     :: dim, i, k, row, col
 
     ! Build blocks, if active
     if (opt%BLOCK_KRIGE==1) then                    ! Gaussian Quadrature
       dim = opt%INTERP_DIM
-      ngq = 4**dim
       if (.not. allocated(this%layer_blocks)) allocate(this%layer_blocks(this%nlayers))
-      allocate(gqdelxyz(dim, ngq))
       do k = 1, this%nlayers
-        grid => this%grid(this%lay2grid(k))%ptrgrid
-        call alloc_cellblocks(this%layer_blocks(k), ngq, this%nnodes(k), dim)
+        call alloc_block_sizes(this%layer_blocks(k), this%nnodes(k), dim)
 
         do i = 1, this%nnodes(k)
           row = int((i-1)/NCOL) + 1
           col = mod(i-1, NCOL) + 1
-          blocksize = 0.0
-          blocksize(1) = DELR(col) * 0.5
-          blocksize(2) = DELC(row) * 0.5
-          if (dim == 3) blocksize(3) = 0.5 * ( this%elev(i,k-1) - this%elev(i,k) )
-
-          call gaussian_quadrature(ngq, dim, blocksize, gqdelxyz, this%layer_blocks(k)%block_wts(:,i))
-
-          ! XY around cell center (shared XY grid):
-          this%layer_blocks(k)%block_coords(1:2, :, i) = spread(grid%coords(1:2,i), 2, ngq) + gqdelxyz(1:2,:)
-
-          if (dim == 3) then
-            zc = 0.5 * ( this%elev(i,k-1) + this%elev(i,k) )
-            this%layer_blocks(k)%block_coords(3, :, i) = zc + gqdelxyz(3,:)
-          end if
+          this%layer_blocks(k)%block_size(1,i) = DELR(col) * 0.5
+          this%layer_blocks(k)%block_size(2,i) = DELC(row) * 0.5
+          if (dim == 3) this%layer_blocks(k)%block_size(3,i) = &
+            0.5 * ( this%elev(i,k-1) - this%elev(i,k) )
         end do
-
-        this%layer_blocks(k)%nblockpts(:) = ngq
       end do
-
-      deallocate(gqdelxyz)
     else if (opt%BLOCK_KRIGE==2) then
       ! TODO
     end if

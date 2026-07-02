@@ -53,11 +53,12 @@ module m_interpolation_types
     real, allocatable :: target_coordinates(:,:)
     ! Maps each packed target back to its full model/grid/node index.
     integer, allocatable :: target_index(:)
+    ! Optional half-dimensions for native libkriging Gaussian block targets.
+    real, allocatable :: target_block_size(:,:)
     ! Reserved for a future full-grid request; not required for packed targets.
     logical, allocatable :: target_active(:)
 
-    ! Capability requests only; their behavior will be defined when a backend
-    ! is wired in. They do not alter block or weight-cache behavior today.
+    ! Backend capability requests.
     logical :: request_block_support   = .false.
     logical :: request_reusable_weights = .false.
     integer :: weight_cache_id = 0

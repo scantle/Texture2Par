@@ -132,7 +132,7 @@ contains
       if (kriging_failed()) goto 900
     end do
 
-    call solver%set_grid(request%target_coordinates)
+    call set_solver_grid(solver, request)
     if (kriging_failed()) goto 900
 
     do ivar = 1, nvar
@@ -238,7 +238,7 @@ contains
     end if
     if (kriging_failed()) goto 900
 
-    call solver%set_grid(request%target_coordinates)
+    call set_solver_grid(solver, request)
     if (kriging_failed()) goto 900
 
     do i = 1, nstruct
@@ -284,6 +284,24 @@ contains
       call error_handler(4, opt_msg='libkriging: '//trim(failure))
     end if
   end subroutine libkriging_interpolate_many
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine set_solver_grid(solver, request)
+    type(t_kriging), intent(inout)       :: solver
+    type(t_interp_request), intent(in)   :: request
+
+    if (request%request_block_support) then
+      if (.not. allocated(request%target_block_size)) &
+        call error_handler(4, opt_msg='libkriging Gaussian block dimensions are incomplete')
+      if (size(request%target_block_size,1) /= request%dimension .or. &
+          size(request%target_block_size,2) /= size(request%target_coordinates,2)) &
+        call error_handler(4, opt_msg='libkriging Gaussian block dimension shape mismatch')
+      call solver%set_grid(request%target_coordinates, block_type=-4, &
+                           blocksize=request%target_block_size)
+    else
+      call solver%set_grid(request%target_coordinates)
+    end if
+  end subroutine set_solver_grid
 !-------------------------------------------------------------------------------------------------!
 
   subroutine set_variable_search(solver, ivar, variable, anisotropic_search, variogram)
