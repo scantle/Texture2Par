@@ -1,7 +1,6 @@
 module InterpTests
   use assert
   use m_vario
-  !use m_kriging
   implicit none
   
   contains

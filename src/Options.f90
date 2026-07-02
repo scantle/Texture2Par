@@ -356,6 +356,7 @@ subroutine write_input_summary(this, ndatafiles)
       case DEFAULT  ! Shouldn't be able to get here
         interp_text = this%INTERP_METHOD
     end select
+    if (this%NSIM > 0) interp_text = trim(interp_text) // ' - SGSIM simulation mode'
     if (this%block_krige>0) interp_text = trim(interp_text) // ' - Block Kriging Active'
     call log%write_valueline('Interpolation Method:',trim(interp_text))
     select case(this%PP_INTERP_METHOD)
@@ -386,7 +387,7 @@ subroutine write_input_summary(this, ndatafiles)
         ck_mean_text = 'INVALID'
     end select
     call log%write_valueline('CK Mean Mode:',trim(ck_mean_text))
-    if (this%NSIM > 1) then
+    if (this%NSIM > 0) then
       call log%write_valueline('Simulation Realizations:', this%NSIM)
       call log%write_valueline('Random Seed Number:', this%SEED)
     end if

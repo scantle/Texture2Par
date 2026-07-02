@@ -9,12 +9,12 @@ module m_T2P
   use m_pilotpoints, only: t_pilotpoints, setup_pilotpoint_property_arrays, add_pilotpoint_aquifer_parameter
   use m_interpolator, only: t_interpolator, t_idw
   use m_kriging_base, only: t_kriging_base
-  use m_libkriging_interpolator, only: t_libkrige, LIBKRIGE_MODE_SIMPLE
+  use m_libkriging_interpolator, only: t_libkrige, LIBKRIGE_MODE_SIMPLE, &
+                                       LIBKRIGE_PREDICT_SGSIM
   use m_interpolation_types, only: t_interp_request, INTERP_PURPOSE_PILOT_POINT, &
                                    INTERP_PURPOSE_INTERBED
   use m_interpolation_packers, only: pack_grid_targets, pack_layerdata_observations, &
                                      pack_pilotpoint_observations
-  use m_sgsim, only: t_sgsim
   use m_categories, only: t_category
   use m_vario, only: t_vgm
   use m_grid, only: t_grid, create_grid_object
@@ -229,12 +229,13 @@ module m_T2P
     ! Handle Interpolation Method
     select case (this%opt%INTERP_METHOD)
       case("OK")
-        if (this%opt%NSIM == 0) then
-          allocate(t_libkrige::this%interp_data)
-          this%opt%INTERP_SECOND_OK = .true.
-        else
-          allocate(t_sgsim::this%interp_data)
-          this%opt%INTERP_SECOND_OK = .true.
+        allocate(t_libkrige::this%interp_data)
+        this%opt%INTERP_SECOND_OK = .true.
+        if (this%opt%NSIM > 0) then
+          select type(lib => this%interp_data)
+            type is(t_libkrige)
+              lib%prediction_mode = LIBKRIGE_PREDICT_SGSIM
+          end select
         end if
       case("SK")
         allocate(t_libkrige::this%interp_data)
@@ -247,9 +248,15 @@ module m_T2P
       case("OK_LIB")
         allocate(t_libkrige::this%interp_data)
         this%opt%INTERP_SECOND_OK = .true.
-        if (this%opt%NSIM > 0) &
-          call error_handler(1,opt_msg='libkriging OK does not currently support SGSIM; use INTERP_METHOD OK with SGSIM')
+        if (this%opt%NSIM > 0) then
+          select type(lib => this%interp_data)
+            type is(t_libkrige)
+              lib%prediction_mode = LIBKRIGE_PREDICT_SGSIM
+          end select
+        end if
       case("IDW")
+        if (this%opt%NSIM > 0) &
+          call error_handler(1,opt_msg='IDW with SGSIM is unsupported; SGSIM requires libkriging ordinary kriging')
         allocate(t_idw::this%interp_data)
         this%has_interp = .true.
       case DEFAULT
@@ -282,8 +289,7 @@ module m_T2P
     end select
 
     ! External weight files are not part of the libkriging paths.
-    if ((this%opt%INTERP_METHOD=="OK".and.this%opt%NSIM==0).or. &
-        this%opt%INTERP_METHOD=="OK_LIB") then
+    if (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="OK_LIB") then
         if (this%opt%WRITE_GRID_WEIGHTS.or.this%opt%READ_GRID_WEIGHTS) &
           call error_handler(1,opt_msg='libkriging OK does not support external grid weight read/write')
     end if

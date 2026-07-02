@@ -87,7 +87,7 @@ module m_interpolator
   end type t_idw
 
 !-------------------------------------------------------------------------------------------------!
-! Kriging class/routines are located in kriging.f90. They inheret from Interpolator
+! Kriging backends inherit from the common interpolator interface.
 !-------------------------------------------------------------------------------------------------!
 
   contains

@@ -112,7 +112,7 @@ pytest --tb=long
 | `TestLibKrigingSimple` | default SK routing through the shared libkriging backend; global-mean 2D/3D references; SK/OK distinction; retained legacy-OK pilot-point route; unsupported-feature diagnostics |
 | `TestCorrectWeights` | CORRECT_WEIGHTS flag |
 | `TestCoincidentLocations` | duplicate XY/XYZ conditioning points are fatal; exact target hits remain valid |
-| `TestSGS` | flag accepted; different seeds differ; same seed reproducible; SGS + weight write incompatibility |
+| `TestSGS` | libkriging-backed 2-D/3-D SGSIM; finite output; seed reproducibility; exact/soft conditioning variance; category masking; unsupported-mode diagnostics; no legacy runtime allocation |
 | `TestWeightCaching` | clear unsupported diagnostics for external grid and pilot-point saved weights |
 | `TestOnlyTexture` | no pilot points required; no hydraulic property files written |
 | `TestMaxLogLength` | INTERP_DIM 3 log interval splitting and processed XYZ support points |
@@ -173,9 +173,28 @@ once per category and interpolate multiple value columns through the
 libkriging adapter. The first solve stores libkriging's in-memory weights;
 later columns update only the observation values and reuse those weights.
 External grid, pilot-point, and interbed saved-weight files remain unsupported
-under their respective libkriging OK paths and fail with a diagnostic. `OK + SGSIM` continues to select the existing
-SGSIM implementation; `OK_LIB + SGSIM` is rejected because the alias names the
-ordinary-kriging backend directly.
+under their respective libkriging OK paths and fail with a diagnostic.
+
+`SGSIM` is a simulation mode of the shared `t_libkrige` backend, not a separate
+interpolator. `OK + SGSIM` and the equivalent `OK_LIB + SGSIM` reuse the same
+observation/target/category packing, variogram mapping, search configuration,
+observation variance, solve, and scatter path as deterministic ordinary
+kriging. The adapter initializes libkriging with one simulation and the
+Texture2Par `SEED`, supplies an in-memory randomized path and Gaussian samples,
+calls `set_sim`, and returns the first simulated-value plane through the normal
+result structure. Both `INTERP_DIM 2` and `3` and category/HSU solves are
+supported. The current input flag and output arrays represent exactly one
+realization.
+
+SGSIM currently applies only to model/data point-support interpolation. CK,
+SK, IDW, `BLOCK_MODE`, external saved weights or simulation paths, and separate
+PP/interbed simulation are unsupported and fail clearly where those
+combinations can be requested; deterministic PP/interbed interpolation remains
+independently controlled by `PP_INTERP_METHOD` and `IB_INTERP_METHOD` during an
+SGSIM run. Observation variance is passed to libkriging, so zero variance gives
+exact conditioning at coincident targets while positive variance provides soft
+conditioning. Realizations are not expected to match the retired Texture2Par
+solver bit-for-bit.
 
 Default `INTERP_METHOD SK` now uses the same `t_libkrige` backend as OK. The
 backend mode selects `unbias=1` for OK and `unbias=0` for SK; SK passes the
@@ -218,10 +237,9 @@ in the secondary auto-variogram. Full-secondary Python references must still
 set a large explicit value such as `1e10`.
 
 New-path CK follows libkriging/GSLIB-style covariance and search anisotropy.
-SK cokriging, asymmetric cross-variograms, sector search, SGSIM through the
-direct libkriging alias, and external
-saved-weight files remain unsupported. IDW and the existing `OK + SGSIM`
-routing are unchanged.
+SK cokriging, asymmetric cross-variograms, sector search, and external
+saved-weight files remain unsupported. SGSIM support and limits are described
+above.
 
 `BLOCK_MODE` historically used 4-point Gaussian quadrature per spatial axis
 (16 support points in 2-D and 64 in 3-D) for structured MODFLOW cells. The
@@ -242,8 +260,11 @@ interpolation remain point-support workflows even when model/data block mode is
 active.
 
 The old block covariance calculations and support-point storage have been
-removed. `kriging.f90` remains a compiled dependency because SGSIM extends
-`t_treekrige` and uses its setup, search, matrix, and linear-solver routines.
+removed. The runtime no longer allocates `t_sgsim` or uses `t_treekrige` for
+SGSIM. The legacy `sgsim.f90` and `kriging.f90` sources remain in the repository
+for archival review but have been removed from all makefile source lists and
+object prerequisites. No production makefile route compiles their modules or
+references their types.
 
 In `INTERP_DIM 3`, processed observations remain XYZ support points; they are
 not reduced to the per-model-layer XY averages used by 2D layer interpolation.

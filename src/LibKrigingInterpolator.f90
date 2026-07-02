@@ -4,7 +4,8 @@ module m_libkriging_interpolator
   use m_datasets, only: t_layerdata
   use m_grid, only: t_grid
   use m_options, only: t_options, CK_MEAN_LIBKRIGING, CK_MEAN_LEGACY_STANDARDIZED
-  use m_interpolation_types, only: t_interp_request, t_interp_result, INTERP_PURPOSE_MODEL
+  use m_interpolation_types, only: t_interp_request, t_interp_result, INTERP_PURPOSE_MODEL, &
+                                   PREDICT_ESTIMATE, PREDICT_SGSIM
   use m_interpolation_packers, only: pack_grid_targets, pack_layerdata_observations, &
                                      validate_unique_observations
   use m_libkriging_adapter, only: libkriging_solve, libkriging_interpolate_many, &
@@ -17,9 +18,14 @@ module m_libkriging_interpolator
   integer, parameter, public :: LIBKRIGE_MODE_ORDINARY = 1
   integer, parameter, public :: LIBKRIGE_MODE_SIMPLE   = 2
 
+  integer, parameter, public :: LIBKRIGE_PREDICT_ESTIMATE = PREDICT_ESTIMATE
+  integer, parameter, public :: LIBKRIGE_PREDICT_SGSIM    = PREDICT_SGSIM
+
   type, extends(t_kriging_base), public :: t_libkrige
     ! OK and SK are configurations of this one backend, matching libkriging's t_kriging API.
     integer :: kriging_mode = LIBKRIGE_MODE_ORDINARY
+    integer :: prediction_mode = LIBKRIGE_PREDICT_ESTIMATE
+    integer :: simulation_sequence = 0
   contains
     procedure :: calc => calc_libkrige
     procedure :: interpolate_many => interpolate_many_libkrige
@@ -138,6 +144,15 @@ contains
       end if
       request%search%anisotropic_search = opt%ANISOTROPIC_SEARCH
 
+      request%prediction_mode = this%prediction_mode
+      if (request%prediction_mode == PREDICT_SGSIM) then
+        this%simulation_sequence = this%simulation_sequence + 1
+        request%simulation_count = opt%NSIM
+        request%random_seed = opt%SEED
+        if (request%random_seed > 0) &
+          request%random_seed = request%random_seed + this%simulation_sequence - 1
+      end if
+
       call libkriging_solve(request, variables, this%variograms, this%nstruct, &
                             vgm_index, unbias, local_mean_correction, batch)
       results(batch%target_index) = batch%estimates
@@ -233,10 +248,14 @@ contains
       call error_handler(4, opt_msg='libkriging received inconsistent cokriging variable metadata')
     if (size(obs_data) > 1 .and. this_is_simple(opt)) &
       call error_handler(4, opt_msg='libkriging SK does not currently support covariates/cokriging')
+    if (opt%NSIM > 0 .and. size(obs_data) > 1) &
+      call error_handler(1, opt_msg='CK with SGSIM is not supported in this migration stage')
     if (size(obs_data) > 1 .and. opt%ASYMMETRIC_COV) &
       call error_handler(4, opt_msg='libkriging CK requires symmetric cross-variograms; ASYMMETRIC_COV is unsupported')
-    if (opt%NSIM > 0) &
-      call error_handler(1, opt_msg='libkriging OK/SK does not currently support SGSIM')
+    if (opt%NSIM > 0 .and. this_is_simple(opt)) &
+      call error_handler(1, opt_msg='SK with SGSIM is not supported in this migration stage')
+    if (opt%NSIM > 1) &
+      call error_handler(1, opt_msg='Texture2Par SGSIM output currently supports exactly one realization')
     if (opt%READ_GRID_WEIGHTS .or. opt%WRITE_GRID_WEIGHTS) &
       call error_handler(1, opt_msg='libkriging OK/SK does not support READ_GRID_WEIGHTS or WRITE_GRID_WEIGHTS currently')
   end subroutine validate_libkriging_scope

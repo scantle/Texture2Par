@@ -98,8 +98,6 @@ t2p2 = \
     Options.f90                 \
     write_fmodel.f90            \
     Interpolators.f90           \
-    kriging.f90                 \
-    sgsim.f90                   \
     FlowModel.f90               \
     T2P.f90                     \
     t2p_log.f90                 \

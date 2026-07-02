@@ -3,17 +3,19 @@
 ! Texture2Par owns input parsing, categories, target/observation packing, and
 ! scattering packed results back to model arrays.  libkriging is intended to
 ! own covariance/variogram evaluation, neighbour search, the kriging solve,
-! supported caching/reuse, and (in a later stage) simulation.
+! supported caching/reuse, and simulation.
 !
 ! The legacy Texture2Par dip/rotation convention may intentionally differ
 ! from libkriging's GSLIB-style convention.  This adapter does not attempt to
 ! reconcile those conventions; that mapping belongs to a later cutover stage.
 module m_libkriging_adapter
-  use m_interpolation_types, only: t_interp_request, t_interp_result
+  use m_interpolation_types, only: t_interp_request, t_interp_result, &
+                                   PREDICT_ESTIMATE, PREDICT_SGSIM
   use m_vario,              only: t_vgm
   use m_error_handler,      only: error_handler
   use kriging,              only: t_kriging
   use kriging_err,          only: kriging_clear_error, kriging_failed, kriging_last_error
+  use utils,                only: set_seq, r8vec_normal_01
   implicit none
   private
 
@@ -79,7 +81,9 @@ contains
     type(t_kriging)           :: solver
     character(3)              :: vtype
     character(:), allocatable :: failure
-    integer                   :: i, ivar, jvar, nvar, ntarget, vidx
+    integer                   :: i, isim, ivar, jvar, nvar, ntarget, vidx
+    integer, allocatable      :: simulation_path(:)
+    real, allocatable         :: simulation_sample(:,:,:), draw(:)
     logical                   :: initialized, succeeded
 
     initialized = .false.
@@ -111,10 +115,25 @@ contains
     end do
 
     call kriging_clear_error()
-    call solver%initialize(ndim=request%dimension, nvar=nvar, unbias=unbias, &
-                           std_ck=nvar == 1, &
-                           nonstd_ck_mean_correction=nonstd_ck_mean_correction, &
-                           anisotropic_search=request%search%anisotropic_search, verbose=.false.)
+    select case (request%prediction_mode)
+      case (PREDICT_ESTIMATE)
+        call solver%initialize(ndim=request%dimension, nvar=nvar, unbias=unbias, &
+                               std_ck=nvar == 1, &
+                               nonstd_ck_mean_correction=nonstd_ck_mean_correction, &
+                               anisotropic_search=request%search%anisotropic_search, verbose=.false.)
+      case (PREDICT_SGSIM)
+        if (request%simulation_count < 1) &
+          call error_handler(4, opt_msg='libkriging SGSIM requires at least one realization')
+        if (request%request_block_support) &
+          call error_handler(1, opt_msg='BLOCK_MODE with SGSIM is not supported in this migration stage')
+        call solver%initialize(ndim=request%dimension, nvar=nvar, unbias=unbias, &
+                               nsim=request%simulation_count, seed=request%random_seed, &
+                               std_ck=nvar == 1, &
+                               nonstd_ck_mean_correction=nonstd_ck_mean_correction, &
+                               anisotropic_search=request%search%anisotropic_search, verbose=.false.)
+      case default
+        call error_handler(4, opt_msg='libkriging received an invalid prediction mode')
+    end select
     initialized = .true.
     if (kriging_failed()) goto 900
 
@@ -154,6 +173,22 @@ contains
       end do
     end do
 
+    if (request%prediction_mode == PREDICT_SGSIM) then
+      ! Supplying the path and samples keeps simulation state in memory; the
+      ! libkriging default otherwise writes diagnostic sgs_path/sample files.
+      allocate(simulation_path(ntarget), &
+               simulation_sample(request%simulation_count,nvar,ntarget), draw(ntarget))
+      call set_seq(simulation_path, ntarget, .true.)
+      do isim = 1, request%simulation_count
+        do ivar = 1, nvar
+          call r8vec_normal_01(ntarget, draw)
+          simulation_sample(isim,ivar,:) = draw
+        end do
+      end do
+      call solver%set_sim(randpath=simulation_path, sample=simulation_sample)
+      if (kriging_failed()) goto 900
+    end if
+
     ! Search anisotropy is configured per variable from its first auto-variogram structure.
     do ivar = 1, nvar
       vidx = vgm_index(ivar,ivar)
@@ -165,7 +200,8 @@ contains
     call solver%solve(nthread=1)
     if (kriging_failed() .or. .not. solver%solved) goto 900
 
-    ! Texture2Par requests one primary estimate from each CK solve.
+    ! Texture2Par's current output contract stores one primary realization.
+    ! In estimate mode the first value plane is the deterministic estimate.
     result%estimates = solver%block%value(1,1,:)
     result%variance  = solver%block%variance(1,1,:)
     result%status = 0

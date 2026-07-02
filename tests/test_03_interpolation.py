@@ -1329,13 +1329,15 @@ class TestLibKrigingOrdinary:
         assert r.returncode != 0
         assert "Invalid Interpolation Method" in r.combined
 
-    def test_ok_lib_alias_rejects_sgsim(self, run_t2p):
+    def test_ok_lib_alias_accepts_sgsim(self, run_t2p):
         r = run_t2p(
-            _ok_lib_2d_t2p(method="OK_LIB", options_extra="SGSIM"),
-            extra_files=self._files(),
+            _ok_lib_2d_t2p(method="OK_LIB", options_extra="SGSIM\nSEED 23"),
+            extra_files={"dataset.csv": SK_2D_DATASET, "grid.grd": SK_2D_GRD},
         )
-        assert r.returncode != 0
-        assert "SGSIM" in r.combined
+        assert r.returncode == 0, r.combined
+        assert "SGSIM simulation mode" in r.log
+        df = _read_coarse_texture_output(r, ("Layer1",))
+        assert np.isfinite(df["Layer1"]).all()
 
     def test_default_ok_exact_vertical_hits_run_in_3d(self, run_t2p):
         t2p = _ok3d_t2p(method="OK")
@@ -1836,53 +1838,146 @@ class TestCoincidentLocations:
 
 class TestSGS:
 
-    def test_sgsim_flag_accepted(self, run_t2p):
-        r = run_t2p(_grid_t2p(options_extra="SGSIM\n  SEED 12345"),
-                    extra_files=FILES)
-        # SGS may or may not produce additional outputs; the run must not crash
+    @staticmethod
+    def _run_2d(run_t2p, seed, dataset=SK_2D_DATASET, extra=""):
+        options = f"SGSIM\nSEED {seed}"
+        if extra:
+            options += f"\n{extra}"
+        return run_t2p(
+            _ok_lib_2d_t2p(options_extra=options),
+            extra_files={"dataset.csv": dataset, "grid.grd": SK_2D_GRD},
+        )
+
+    def test_sgsim_runs_through_libkriging_with_finite_output(self, run_t2p):
+        r = self._run_2d(run_t2p, 12345)
         assert r.returncode == 0, r.combined
+        assert "Ordinary Kriging (libkriging) - SGSIM simulation mode" in r.log
+        df = _read_coarse_texture_output(r, ("Layer1",))
+        assert np.isfinite(df["Layer1"]).all()
+        assert not (r.workdir / "sgs_path.dat").exists()
+        assert not (r.workdir / "sgs_sample.dat").exists()
 
     def test_sgsim_different_seeds_differ(self, run_t2p):
-        """Two SGS runs with different seeds should produce different outputs."""
-        r1 = run_t2p(_grid_t2p(options_extra="SGSIM\n  SEED 1\n  WRITE_DATASET_FILES"),
-                     extra_files=FILES)
-        if r1.returncode != 0:
-            pytest.skip("SGS run did not complete successfully")
-        files1 = sorted(r1.workdir.glob("*Coarse*"))
-        if not files1:
-            pytest.skip("Coarse dataset files not found for SGS comparison")
-        content1 = files1[0].read_text()  # capture before second run overwrites
-
-        r2 = run_t2p(_grid_t2p(options_extra="SGSIM\n  SEED 2\n  WRITE_DATASET_FILES"),
-                     extra_files=FILES)
-        if r2.returncode != 0:
-            pytest.skip("SGS run did not complete successfully")
-        files2 = sorted(r2.workdir.glob("*Coarse*"))
-        if not files2:
-            pytest.skip("Coarse dataset files not found for SGS comparison")
-        assert content1 != files2[0].read_text(), (
-            "SGS with different seeds produced identical output")
+        r1 = self._run_2d(run_t2p, 1)
+        assert r1.returncode == 0, r1.combined
+        values1 = _read_coarse_texture_output(r1, ("Layer1",))["Layer1"].to_numpy().copy()
+        r2 = self._run_2d(run_t2p, 2)
+        assert r2.returncode == 0, r2.combined
+        values2 = _read_coarse_texture_output(r2, ("Layer1",))["Layer1"].to_numpy()
+        assert not np.array_equal(values1, values2)
 
     def test_sgsim_same_seed_reproducible(self, run_t2p):
-        """Two SGS runs with the same seed should produce identical outputs."""
-        r1 = run_t2p(_grid_t2p(options_extra="SGSIM\n  SEED 99\n  WRITE_DATASET_FILES"),
-                     extra_files=FILES)
-        if r1.returncode != 0:
-            pytest.skip("SGS run did not complete successfully")
-        files1 = sorted(r1.workdir.glob("*Coarse*"))
-        if not files1:
-            pytest.skip("Coarse dataset files not found")
-        content1 = files1[0].read_text()  # capture before second run overwrites
+        r1 = self._run_2d(run_t2p, 99)
+        assert r1.returncode == 0, r1.combined
+        values1 = _read_coarse_texture_output(r1, ("Layer1",))["Layer1"].to_numpy().copy()
+        r2 = self._run_2d(run_t2p, 99)
+        assert r2.returncode == 0, r2.combined
+        values2 = _read_coarse_texture_output(r2, ("Layer1",))["Layer1"].to_numpy()
+        assert np.array_equal(values1, values2)
 
-        r2 = run_t2p(_grid_t2p(options_extra="SGSIM\n  SEED 99\n  WRITE_DATASET_FILES"),
-                     extra_files=FILES)
-        if r2.returncode != 0:
-            pytest.skip("SGS run did not complete successfully")
-        files2 = sorted(r2.workdir.glob("*Coarse*"))
-        if not files2:
-            pytest.skip("Coarse dataset files not found")
-        assert content1 == files2[0].read_text(), (
-            "SGS with same seed produced different output")
+    def test_sgsim_zero_variance_exact_conditioning_and_soft_data(self, run_t2p):
+        exact = self._run_2d(
+            run_t2p, 71, _ok_lib_variance_dataset(0.0),
+            "KVME\nWRITE_VARIANCE",
+        )
+        assert exact.returncode == 0, exact.combined
+        exact_df = _read_coarse_texture_output(exact, ("Layer1",)).copy()
+        hit = exact_df[(exact_df["X"] == 0.5) & (exact_df["Y"] == 0.5)].iloc[0]
+        assert hit["Layer1"] == pytest.approx(0.10, abs=1e-10)
+        assert hit["Var_Layer1"] == pytest.approx(0.0, abs=1e-10)
+
+        noisy = self._run_2d(
+            run_t2p, 71, _ok_lib_variance_dataset(1.0),
+            "KVME\nWRITE_VARIANCE",
+        )
+        assert noisy.returncode == 0, noisy.combined
+        noisy_df = _read_coarse_texture_output(noisy, ("Layer1",))
+        noisy_hit = noisy_df[(noisy_df["X"] == 0.5) & (noisy_df["Y"] == 0.5)].iloc[0]
+        assert abs(noisy_hit["Layer1"] - 0.10) > 1e-4
+        assert noisy_hit["Var_Layer1"] > hit["Var_Layer1"] + 1e-4
+
+    def test_sgsim_runs_in_3d(self, run_t2p):
+        r = run_t2p(
+            _ok3d_multi_t2p(extra_options="SGSIM\nSEED 314"),
+            extra_files={
+                "dataset.csv": _ok3d_irregular_dataset(),
+                "grid.grd": OK3D_INTERIOR_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+        df = _read_coarse_texture_output(r)
+        assert np.isfinite(df[["Layer1", "Layer2", "Layer3"]]).all().all()
+
+    def test_sgsim_preserves_category_masking(self, run_t2p):
+        dataset = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse,HSU1
+A1,1,1,0.5,0.5,100,0,10,0.10,A
+A2,2,1,1.5,0.5,100,0,10,0.15,A
+B1,3,1,0.5,2.5,100,0,10,0.85,B
+B2,4,1,2.5,2.5,100,0,10,0.90,B
+"""
+        hsu = """\
+1
+# Array 1
+A A A A A A B B B
+"""
+        r = run_t2p(
+            _ok_lib_2d_t2p(
+                options_extra="SGSIM\nSEED 41",
+                flow_extra="HSU_FILE hsus.dat",
+                variogram_lines="1 Sph 0.0 1.0 100.0 100.0 0.0 4",
+            ),
+            extra_files={
+                "dataset.csv": dataset,
+                "grid.grd": SK_2D_GRD,
+                "hsus.dat": hsu,
+            },
+        )
+        assert r.returncode == 0, r.combined
+        values = _read_coarse_texture_output(r, ("Layer1",))["Layer1"].to_numpy()
+        assert np.isfinite(values).all()
+        assert values[:6].max() < 0.4
+        assert values[6:].min() > 0.6
+
+    @pytest.mark.parametrize("method", ["SK", "IDW"])
+    def test_sgsim_rejects_unsupported_interpolation_modes(self, run_t2p, method):
+        r = run_t2p(
+            _ok_lib_2d_t2p(method=method, options_extra="SGSIM\nSEED 1"),
+            extra_files={"dataset.csv": SK_2D_DATASET, "grid.grd": SK_2D_GRD},
+        )
+        assert r.returncode != 0
+        assert method in r.combined
+        assert "SGSIM" in r.combined
+
+    def test_sgsim_rejects_cokriging(self, run_t2p):
+        t2p = _ck_variance_t2p().replace("MAX_VSTRUCT 1", "MAX_VSTRUCT 1\nSGSIM\nSEED 1")
+        r = run_t2p(
+            t2p,
+            extra_files={
+                "primary.csv": _ck_variance_primary_dataset(0.0),
+                "secondary.csv": CK_VARIANCE_SECONDARY_DATASET,
+                "grid.grd": OK_LIB_2D_GRD,
+            },
+        )
+        assert r.returncode != 0
+        assert "CK with SGSIM" in r.combined
+
+    def test_sgsim_runtime_no_longer_references_legacy_type(self):
+        root = Path(__file__).parents[1]
+        source = (root / "src" / "T2P.f90").read_text()
+        assert "allocate(t_sgsim::" not in source.lower()
+        assert "use m_sgsim" not in source.lower()
+
+        for makefile in (
+            root / "build_ifx" / "makefile",
+            root / "build" / "makefile",
+            root / "build" / "build_ifx" / "makefile",
+        ):
+            build_text = makefile.read_text()
+            assert "kriging.f90" not in build_text
+            assert "sgsim.f90" not in build_text
+            assert "$(OBJDIR)/kriging.obj" not in build_text
+            assert "$(OBJDIR)/sgsim.obj" not in build_text
 
     def test_sgsim_incompatible_with_weight_write(self, run_t2p):
         """Per docs, SGS is not compatible with WRITE_GRID_WEIGHTS."""

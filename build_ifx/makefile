@@ -189,13 +189,11 @@ t2p2 := \
     Interpolators.f90 \
     KrigingBase.f90 \
     write_fmodel.f90 \
-    kriging.f90 \
     PilotPoints.f90 \
     InterpolationPackers.f90 \
     LibKrigingInterpolator.f90 \
     FlowModel.f90 \
     subsidence_funcs.f90 \
-    sgsim.f90 \
     T2P.f90 \
     Read_Main_Input.f90 \
     t2p_log.f90 \
@@ -352,12 +350,10 @@ $(OBJDIR)/Options.obj: $(OBJDIR)/global.obj $(OBJDIR)/FileIO.obj $(FLIB_DEP) $(O
 $(OBJDIR)/write_fmodel.obj: $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/FileIO.obj $(OBJDIR)/DataSets.obj $(MFUSG_LIB)
 $(OBJDIR)/Interpolators.obj: $(OBJDIR)/global.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Categories.obj
 $(OBJDIR)/KrigingBase.obj: $(OBJDIR)/global.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Options.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/FileIO.obj $(FLIB_DEP)
-$(OBJDIR)/kriging.obj: $(OBJDIR)/KrigingBase.obj $(OBJDIR)/global.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/variogram.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(FLIB_DEP)
 $(OBJDIR)/LibKrigingInterpolator.obj: $(OBJDIR)/KrigingBase.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/Grid.obj $(OBJDIR)/Options.obj $(OBJDIR)/InterpolationTypes.obj $(OBJDIR)/InterpolationPackers.obj $(OBJDIR)/LibKrigingAdapter.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/global.obj
-$(OBJDIR)/sgsim.obj: $(OBJDIR)/global.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/variogram.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/Sparse_Symmetric.obj $(OBJDIR)/kriging.obj
 $(OBJDIR)/FlowModel.obj: $(OBJDIR)/FileIO.obj $(OBJDIR)/Grid.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Categories.obj $(OBJDIR)/Options.obj $(OBJDIR)/cellblocks.obj $(OBJDIR)/global.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/fpath.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/write_fmodel.obj $(MFUSG_LIB)
-$(OBJDIR)/subsidence_funcs.obj: $(OBJDIR)/global.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/kriging.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Options.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Grid.obj
-$(OBJDIR)/T2P.obj: $(OBJDIR)/global.obj $(FLIB_DEP) $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/FlowModel.obj $(OBJDIR)/PilotPoints.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/KrigingBase.obj $(OBJDIR)/kriging.obj $(OBJDIR)/LibKrigingInterpolator.obj $(OBJDIR)/sgsim.obj $(OBJDIR)/Categories.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Grid.obj $(OBJDIR)/subsidence_funcs.obj $(OBJDIR)/ColMap.obj
+$(OBJDIR)/subsidence_funcs.obj: $(OBJDIR)/global.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Options.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Grid.obj
+$(OBJDIR)/T2P.obj: $(OBJDIR)/global.obj $(FLIB_DEP) $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/FlowModel.obj $(OBJDIR)/PilotPoints.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/KrigingBase.obj $(OBJDIR)/LibKrigingInterpolator.obj $(OBJDIR)/Categories.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Grid.obj $(OBJDIR)/subsidence_funcs.obj $(OBJDIR)/ColMap.obj
 $(OBJDIR)/t2p_log.obj: $(OBJDIR)/FileIO.obj $(OBJDIR)/version.obj $(OBJDIR)/time.obj $(OBJDIR)/T2P.obj $(OBJDIR)/ColMap.obj $(OBJDIR)/ErrorHandler.obj $(FLIB_DEP)
 $(OBJDIR)/Read_Datasets.obj: $(OBJDIR)/global.obj $(OBJDIR)/T2P.obj $(OBJDIR)/Str_Module.obj $(FLIB_DEP) $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Grid.obj $(OBJDIR)/data_transformer.obj $(OBJDIR)/subsidence_funcs.obj $(OBJDIR)/t2p_log.obj $(OBJDIR)/ColMap.obj
 $(OBJDIR)/Read_Main_Input.obj: $(OBJDIR)/T2P.obj $(FLIB_DEP) $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/FlowModel.obj $(OBJDIR)/ColMap.obj $(OBJDIR)/variogram.obj $(OBJDIR)/KrigingBase.obj $(OBJDIR)/Tools.obj $(OBJDIR)/PilotPoints.obj $(OBJDIR)/global.obj $(OBJDIR)/subsidence_funcs.obj

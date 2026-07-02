@@ -1,11 +1,10 @@
 ! Backend-neutral batch interpolation data types.
 !
-! These types establish the seam that future interpolation backends, including
-! libkriging, can use without depending on Texture2Par's dataset, grid, or
-! point-wise interpolator classes.  They are intentionally data-only in this
-! stage and are not connected to the current runtime interpolation path.
+! These types establish the seam used by interpolation backends without
+! depending on Texture2Par's dataset, grid, or point-wise interpolator classes.
+! They remain data-only while carrying the current libkriging runtime requests.
 ! Real components intentionally use Texture2Par's prevailing default real
-! kind. Any explicit kind conversion belongs at the future backend adapter.
+! kind. Any explicit kind conversion belongs at the backend adapter.
 module m_interpolation_types
   implicit none
   private
@@ -14,6 +13,9 @@ module m_interpolation_types
   integer, parameter, public :: INTERP_PURPOSE_MODEL       = 1
   integer, parameter, public :: INTERP_PURPOSE_PILOT_POINT = 2
   integer, parameter, public :: INTERP_PURPOSE_INTERBED    = 3
+
+  integer, parameter, public :: PREDICT_ESTIMATE = 1
+  integer, parameter, public :: PREDICT_SGSIM    = 2
 
   type, public :: t_search_spec
     ! Current Texture2Par search controls.
@@ -38,6 +40,13 @@ module m_interpolation_types
     integer :: zone_id     = 0
     integer :: class_id    = 0
     integer :: purpose     = INTERP_PURPOSE_UNSPECIFIED
+
+    ! Prediction and simulation configuration.  SGSIM uses the same packed
+    ! observations, targets, categories, variograms, and search specification
+    ! as an estimate; only the backend solve mode and result extraction differ.
+    integer :: prediction_mode = PREDICT_ESTIMATE
+    integer :: simulation_count = 0
+    integer :: random_seed = 0
 
     type(t_search_spec) :: search
 
