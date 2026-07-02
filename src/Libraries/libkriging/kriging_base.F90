@@ -321,6 +321,10 @@ module kriging_base
     logical :: neglect_error      = .false.
     logical :: varying_vgm        = .false.
     logical :: std_ck             = .true.
+    ! Non-standard CK (one shared unbiasedness constraint) traditionally applies
+    ! an Isaaks & Srivastava target-neighbourhood mean adjustment. Disable only
+    ! when the caller has already defined its own cross-variable mean treatment.
+    logical :: nonstd_ck_mean_correction = .true.
     logical :: pf_cache           = .true.
 #ifdef KRIGEKIT_HCACHE_SLOTS
     integer :: factor_cache_size  = KRIGEKIT_HCACHE_SLOTS
@@ -478,14 +482,14 @@ contains
   subroutine initialize_base(self, ndim, nvar, ndrift, unbias, nsim, &
       anisotropic_search, weight_correction, use_old_weight, store_weight, &
       cross_validation, write_mat, neglect_error, varying_vgm, std_ck, &
-      verbose, pf_cache, weight_file, bounds, seed)
+      verbose, pf_cache, weight_file, bounds, seed, nonstd_ck_mean_correction)
     class(t_kriging_base), intent(inout)   :: self
     integer, intent(in), optional          :: ndim, nvar, ndrift, unbias, nsim, seed
     logical, intent(in), optional          :: anisotropic_search, weight_correction, &
                                               use_old_weight, store_weight, &
                                               cross_validation, write_mat, &
                                               neglect_error, varying_vgm, std_ck, &
-                                              verbose, pf_cache
+                                              verbose, pf_cache, nonstd_ck_mean_correction
     character(*), intent(in), optional     :: weight_file
     real,    intent(in), optional          :: bounds(2)
 
@@ -509,6 +513,8 @@ contains
     if (present(neglect_error))      self%neglect_error      = neglect_error
     if (present(varying_vgm))        self%varying_vgm        = varying_vgm
     if (present(std_ck))             self%std_ck             = std_ck
+    if (present(nonstd_ck_mean_correction)) &
+      self%nonstd_ck_mean_correction = nonstd_ck_mean_correction
     if (present(verbose))            self%verbose            = verbose
     if (present(pf_cache))           self%pf_cache           = pf_cache
     if (present(weight_file))        self%weight_file        = weight_file
@@ -3892,8 +3898,12 @@ contains
         return
       end if
 
-      !-- Isaaks & Srivastava correction is used only for non-standard cokriging.
-      ck_isa = (.not. self%std_ck) .and. self%nsim == 0 &
+      !-- Optional Isaaks & Srivastava correction for non-standard cokriging.
+      !   For estimate j, every other variable i contributes an additional
+      !   (local_mean(j)-local_mean(i))*sum(weights(i)) term. The means use the
+      !   selected target neighbourhood, so a fixed global value shift cannot
+      !   generally reproduce or cancel this adjustment.
+      ck_isa = self%nonstd_ck_mean_correction .and. (.not. self%std_ck) .and. self%nsim == 0 &
                .and. self%unbias /= 0 .and. self%nvar > 1
       if (ck_isa) then
         do ivar = 1, self%nvar

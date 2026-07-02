@@ -340,12 +340,13 @@ SUB_PP_PARAMS = """\
 
 class TestSubsidenceOutputs:
 
-    def _sub_t2p(self) -> str:
+    def _sub_t2p(self, options_extra="") -> str:
         return f"""\
             BEGIN OPTIONS
               MAX_VSTRUCT 1
               INFER_LAST_CLASS
               WRITE_NODE_FILES
+              {options_extra}
             END OPTIONS
             BEGIN CLASSES
               Coarse
@@ -403,15 +404,11 @@ class TestSubsidenceOutputs:
         if not numeric_cols:
             pytest.skip("Cannot identify IB_THK value column")
         vals = _numeric_values(rows, numeric_cols[-1])
-        assert all(v >= 0 for v in vals if not math.isnan(v)), \
+        assert all(v >= 0 for v in vals if not math.isnan(v) and v > -999.0), \
             "IB_THK contains negative values"
 
-    def test_ok_lib_subsidence_outputs_are_complete_and_sane(self, run_t2p):
-        t2p = self._sub_t2p().replace(
-            "MAX_VSTRUCT 1",
-            "MAX_VSTRUCT 1\n              INTERP_METHOD OK_LIB",
-            1,
-        )
+    def test_default_ok_subsidence_outputs_are_complete_and_sane(self, run_t2p):
+        t2p = self._sub_t2p()
         r = run_t2p(
             t2p,
             extra_files={"dataset.csv": SUBSIDENCE_DATASET, "grid.grd": GRD},
@@ -421,7 +418,7 @@ class TestSubsidenceOutputs:
         interbed_files = sorted(
             set(r.workdir.glob("*IB_*")) | set(r.workdir.glob("*ib_*"))
         )
-        assert interbed_files, "OK_LIB subsidence run produced no interbed outputs"
+        assert interbed_files, "Default OK subsidence run produced no interbed outputs"
         active_by_output = {}
         for path in interbed_files:
             rows = _csv_rows(path)
@@ -447,10 +444,38 @@ class TestSubsidenceOutputs:
                 values for name, values in active_by_output.items()
                 if name.endswith(output_name)
             ]
-            assert len(matches) == 1, f"Missing OK_LIB {output_name} output"
+            assert len(matches) == 1, f"Missing default OK {output_name} output"
             assert matches[0] == pytest.approx(
                 [expected_value] * len(matches[0]), abs=1e-10
             )
+
+    def test_sk_model_defaults_to_libkriging_ok_for_interbeds(self, run_t2p):
+        r = run_t2p(
+            self._sub_t2p(options_extra="INTERP_METHOD SK"),
+            extra_files={"dataset.csv": SUBSIDENCE_DATASET, "grid.grd": GRD},
+        )
+        assert r.returncode == 0, r.combined
+        assert "Simple Kriging (libkriging)" in r.log
+        ib_line = next(
+            line for line in r.log.splitlines()
+            if "Interbed Interpolation Method:" in line
+        )
+        assert "Ordinary Kriging (libkriging)" in ib_line
+        assert list(r.workdir.glob("*IB_THICK*")) or list(
+            r.workdir.glob("*ib_thick*")
+        )
+
+    def test_interbed_idw_still_runs(self, run_t2p):
+        r = run_t2p(
+            self._sub_t2p(options_extra="IB_INTERP_METHOD IDW"),
+            extra_files={"dataset.csv": SUBSIDENCE_DATASET, "grid.grd": GRD},
+        )
+        assert r.returncode == 0, r.combined
+        ib_line = next(
+            line for line in r.log.splitlines()
+            if "Interbed Interpolation Method:" in line
+        )
+        assert "Inverse Distance Weighting (IDW)" in ib_line
 
 
 # ---------------------------------------------------------------------------

@@ -9,8 +9,7 @@ module m_T2P
   use m_pilotpoints, only: t_pilotpoints, setup_pilotpoint_property_arrays, add_pilotpoint_aquifer_parameter
   use m_interpolator, only: t_interpolator, t_idw
   use m_kriging_base, only: t_kriging_base
-  use m_kriging, only: t_globkrige, t_treekrige
-  use m_libkriging_interpolator, only: t_libkrige
+  use m_libkriging_interpolator, only: t_libkrige, LIBKRIGE_MODE_SIMPLE
   use m_interpolation_types, only: t_interp_request, INTERP_PURPOSE_PILOT_POINT, &
                                    INTERP_PURPOSE_INTERBED
   use m_interpolation_packers, only: pack_grid_targets, pack_layerdata_observations, &
@@ -231,34 +230,76 @@ module m_T2P
     select case (this%opt%INTERP_METHOD)
       case("OK")
         if (this%opt%NSIM == 0) then
-          allocate(t_treekrige::this%interp_data)
+          allocate(t_libkrige::this%interp_data)
+          this%opt%INTERP_SECOND_OK = .true.
         else
           allocate(t_sgsim::this%interp_data)
+          this%opt%INTERP_SECOND_OK = .true.
         end if
-        allocate(t_treekrige::this%interp_pp)
-        this%opt%INTERP_SECOND_OK = .true.
       case("SK")
-        allocate(t_globkrige::this%interp_data)
-        allocate(t_treekrige::this%interp_pp)  ! Still should use OK - mean addition/subtraction not implemented!
-        this%opt%INTERP_SECOND_OK = .true.
+        allocate(t_libkrige::this%interp_data)
+        select type(lib => this%interp_data)
+          type is(t_libkrige)
+            lib%kriging_mode = LIBKRIGE_MODE_SIMPLE
+        end select
+        if (this%opt%NSIM > 0) &
+          call error_handler(1,opt_msg='libkriging SK does not currently support SGSIM')
       case("OK_LIB")
         allocate(t_libkrige::this%interp_data)
-        allocate(t_libkrige::this%interp_pp)
+        this%opt%INTERP_SECOND_OK = .true.
         if (this%opt%NSIM > 0) &
-          call error_handler(1,opt_msg='OK_LIB does not currently support SGSIM')
-        if (this%opt%WRITE_GRID_WEIGHTS.or.this%opt%READ_GRID_WEIGHTS) &
-          call error_handler(1,opt_msg='OK_LIB does not support grid weight read/write currently')
-        if (this%opt%WRITE_PP_WEIGHTS.or.this%opt%READ_PP_WEIGHTS) &
-          call error_handler(1,opt_msg='OK_LIB does not support pilot-point weight read/write currently')
-        if (this%opt%WRITE_IB_WEIGHTS.or.this%opt%READ_IB_WEIGHTS) &
-          call error_handler(1,opt_msg='OK_LIB does not support interbed weight read/write currently')
+          call error_handler(1,opt_msg='libkriging OK does not currently support SGSIM; use INTERP_METHOD OK with SGSIM')
       case("IDW")
         allocate(t_idw::this%interp_data)
-        allocate(t_idw::this%interp_pp)
         this%has_interp = .true.
       case DEFAULT
         call error_handler(1,opt_msg="Invalid Interpolation Method: " // this%opt%INTERP_METHOD)
     end select
+
+    ! Pilot-point interpolation is independent of model/data interpolation.
+    select case (this%opt%PP_INTERP_METHOD)
+      case("OK")
+        allocate(t_libkrige::this%interp_pp)
+      case("IDW")
+        allocate(t_idw::this%interp_pp)
+      case("SK")
+        call error_handler(1,opt_msg='PP_INTERP_METHOD SK is unsupported: pilot-point interpolation defaults to OK; '// &
+                                     'SK mean handling is not defined for this workflow')
+      case DEFAULT
+        call error_handler(1,opt_msg='Invalid PP_INTERP_METHOD: '//trim(this%opt%PP_INTERP_METHOD)// &
+                                     ' (supported values: OK, IDW)')
+    end select
+
+    select case (this%opt%IB_INTERP_METHOD)
+      case("OK", "IDW")
+        continue
+      case("SK")
+        call error_handler(1,opt_msg='IB_INTERP_METHOD SK is unsupported: interbed interpolation defaults to OK; '// &
+                                     'SK mean handling is not defined for this workflow')
+      case DEFAULT
+        call error_handler(1,opt_msg='Invalid IB_INTERP_METHOD: '//trim(this%opt%IB_INTERP_METHOD)// &
+                                     ' (supported values: OK, IDW)')
+    end select
+
+    ! External weight files are not part of the libkriging paths.
+    if ((this%opt%INTERP_METHOD=="OK".and.this%opt%NSIM==0).or. &
+        this%opt%INTERP_METHOD=="OK_LIB") then
+        if (this%opt%WRITE_GRID_WEIGHTS.or.this%opt%READ_GRID_WEIGHTS) &
+          call error_handler(1,opt_msg='libkriging OK does not support external grid weight read/write')
+    end if
+    if (this%opt%INTERP_METHOD=="SK") then
+        if (this%opt%INTERP_ORDER=="AFTER") &
+          call error_handler(1,opt_msg='libkriging SK does not support INTERP_ORDER AFTER because '// &
+                                       'generated parameter data have no defined SK mean')
+        if (this%opt%WRITE_GRID_WEIGHTS.or.this%opt%READ_GRID_WEIGHTS) &
+          call error_handler(1,opt_msg='libkriging SK does not support grid weight read/write')
+    end if
+    if (this%opt%PP_INTERP_METHOD=="OK".and. &
+        (this%opt%WRITE_PP_WEIGHTS.or.this%opt%READ_PP_WEIGHTS)) &
+      call error_handler(1,opt_msg='libkriging OK does not support external pilot-point weight read/write')
+    if (this%opt%IB_INTERP_METHOD=="OK".and. &
+        (this%opt%WRITE_IB_WEIGHTS.or.this%opt%READ_IB_WEIGHTS)) &
+      call error_handler(1,opt_msg='libkriging OK does not support external interbed weight read/write')
     call this%interp_data%initialize()  ! Todo - custom parameters?
     call this%interp_pp%initialize()    ! Todo - custom parameters?
 
@@ -408,6 +449,7 @@ module m_T2P
     class(t_T2P), intent(inout)   :: this
     integer, allocatable          :: vario_map(:,:)  ! Keeps track of assigned variogram indices
     integer                       :: i, j, k, x, vidx, nconnected, nprimaries
+    logical                       :: data_kriging
 
     ! Determine number of primaries based on INTERP_ORDER
     if (this%opt%INTERP_ORDER == "BEFORE") then
@@ -420,16 +462,18 @@ module m_T2P
     end if
     this%nprimary = nprimaries
 
-    ! No need to setup if we're not kriging
-    if (.not. (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK".or. &
-               this%opt%INTERP_METHOD=="OK_LIB")) return
+    data_kriging = this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK".or. &
+                   this%opt%INTERP_METHOD=="OK_LIB"
+
+    ! No variograms are needed when neither model/data nor pilot points use kriging.
+    if (.not.data_kriging.and.this%opt%PP_INTERP_METHOD/="OK") return
 
     ! Initialize
     vidx = 0  ! Start variogram index counter
     vario_map = 0  ! Initialize to zero (unassigned)
 
     ! If we're not kriging the texture/secondary data, then only a pilot point variogram is needed
-    if (.not. this%opt%READ_GRID) then
+    if (data_kriging.and..not.this%opt%READ_GRID) then
 
       ! Loop over each primary dataset
       do i = 1, this%nprimary
@@ -466,11 +510,11 @@ module m_T2P
         vario_map(k, k) = vidx  ! Self-variogram for secondary
 
         do j = i + 1, this%nsecondary  ! Only consider i < j to avoid duplicates
-          k = this%ntexclasses + j
-          if (vario_map(i, k) == 0) then
+          x = this%ntexclasses + j
+          if (vario_map(k, x) == 0) then
             vidx = vidx + 1
-            vario_map(i, k) = vidx
-            vario_map(k, i) = vidx  ! Enforce symmetry
+            vario_map(k, x) = vidx
+            vario_map(x, k) = vidx  ! Enforce symmetry
           end if
         end do
       end do
@@ -491,16 +535,16 @@ module m_T2P
     this%nvario = vidx
 
     ! Pass variogram indices to the kriging object
-    select type(p => this%interp_data)
-      class is(t_kriging_base)
-        if (allocated(p%global_vario_idx)) deallocate(p%global_vario_idx)
-        allocate(p%global_vario_idx(0:1, size(vario_map, 1), size(vario_map, 2)))
-        do i=0, 1
-          p%global_vario_idx(i,:,:) = vario_map
-        end do
-      class default
-        call error_handler(4, opt_msg="Unexpected non-kriging interpolator detected.")
-    end select
+    if (data_kriging) then
+      select type(p => this%interp_data)
+        class is(t_kriging_base)
+          if (allocated(p%global_vario_idx)) deallocate(p%global_vario_idx)
+          allocate(p%global_vario_idx(0:1, size(vario_map, 1), size(vario_map, 2)))
+          do i=0, 1
+            p%global_vario_idx(i,:,:) = vario_map
+          end do
+      end select
+    end if
 
     ! Deallocate the tracking matrix
     if (allocated(vario_map)) deallocate(vario_map)
@@ -710,8 +754,10 @@ module m_T2P
     if(.not. this%has_fmodel   ) call error_handler(1,opt_msg="Missing Required FLOW_MODEL Block")
     if(.not. this%has_datafiles) call error_handler(1,opt_msg="Missing Required DATASET Block(s)")
     if(.not. this%has_covar    ) call this%no_covariates()  ! Allowable, just needs to be handled
-    if(this%opt%INTERP_METHOD=="OK_LIB".and.this%opt%BLOCK_KRIGE>0) &
-      call error_handler(1,opt_msg="OK_LIB does not currently support block kriging")
+    if(((this%opt%INTERP_METHOD=="OK".and.this%opt%NSIM==0).or. &
+        this%opt%INTERP_METHOD=="OK_LIB".or.this%opt%INTERP_METHOD=="SK").and. &
+        this%opt%BLOCK_KRIGE>0) &
+      call error_handler(1,opt_msg="libkriging OK/SK does not currently support block kriging")
     if(.not. this%has_interp   ) then
       if (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="SK".or. &
           this%opt%INTERP_METHOD=="OK_LIB") then
@@ -868,7 +914,7 @@ module m_T2P
         obs_data(1) = this%pilot_points_aquitard
       end if
 
-      ! Initialize results for this array. OK_LIB writes values directly and
+      ! Initialize results for this array. Libkriging OK writes values directly and
       ! does not materialize the legacy dense weight matrix.
       call results(k)%initialize(to_grid%n, to_grid) ! Copies grid over
       allocate(results(k)%values(to_grid%n, size(obs_data(1)%values,2), this%ntexclasses))
@@ -940,7 +986,7 @@ module m_T2P
     integer                 :: column, nvalues
 
     if (observations%nactive < 1) &
-      call error_handler(4, opt_msg='OK_LIB pilot-point interpolation has no active value columns')
+      call error_handler(4, opt_msg='libkriging OK pilot-point interpolation has no active value columns')
     nvalues = observations%nactive * this%ntexclasses
 
     do cat_idx = 1, size(catlist)
@@ -965,7 +1011,7 @@ module m_T2P
           value_matrix(:,column) = observations%values( &
             request%observation_source_index, parameter_idx, class_id)
           if (any(value_matrix(:,column) == NODATA)) &
-            call error_handler(4, opt_msg='OK_LIB pilot-point value column contains missing data')
+            call error_handler(4, opt_msg='libkriging OK pilot-point value column contains missing data')
         end do
       end do
 
@@ -1113,7 +1159,7 @@ module m_T2P
     do k=1, this%fmodel%nlayers
       call this%write_minor_status('- Layer:',this%fmodel%get_layer_id(k))
 
-      ! Initialize results. OK_LIB directly interpolates the three value
+      ! Initialize results. Libkriging OK directly interpolates the three value
       ! columns without constructing the legacy dense weight matrix.
       call results(k)%initialize(this%fmodel%grid(1)%ptrgrid%n, 3, default_value=NODATA)
 
@@ -1210,7 +1256,7 @@ module m_T2P
       value_matrix(:,3) = this%interbed_thick(layer)%values( &
         2, request%observation_source_index)
       if (any(value_matrix == NODATA)) &
-        call error_handler(4, opt_msg='OK_LIB interbed value columns contain missing data')
+        call error_handler(4, opt_msg='libkriging OK interbed value columns contain missing data')
 
       request%purpose = INTERP_PURPOSE_INTERBED
       request%class_id = 1

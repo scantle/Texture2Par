@@ -258,8 +258,10 @@ module m_read_main_input
 
     ! Ensure covariates are being used with a valid intepolation option
     if (.not. t2p%opt%INTERP_SECOND_OK) then
-      if (t2p%opt%INTERP_METHOD == "OK_LIB") then
-        call error_handler(4,opt_msg="OK_LIB does not currently support covariates/cokriging")
+      if (t2p%opt%INTERP_METHOD == "OK".or.t2p%opt%INTERP_METHOD == "OK_LIB") then
+        call error_handler(4,opt_msg="libkriging OK does not currently support this covariate/cokriging configuration")
+      else if (t2p%opt%INTERP_METHOD == "SK") then
+        call error_handler(4,opt_msg="libkriging SK does not currently support covariates/cokriging")
       else
         call error_handler(4,opt_msg="Covariates are not supported for non-kriging options.")
       end if

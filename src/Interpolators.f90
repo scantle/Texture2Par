@@ -423,6 +423,7 @@ end subroutine single_point_full_weight
     na_mask = .true.
     has_data = .false.
 
+    if (allocated(this%catmask)) deallocate(this%catmask)
     allocate(this%catmask(this%nobs))
     ! For layer dataset, ignore all NA values
     select type(p=>obs_data(1))

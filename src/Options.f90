@@ -9,6 +9,9 @@ module m_options
 !     after the options are read.
 !-------------------------------------------------------------------------------------------------!
 
+  integer, parameter, public :: CK_MEAN_LIBKRIGING = 1
+  integer, parameter, public :: CK_MEAN_LEGACY_STANDARDIZED = 2
+
   type t_options
     ! Required Options:
     integer                  :: MAX_VSTRUCT           ! Maximum variogram structures
@@ -23,8 +26,11 @@ module m_options
     integer                  :: INTERP_DIM            ! 2D, 3D, stored as integer, read as string
     integer                  :: NSIM                  ! number of sequential gaussian simulation; default is zero which is Kriging
     integer                  :: SEED                  ! seed number for generating random path and samples for SGSIM
-    character(10)            :: INTERP_METHOD         ! OK, SK, IDW
+    character(10)            :: INTERP_METHOD         ! Model/data: OK, OK_LIB, SK, IDW
+    character(10)            :: PP_INTERP_METHOD      ! Pilot points: OK, IDW
+    character(10)            :: IB_INTERP_METHOD      ! Interbeds: OK, IDW
     character(10)            :: INTERP_ORDER          ! Interpolate to grid: [BEFORE, AFTER] upscaling/aggegating?
+    integer                  :: CK_MEAN_MODE          ! Libkriging local means or legacy global standardization
     character(60)            :: MAIN_OUTPUT           !
     character(500)           :: PROJECT_NAME          ! project name, used as prefix for output file names
     !character(100)           :: OUTPUT_DIR            ! Directory where output gets written
@@ -98,7 +104,10 @@ module m_options
     this%NSIM                 = 0
     this%SEED                 = 0
     this%INTERP_METHOD        = 'OK'
+    this%PP_INTERP_METHOD     = 'OK'
+    this%IB_INTERP_METHOD     = 'OK'
     this%INTERP_ORDER         = 'BEFORE'
+    this%CK_MEAN_MODE         = CK_MEAN_LIBKRIGING
     this%PROJECT_NAME         = trim(basename)
     this%MAIN_OUTPUT          = ''
     !this%OUTPUT_DIR           = './'
@@ -178,8 +187,22 @@ subroutine read_options(this, reader)
         this%SEED              = item2int(strings, 2)
       case("INTERP_METHOD")
         call item2char(strings, 2, this%INTERP_METHOD,toupper=.true.)
+      case("PP_INTERP_METHOD")
+        call item2char(strings, 2, this%PP_INTERP_METHOD,toupper=.true.)
+      case("IB_INTERP_METHOD")
+        call item2char(strings, 2, this%IB_INTERP_METHOD,toupper=.true.)
       case("INTERP_ORDER")
         call item2char(strings, 2, this%INTERP_ORDER,toupper=.true.)
+      case("CK_MEAN_MODE")
+        call item2char(strings, 2, temp,toupper=.true.)
+        select case (trim(temp))
+          case("LIBKRIGING")
+            this%CK_MEAN_MODE = CK_MEAN_LIBKRIGING
+          case("LEGACY_STANDARDIZED")
+            this%CK_MEAN_MODE = CK_MEAN_LEGACY_STANDARDIZED
+          case DEFAULT
+            call error_handler(1,reader%file,"Invalid CK_MEAN_MODE: " // trim(temp))
+        end select
       case("MAIN_OUTPUT")
         call item2char(strings, 2, this%MAIN_OUTPUT)
       case("PROJECT_NAME")
@@ -303,7 +326,7 @@ subroutine write_input_summary(this, ndatafiles)
   implicit none
   class(t_options)           :: this
   integer                    :: ndatafiles
-  character(200)             :: logic_true, interp_text
+  character(200)             :: logic_true, interp_text, pp_interp_text, ib_interp_text, ck_mean_text
   integer                    :: no_true_len
 
     call log%write_valueline('Max Variogram Structures:', this%MAX_VSTRUCT)
@@ -323,11 +346,11 @@ subroutine write_input_summary(this, ndatafiles)
     ! Going to do something a little nicer for the Interpolation Method
     select case(this%INTERP_METHOD)
       case("OK")
-        interp_text = "Ordinary Kriging (OK)"
+        interp_text = "Ordinary Kriging (libkriging)"
       case("OK_LIB")
-        interp_text = "Ordinary Kriging (experimental libkriging backend)"
+        interp_text = "Ordinary Kriging (libkriging; OK_LIB alias)"
       case("SK")
-        interp_text = "Simple Kriging (SK)"
+        interp_text = "Simple Kriging (libkriging)"
       case("IDW")
         interp_text = "Inverse Distance Weighting (IDW)"
       case DEFAULT  ! Shouldn't be able to get here
@@ -335,7 +358,34 @@ subroutine write_input_summary(this, ndatafiles)
     end select
     if (this%block_krige>0) interp_text = trim(interp_text) // ' - Block Kriging Active'
     call log%write_valueline('Interpolation Method:',trim(interp_text))
+    select case(this%PP_INTERP_METHOD)
+      case("OK")
+        pp_interp_text = "Ordinary Kriging (libkriging)"
+      case("IDW")
+        pp_interp_text = "Inverse Distance Weighting (IDW)"
+      case DEFAULT
+        pp_interp_text = this%PP_INTERP_METHOD
+    end select
+    call log%write_valueline('Pilot-Point Interpolation Method:',trim(pp_interp_text))
+    select case(this%IB_INTERP_METHOD)
+      case("OK")
+        ib_interp_text = "Ordinary Kriging (libkriging)"
+      case("IDW")
+        ib_interp_text = "Inverse Distance Weighting (IDW)"
+      case DEFAULT
+        ib_interp_text = this%IB_INTERP_METHOD
+    end select
+    call log%write_valueline('Interbed Interpolation Method:',trim(ib_interp_text))
     call log%write_valueline('Interpolation Order:',this%INTERP_ORDER)
+    select case(this%CK_MEAN_MODE)
+      case(CK_MEAN_LIBKRIGING)
+        ck_mean_text = 'LIBKRIGING'
+      case(CK_MEAN_LEGACY_STANDARDIZED)
+        ck_mean_text = 'LEGACY_STANDARDIZED'
+      case DEFAULT
+        ck_mean_text = 'INVALID'
+    end select
+    call log%write_valueline('CK Mean Mode:',trim(ck_mean_text))
     if (this%NSIM > 1) then
       call log%write_valueline('Simulation Realizations:', this%NSIM)
       call log%write_valueline('Random Seed Number:', this%SEED)

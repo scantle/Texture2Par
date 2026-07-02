@@ -216,7 +216,8 @@ def ok(obsloc, obsval, newloc, vgm=_VGM_sph, is3d=False):
 # ---------------------------------------------------------------------------
 
 def ck(obsloc0, obsloc1, obsval0, obsval1,
-       newloc, vgm0=_VGM_P, vgm1=_VGM_S, vgmc=_VGM_X, is3d=False):
+       newloc, vgm0=_VGM_P, vgm1=_VGM_S, vgmc=_VGM_X, is3d=False,
+       align_means=True, local_mean_correction=False):
     """
     2-D ordinary cokriging with a single unbiasedness constraint
     (Σ primary weights + Σ secondary weights = 1), matching T2P's
@@ -313,14 +314,41 @@ def ck(obsloc0, obsloc1, obsval0, obsval1,
 
 
     # ---- estimates and variance --------------------------------------------
-    # shifts secondary values so they share the primary mean before
-    # multiplying by weights (Interpolators.f90, line ~221):
-    est = obsval0 @ w[:n1] + (obsval1 + obsval0.mean() - obsval1.mean()) @ w[n1:n1+n2]
+    # Texture2Par normally shifts secondary values to the primary global mean
+    # before applying weights. Some callers pass values already aligned so a
+    # target-neighbourhood reference can preserve the global, rather than local,
+    # shift used by Texture2Par.
+    if align_means:
+        obsval1 = obsval1 + obsval0.mean() - obsval1.mean()
+    est = obsval0 @ w[:n1] + obsval1 @ w[n1:n1+n2]
+    if local_mean_correction:
+        est += (obsval0.mean() - obsval1.mean()) * w[n1:n1+n2].sum(axis=0)
     var = np.maximum(0.0,
                      cov0_p
                      - (w[:n1+n2] * B[:n1+n2]).sum(axis=0)
                      - w[ntot-1])
     return est, var
+
+
+def ck_nearest_reference(obsloc0, obsloc1, obsval0, obsval1, newloc,
+                         vgm0, vgm1, vgmc, nnear,
+                         local_mean_correction=False):
+    """Two-variable isotropic CK using independent nearest sets per target."""
+    obsloc0 = np.asarray(obsloc0)
+    obsloc1 = np.asarray(obsloc1)
+    newloc = np.asarray(newloc)
+    estimates = np.empty(len(newloc))
+    for i, target in enumerate(newloc):
+        idx0 = np.argsort(np.linalg.norm(obsloc0 - target, axis=1))[:nnear]
+        idx1 = np.argsort(np.linalg.norm(obsloc1 - target, axis=1))[:nnear]
+        estimate, _ = ck(
+            obsloc0[idx0], obsloc1[idx1], obsval0[idx0], obsval1[idx1],
+            target[None, :], vgm0, vgm1, vgmc,
+            align_means=False,
+            local_mean_correction=local_mean_correction,
+        )
+        estimates[i] = estimate[0]
+    return estimates
 
 
 # ---------------------------------------------------------------------------
@@ -367,11 +395,17 @@ def _t2p_ck(classes="Coarse\n  Fine", covariate="Rho",
              gridfile="grid.grd",
              vgm_p=_VGM_P, vgm_s=_VGM_S, vgm_x=_VGM_X,
              transform_s="LOG10",
-             options_extra="") -> str:
+             options_extra="", method="OK",
+             ck_mean_mode="LEGACY_STANDARDIZED") -> str:
     primary_class = classes.split()[0]
+    ck_mean_line = ""
+    if ck_mean_mode is not None:
+        ck_mean_line = f"CK_MEAN_MODE {ck_mean_mode}"
     return f"""\
         BEGIN OPTIONS
           MAX_VSTRUCT 1
+          INTERP_METHOD {method}
+          {ck_mean_line}
           ONLY_TEXTURE
           WRITE_NODE_FILES
           WRITE_VARIANCE
@@ -415,7 +449,9 @@ def _t2p_ck(classes="Coarse\n  Fine", covariate="Rho",
         """
 
 
-def calc_ck_correlation(run_t2p, butte_ck_data, vgm_p=_VGM_P, vgm_s=_VGM_S, vgm_x=_VGM_X,):
+def calc_ck_correlation(run_t2p, butte_ck_data, vgm_p=_VGM_P, vgm_s=_VGM_S,
+                        vgm_x=_VGM_X, method="OK",
+                        ck_mean_mode="LEGACY_STANDARDIZED"):
     """
     CK estimates and variances correlate > 0.99 with a Python reference.
 
@@ -437,7 +473,9 @@ def calc_ck_correlation(run_t2p, butte_ck_data, vgm_p=_VGM_P, vgm_s=_VGM_S, vgm_
     extra = {**butte_ck_data["files"], "aem2d.csv": aem_sub.to_csv(index=False, lineterminator='\n')}
     t0 = time.perf_counter()
     r = run_t2p(
-        _t2p_ck(vgm_s=vgm_s, vgm_x=vgm_x, vgm_p=vgm_p),
+        _t2p_ck(vgm_s=vgm_s, vgm_x=vgm_x, vgm_p=vgm_p, method=method,
+                ck_mean_mode=ck_mean_mode,
+                options_extra="MAX_SECONDARY_DIST 1e10"),
         extra_files=extra,
     )
     t1 = time.perf_counter()
@@ -466,7 +504,8 @@ def calc_ck_correlation(run_t2p, butte_ck_data, vgm_p=_VGM_P, vgm_s=_VGM_S, vgm_
     est = np.clip(est, 0, 1)
     corr_est = np.corrcoef(est, t2p["Layer1"].values)[0, 1]
     corr_var = np.corrcoef(var, t2p["Var_Layer1"].values)[0, 1]
-    return corr_est, corr_var
+    max_abs_est = np.max(np.abs(est - t2p["Layer1"].values))
+    return corr_est, corr_var, max_abs_est
 
 
 # ---------------------------------------------------------------------------
@@ -676,8 +715,11 @@ def _t2p_ck3d(classes="Coarse\n  Fine", covariate="Rho",
           WRITE_DATASET_FILES
           MAX_SECONDARY_DIST  1e10
         """
-    return _t2p_ck(classes, covariate, datafile_p, datafile_s, gridfile,
-                   vgm_p, vgm_s, vgm_x, transform_s, options_extra)
+    return _t2p_ck(
+        classes, covariate, datafile_p, datafile_s, gridfile,
+        vgm_p, vgm_s, vgm_x, transform_s, options_extra,
+        method="OK", ck_mean_mode="LEGACY_STANDARDIZED",
+    )
 
 
 CK3D_SYNTHETIC_GRID = """\
@@ -729,6 +771,8 @@ def _t2p_ck3d_synthetic(vgm_p, vgm_s, vgm_x, xoffset=None, yoffset=None):
     return f"""\
         BEGIN OPTIONS
           MAX_VSTRUCT 1
+          INTERP_METHOD OK
+          CK_MEAN_MODE LEGACY_STANDARDIZED
           ONLY_TEXTURE
           WRITE_NODE_FILES
           WRITE_VARIANCE
@@ -1074,18 +1118,158 @@ class TestCokrigingButteCK:
             f"{ok_var.mean():.5f}"
         )
 
-    def test_ck_reference_correlation(self, run_t2p, butte_ck_data):
+    def test_legacy_standardized_ck_reference_correlation(self, run_t2p, butte_ck_data):
         """
-        CK estimates and variances correlate > 0.99 with a Python reference.
+        Libkriging CK with historical Texture2Par mean standardization matches
+        the isotropic full-secondary Python reference.
         """
 
-        corr_est, corr_var = calc_ck_correlation(run_t2p, butte_ck_data)
+        corr_est, corr_var, max_abs_est = calc_ck_correlation(run_t2p, butte_ck_data)
         assert corr_est > 0.99, (
             f"CK estimate correlation with reference = {corr_est:.4f} (expected > 0.99)"
         )
         assert corr_var > 0.99, (
             f"CK variance correlation with reference = {corr_var:.4f} (expected > 0.99)"
         )
+        assert max_abs_est < 1e-5, (
+            f"CK maximum estimate difference = {max_abs_est:.8g} (expected < 1e-5)"
+        )
+
+    def test_ck_mean_modes_match_references_and_differ(
+        self, run_t2p, butte_ck_data
+    ):
+        nnear = 5
+        vgm_p = "sph 0.0 0.12 5000 5000 0.0 5"
+        vgm_s = "sph 0.0 0.12 5000 5000 0.0 5"
+        vgm_x = "sph 0.0 0.048 5000 5000 0.0"
+        default = run_t2p(
+            _t2p_ck(method="OK", vgm_p=vgm_p, vgm_s=vgm_s, vgm_x=vgm_x,
+                    ck_mean_mode=None,
+                    options_extra="MAX_SECONDARY_DIST 1e10"),
+            extra_files=butte_ck_data["files"],
+        )
+        assert default.returncode == 0, default.combined
+        default_output = pd.read_csv(
+            default.workdir / "test_Coarse.csv"
+        ).head(25).copy()
+        default_mode_line = next(
+            line for line in default.log.splitlines() if "CK Mean Mode:" in line
+        )
+        assert default_mode_line.rstrip().endswith("LIBKRIGING")
+
+        legacy = run_t2p(
+            _t2p_ck(method="OK", vgm_p=vgm_p, vgm_s=vgm_s, vgm_x=vgm_x,
+                    ck_mean_mode="LEGACY_STANDARDIZED",
+                    options_extra="MAX_SECONDARY_DIST 1e10"),
+            extra_files=butte_ck_data["files"],
+        )
+        assert legacy.returncode == 0, legacy.combined
+        legacy_output = pd.read_csv(
+            legacy.workdir / "test_Coarse.csv"
+        ).head(25).copy()
+        legacy_mode_line = next(
+            line for line in legacy.log.splitlines() if "CK Mean Mode:" in line
+        )
+        assert legacy_mode_line.rstrip().endswith("LEGACY_STANDARDIZED")
+
+        primary = pd.read_csv(StringIO(butte_ck_data["files"]["pc2d.csv"]))
+        secondary = pd.read_csv(StringIO(butte_ck_data["files"]["aem2d.csv"]))
+        primary_values = primary["Coarse"].to_numpy()
+        raw_secondary_values = np.log10(secondary["Rho"].to_numpy())
+        legacy_secondary_values = raw_secondary_values.copy()
+        legacy_secondary_values += (
+            primary_values.mean() - legacy_secondary_values.mean()
+        )
+
+        default_reference = ck_nearest_reference(
+            primary[["x", "y"]].to_numpy(),
+            secondary[["x", "y"]].to_numpy(),
+            primary_values,
+            raw_secondary_values,
+            default_output[["X", "Y"]].to_numpy(),
+            vgm_p, vgm_s, vgm_x, nnear,
+            local_mean_correction=True,
+        )
+        legacy_reference = ck_nearest_reference(
+            primary[["x", "y"]].to_numpy(),
+            secondary[["x", "y"]].to_numpy(),
+            primary_values,
+            legacy_secondary_values,
+            legacy_output[["X", "Y"]].to_numpy(),
+            vgm_p, vgm_s, vgm_x, nnear,
+        )
+        default_actual = default_output["Layer1"].to_numpy()
+        legacy_actual = legacy_output["Layer1"].to_numpy()
+        assert default_actual == pytest.approx(
+            np.clip(default_reference, 0.0, 1.0), abs=1e-5
+        )
+        assert legacy_actual == pytest.approx(
+            np.clip(legacy_reference, 0.0, 1.0), abs=1e-5
+        )
+        assert np.max(np.abs(default_actual - legacy_actual)) > 1e-3
+
+    def test_libkriging_ck_respects_max_secondary_distance(
+        self, run_t2p, butte_ck_data
+    ):
+        full = run_t2p(
+            _t2p_ck(method="OK", ck_mean_mode="LIBKRIGING",
+                    options_extra="MAX_SECONDARY_DIST 1e10"),
+            extra_files=butte_ck_data["files"],
+        )
+        assert full.returncode == 0, full.combined
+        full_values = pd.read_csv(full.workdir / "test_Coarse.csv")["Layer1"].values.copy()
+        restricted = run_t2p(
+            _t2p_ck(method="OK", ck_mean_mode="LIBKRIGING",
+                    options_extra="MAX_SECONDARY_DIST 100"),
+            extra_files=butte_ck_data["files"],
+        )
+        assert restricted.returncode == 0, restricted.combined
+        restricted_values = pd.read_csv(
+            restricted.workdir / "test_Coarse.csv"
+        )["Layer1"].values
+        assert np.max(np.abs(full_values - restricted_values)) > 1e-5
+
+    def test_libkriging_ck_supports_multiple_secondary_variables(
+        self, run_t2p, butte_ck_data
+    ):
+        rho = pd.read_csv(StringIO(butte_ck_data["files"]["aem2d.csv"])).head(8)
+        sal = rho.drop(columns=["Rho"]).copy()
+        sal["x"] += 10.0
+        sal["Sal"] = np.linspace(0.2, 0.9, len(sal))
+        t2p = _t2p_ck(method="OK_LIB", ck_mean_mode="LIBKRIGING",
+                      options_extra="MAX_SECONDARY_DIST 1e10")
+        t2p = t2p.replace(
+            "Coarse Rho\n        END COVARIATES",
+            "Coarse Rho Sal\n        END COVARIATES",
+        )
+        t2p = t2p.replace(
+            "        BEGIN FLOW_MODEL",
+            "        BEGIN DATASET\n"
+            "          FILE sal2d.csv\n"
+            "        END DATASET\n\n"
+            "        BEGIN FLOW_MODEL",
+            1,
+        )
+        t2p = t2p.replace(
+            "        END VARIOGRAMS",
+            "          CLASS Sal\n"
+            "            1 sph 0.0 0.20 5000 5000 0.0 8\n"
+            "          CLASS Coarse:Sal\n"
+            "            1 sph 0.0 0.02 5000 5000 0.0\n"
+            "          CLASS Rho:Sal\n"
+            "            1 sph 0.0 0.01 5000 5000 0.0\n"
+            "        END VARIOGRAMS",
+            1,
+        )
+        files = {
+            **butte_ck_data["files"],
+            "aem2d.csv": rho.to_csv(index=False, lineterminator="\n"),
+            "sal2d.csv": sal.to_csv(index=False, lineterminator="\n"),
+        }
+        r = run_t2p(t2p, extra_files=files)
+        assert r.returncode == 0, r.combined
+        values = pd.read_csv(r.workdir / "test_Coarse.csv")["Layer1"]
+        assert np.isfinite(values).all()
 
     @pytest.mark.parametrize("aniso1",  [1.0, 0.1])
     @pytest.mark.parametrize("azimuth", [0.0, 225])
@@ -1096,7 +1280,10 @@ class TestCokrigingButteCK:
         vgm_p=f"sph 0.0    0.12  {5000*aniso1} 5000 {azimuth} 150"
         vgm_s=f"sph 0.02   0.08  {5000*aniso1} 5000 {azimuth} 150"
         vgm_x=f"sph 0.0   0.048  {5000*aniso1} 5000 {azimuth}"
-        corr_est, corr_var = calc_ck_correlation(run_t2p, butte_ck_data, vgm_p, vgm_s, vgm_x)
+        corr_est, corr_var, _ = calc_ck_correlation(
+            run_t2p, butte_ck_data, vgm_p, vgm_s, vgm_x,
+            method="OK", ck_mean_mode="LEGACY_STANDARDIZED",
+        )
         assert corr_est > 0.99, (
             f"CK estimate correlation with reference = {corr_est:.4f} (expected > 0.99)"
         )

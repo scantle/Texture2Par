@@ -181,6 +181,7 @@ t2p2 := \
     LibKrigingAdapter.f90 \
     weights.f90 \
     data_transformer.f90 \
+    GridKDTree.f90 \
     Grid.f90 \
     Sparse_Symmetric.f90 \
     Categories.f90 \
@@ -340,7 +341,8 @@ $(OBJDIR)/variogram.obj: $(OBJDIR)/global.obj $(OBJDIR)/FileIO.obj $(FLIB_DEP) $
 $(OBJDIR)/data_transformer.obj: $(FLIB_DEP) $(OBJDIR)/ErrorHandler.obj
 $(OBJDIR)/Sparse_Symmetric.obj: $(OBJDIR)/ErrorHandler.obj
 $(OBJDIR)/Categories.obj: $(FLIB_DEP) $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj
-$(OBJDIR)/Grid.obj: $(OBJDIR)/cellblocks.obj $(OBJDIR)/ErrorHandler.obj
+$(OBJDIR)/GridKDTree.obj: $(KRIGOBJDIR)/kdtree2_maxidx.obj
+$(OBJDIR)/Grid.obj: $(OBJDIR)/cellblocks.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/GridKDTree.obj
 $(OBJDIR)/DataSets.obj: $(OBJDIR)/global.obj $(OBJDIR)/Grid.obj $(OBJDIR)/Categories.obj
 $(OBJDIR)/weights.obj: $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj
 $(OBJDIR)/PilotPoints.obj: $(OBJDIR)/DataSets.obj $(OBJDIR)/global.obj $(OBJDIR)/Grid.obj $(FLIB_DEP) $(OBJDIR)/FileIO.obj $(OBJDIR)/ErrorHandler.obj

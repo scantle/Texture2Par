@@ -85,6 +85,38 @@ class TestOptionsBlock:
                                  "grid.grd": minimal_grd})
         assert r.returncode == 0, r.combined
 
+    def test_pp_ib_interp_method_defaults_are_ok(
+        self, run_t2p, minimal_dataset, minimal_grd
+    ):
+        r = run_t2p(
+            _simple_t2p(),
+            extra_files={"dataset.csv": minimal_dataset, "grid.grd": minimal_grd},
+        )
+        assert r.returncode == 0, r.combined
+        pp_line = next(
+            line for line in r.log.splitlines()
+            if "Pilot-Point Interpolation Method:" in line
+        )
+        ib_line = next(
+            line for line in r.log.splitlines()
+            if "Interbed Interpolation Method:" in line
+        )
+        assert "Ordinary Kriging (libkriging)" in pp_line
+        assert "Ordinary Kriging (libkriging)" in ib_line
+
+    @pytest.mark.parametrize("option", ["PP_INTERP_METHOD SK", "IB_INTERP_METHOD SK"])
+    def test_pp_ib_interp_method_sk_is_rejected(
+        self, run_t2p, minimal_dataset, minimal_grd, option
+    ):
+        r = run_t2p(
+            _simple_t2p(options_extra=option),
+            extra_files={"dataset.csv": minimal_dataset, "grid.grd": minimal_grd},
+        )
+        assert r.returncode != 0
+        assert option.split()[0] in r.combined
+        assert "defaults to OK" in r.combined
+        assert "SK mean handling is not defined" in r.combined
+
     @pytest.mark.parametrize("option", [
         "WRITE_DATASET_FILES",
         "WRITE_NODE_FILES",
@@ -131,6 +163,28 @@ class TestOptionsBlock:
                     extra_files={"dataset.csv": minimal_dataset,
                                  "grid.grd": minimal_grd})
         assert "unknown option" not in r.combined.lower(), r.combined
+
+    @pytest.mark.parametrize("mode", ["LIBKRIGING", "LEGACY_STANDARDIZED"])
+    def test_ck_mean_mode_accepted_and_reported(
+        self, run_t2p, minimal_dataset, minimal_grd, mode
+    ):
+        r = run_t2p(_simple_t2p(options_extra=f"CK_MEAN_MODE {mode}"),
+                    extra_files={"dataset.csv": minimal_dataset,
+                                 "grid.grd": minimal_grd})
+        assert r.returncode == 0, r.combined
+        summary_line = next(
+            line for line in r.log.splitlines() if "CK Mean Mode:" in line
+        )
+        assert summary_line.rstrip().endswith(mode)
+
+    def test_unknown_ck_mean_mode_rejected(
+        self, run_t2p, minimal_dataset, minimal_grd
+    ):
+        r = run_t2p(_simple_t2p(options_extra="CK_MEAN_MODE UNKNOWN"),
+                    extra_files={"dataset.csv": minimal_dataset,
+                                 "grid.grd": minimal_grd})
+        assert r.returncode != 0
+        assert "Invalid CK_MEAN_MODE: UNKNOWN" in r.combined
 
 
 # ---------------------------------------------------------------------------

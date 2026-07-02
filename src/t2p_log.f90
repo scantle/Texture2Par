@@ -103,7 +103,8 @@ module m_log
     call t2p%write_connections()
 
     ! Variograms
-    if (t2p%opt%INTERP_METHOD=='OK'.or.t2p%opt%INTERP_METHOD=='SK') then
+    if (t2p%opt%INTERP_METHOD=='OK'.or.t2p%opt%INTERP_METHOD=='OK_LIB'.or. &
+        t2p%opt%INTERP_METHOD=='SK') then
       if (t2p%opt%INTERP_ORDER=="BEFORE") write(line,'(a)') '-- CLASS VARIOGRAMS --'
       if (t2p%opt%INTERP_ORDER=="AFTER") write(line,'(a)')  '-- PARAM VARIOGRAMS --'
       if (t2p%opt%INTERP_DIM==2) then
