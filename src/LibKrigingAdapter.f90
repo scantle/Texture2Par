@@ -359,12 +359,14 @@ contains
 
     if (anisotropic_search) then
       if (valid_maxdist(variable%max_distance)) then
-        call solver%set_search(ivar, anis1=variogram%anis1, anis2=variogram%anis2, &
+        call solver%set_search(ivar, anis1=search_anis1(variogram), &
+                               anis2=search_anis2(variogram), &
                                azimuth=variogram%ang1, dip=variogram%ang2, &
                                plunge=variogram%ang3, nmax=variable%nmax, &
                                maxdist=variable%max_distance, sector_search=.false.)
       else
-        call solver%set_search(ivar, anis1=variogram%anis1, anis2=variogram%anis2, &
+        call solver%set_search(ivar, anis1=search_anis1(variogram), &
+                               anis2=search_anis2(variogram), &
                                azimuth=variogram%ang1, dip=variogram%ang2, &
                                plunge=variogram%ang3, nmax=variable%nmax, &
                                sector_search=.false.)
@@ -400,17 +402,32 @@ contains
     type(t_vgm), intent(in)              :: variogram
 
     if (valid_maxdist(request%search%max_primary_distance)) then
-      call solver%set_search(1, anis1=variogram%anis1, anis2=variogram%anis2, &
+      call solver%set_search(1, anis1=search_anis1(variogram), &
+                             anis2=search_anis2(variogram), &
                              azimuth=variogram%ang1, dip=variogram%ang2, &
                              plunge=variogram%ang3, nmax=request%search%n_nearest_primary, &
                              maxdist=request%search%max_primary_distance, sector_search=.false.)
     else
-      call solver%set_search(1, anis1=variogram%anis1, anis2=variogram%anis2, &
+      call solver%set_search(1, anis1=search_anis1(variogram), &
+                             anis2=search_anis2(variogram), &
                              azimuth=variogram%ang1, dip=variogram%ang2, &
                              plunge=variogram%ang3, nmax=request%search%n_nearest_primary, &
                              sector_search=.false.)
     end if
   end subroutine set_search_anisotropic
+!-------------------------------------------------------------------------------------------------!
+
+  pure real function search_anis1(variogram)
+    type(t_vgm), intent(in) :: variogram
+    search_anis1 = variogram%a_hmin / variogram%a_hmax
+  end function search_anis1
+!-------------------------------------------------------------------------------------------------!
+
+  pure real function search_anis2(variogram)
+    type(t_vgm), intent(in) :: variogram
+    search_anis2 = variogram%a_vert / variogram%a_hmax
+    if (search_anis2 < tiny(search_anis2)) search_anis2 = 1.0
+  end function search_anis2
 !-------------------------------------------------------------------------------------------------!
 
   logical function valid_maxdist(maxdist)

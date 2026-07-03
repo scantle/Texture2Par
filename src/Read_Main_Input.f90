@@ -435,8 +435,66 @@ end subroutine read_dataset_block
 
 !-------------------------------------------------------------------------------------------------!
 
+subroutine get_vgm_from_line(vgm, strings, struct_id, interp_dim, maxread)
+  use m_vario, only: t_vgm
+  implicit none
+
+  type(t_vstringlist), intent(in) :: strings
+  integer, intent(in)             :: struct_id, interp_dim
+  integer, intent(out)            :: maxread
+  type(t_vgm), intent(inout)      :: vgm
+  real                            :: hmin
+
+  maxread = 0
+  vgm%itype = find_string_index_in_list( &
+    strings, 2, "SPH,EXP,HOL,GAU,POW,CIR,LIN", toupper=.true.)
+  if (vgm%itype == 0) then
+    call error_handler(1, &
+      "Invalid variogram type - must be one of Exp, Sph, Hol, Gau, Pow, Cir, Lin")
+  end if
+
+  if (interp_dim == 2) then
+    vgm%nugget = item2dp(strings, 3)
+    vgm%sill   = item2dp(strings, 4)
+    vgm%a_hmin = item2dp(strings, 5)
+    vgm%a_hmax = item2dp(strings, 6)
+    vgm%ang1   = item2dp(strings, 7)
+    maxread = 7
+    vgm%a_vert = vgm%a_hmax
+    vgm%ang2   = 0.0
+    vgm%ang3   = 0.0
+  else if (interp_dim == 3) then
+    vgm%nugget = item2dp(strings, 3)
+    vgm%sill   = item2dp(strings, 4)
+    vgm%a_hmin = item2dp(strings, 5)
+    vgm%a_hmax = item2dp(strings, 6)
+    vgm%a_vert = item2dp(strings, 7)
+    vgm%ang1   = item2dp(strings, 8)
+    vgm%ang2   = item2dp(strings, 9)
+    vgm%ang3   = item2dp(strings, 10)
+    maxread = 10
+  end if
+
+  vgm%ndim = interp_dim
+  hmin = min(vgm%a_hmax, vgm%a_hmin, vgm%a_vert)
+  if (vgm%nugget < 0.0 .or. vgm%sill <= 0.0 .or. hmin < 0.0) then
+    call error_handler(1, &
+      "Invalid variogram parameters - nugget must be non-negative and sill, ranges must be positive")
+  end if
+  if (vgm%a_hmax < vgm%a_hmin) then
+    call error_handler(1, &
+      "Invalid variogram parameters - a_hmax must be greater than a_hmin")
+  end if
+
+  ! Preserve Texture2Par's existing nested-model convention: only the first
+  ! structure contributes a nugget.
+  if (struct_id > 1) vgm%nugget = 0.0
+end subroutine get_vgm_from_line
+
+!-------------------------------------------------------------------------------------------------!
+
 subroutine read_variogram_block(t2p, reader)
-  use m_vario, only: t_vgm, get_vgm_from_line
+  use m_vario, only: t_vgm
   use m_kriging_base, only: t_kriging_base
   use tools, only: expand_int_array
   implicit none
@@ -609,13 +667,6 @@ subroutine read_variogram_block(t2p, reader)
               nnear(prime_vidx) = item2int(strings, maxread+1)
             end if
           end if
-          ! if (t2p%opt%ANISOTROPIC_SEARCH .and. struct_id>1) then
-          !   ! check anisotropy
-          !   if (any(vgms(struct_id,vario_id)%rotmat /= vgms(1,vario_id)%rotmat)) then
-          !     call t2p%write_status("Different anisotropy are used while anisotropic search is on."//new_line('1')//&
-          !                           "  Only the first structure anisotropy will be used.")
-          !   end if
-          ! end if
         end do
         ! End of variogram structure reading, moves to next class variogram or end of block
       case DEFAULT
@@ -779,7 +830,7 @@ end subroutine read_ppparm_block
 
   subroutine read_SUBSIDENCE_block(t2p, reader)
     use m_subsidence, only: interbed_cutoff, setup_ib_variogram, has_ib_classes
-    use m_vario, only: t_vgm, get_vgm_from_line
+    use m_vario, only: t_vgm
     implicit none
     type(t_t2p),intent(inout)       :: t2p
     type(t_file_reader), pointer    :: reader

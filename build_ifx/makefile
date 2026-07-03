@@ -183,7 +183,6 @@ t2p2 := \
     data_transformer.f90 \
     GridKDTree.f90 \
     Grid.f90 \
-    Sparse_Symmetric.f90 \
     Categories.f90 \
     DataSets.f90 \
     Interpolators.f90 \

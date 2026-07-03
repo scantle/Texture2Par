@@ -3967,9 +3967,17 @@ contains
           do jvar = 1, self%nvar
             do ivar = 1, self%nvar
               kvar = self%nvar + ivar
-              val(isim, jvar) = val(isim, jvar) + &
-                dot_product(self%block%value(isim, ivar, inear(1:nnear(kvar), kvar)), &
-                            weight(1:nnear(kvar), kvar, jvar))
+              if (self%unbias == 0) then
+                ! Previously simulated SK nodes condition through residuals,
+                ! exactly like hard data in the mean-corrected estimate above.
+                val(isim, jvar) = val(isim, jvar) + &
+                  dot_product(self%block%value(isim, ivar, inear(1:nnear(kvar), kvar)) - &
+                              self%obs(ivar)%sk_mean, weight(1:nnear(kvar), kvar, jvar))
+              else
+                val(isim, jvar) = val(isim, jvar) + &
+                  dot_product(self%block%value(isim, ivar, inear(1:nnear(kvar), kvar)), &
+                              weight(1:nnear(kvar), kvar, jvar))
+              end if
             end do
           end do
 

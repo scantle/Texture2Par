@@ -243,9 +243,8 @@ module m_T2P
         select type(lib => this%interp_data)
           type is(t_libkrige)
             lib%kriging_mode = LIBKRIGE_MODE_SIMPLE
+            if (this%opt%NSIM > 0) lib%prediction_mode = LIBKRIGE_PREDICT_SGSIM
         end select
-        if (this%opt%NSIM > 0) &
-          call error_handler(1,opt_msg='libkriging SK does not currently support SGSIM')
       case("OK_LIB")
         allocate(t_libkrige::this%interp_data)
         this%opt%INTERP_SECOND_OK = .true.
@@ -257,7 +256,7 @@ module m_T2P
         end if
       case("IDW")
         if (this%opt%NSIM > 0) &
-          call error_handler(1,opt_msg='IDW with SGSIM is unsupported; SGSIM requires libkriging OK or CK')
+          call error_handler(1,opt_msg='IDW with SGSIM is unsupported; SGSIM requires libkriging OK, SK, or CK')
         allocate(t_idw::this%interp_data)
         this%has_interp = .true.
       case DEFAULT

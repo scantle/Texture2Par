@@ -84,9 +84,7 @@ mfusg = \
 
 t2p2 = \
     Str_Module.f90              \
-    sgemv.f                     \
     time.f90                    \
-    kdtree2.f90                 \
     Lists.f90                   \
     fpath.f90                   \
     FileIO.f90                  \
@@ -94,7 +92,6 @@ t2p2 = \
     ErrorHandler.f90            \
     variogram.f90               \
     data_transformer.f90        \
-    Sparse_Symmetric.f90        \
     Categories.f90              \
     Tools.f90                   \
     cellblocks.f90              \

@@ -5,7 +5,6 @@ module m_interpolator
   use m_datasets, only: t_dataset, t_layerdata
   use m_error_handler, only: error_handler
   use m_options, only: t_options
-  use m_vario, only: t_vgm
   use m_categories, only: t_category, CAT_ALL
   implicit none
 !-------------------------------------------------------------------------------------------------!

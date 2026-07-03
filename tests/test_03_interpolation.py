@@ -1793,28 +1793,15 @@ class TestLibKrigingSimple:
         assert secondary_values == pytest.approx(baseline_values, abs=3e-6)
         assert primary_values == pytest.approx(baseline_values + 0.1, abs=3e-6)
 
-    @pytest.mark.parametrize(
-        ("options_extra", "diagnostic"),
-        [
-            ("SGSIM", "SGSIM"),
-            ("INTERP_ORDER AFTER", "no defined SK mean"),
-        ],
-    )
-    def test_sk_unsupported_combinations_are_fatal(
-        self, run_t2p, options_extra, diagnostic
-    ):
-        if options_extra == "INTERP_ORDER AFTER":
-            t2p = _grid_t2p(
-                options_extra="INTERP_METHOD SK\n          INTERP_ORDER AFTER",
-                infer=False,
-            )
-            files = FILES
-        else:
-            t2p = _ok_lib_2d_t2p(method="SK", options_extra=options_extra)
-            files = self._files_2d()
+    def test_sk_after_without_defined_mean_is_fatal(self, run_t2p):
+        t2p = _grid_t2p(
+            options_extra="INTERP_METHOD SK\n          INTERP_ORDER AFTER",
+            infer=False,
+        )
+        files = FILES
         r = run_t2p(t2p, extra_files=files)
         assert r.returncode != 0
-        assert diagnostic.lower() in r.combined.lower()
+        assert "no defined SK mean".lower() in r.combined.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -1891,6 +1878,31 @@ class TestSGS:
         )
 
     @staticmethod
+    def _run_sk(run_t2p, seed, dataset=SK_2D_DATASET, extra=""):
+        options = f"SGSIM\nSEED {seed}"
+        if extra:
+            options += f"\n{extra}"
+        return run_t2p(
+            _ok_lib_2d_t2p(method="SK", options_extra=options),
+            extra_files={"dataset.csv": dataset, "grid.grd": SK_2D_GRD},
+        )
+
+    @staticmethod
+    def _run_sk_ck(run_t2p, seed, primary=None, secondary=None):
+        t2p = _ck_variance_t2p().replace(
+            "MAX_VSTRUCT 1",
+            f"MAX_VSTRUCT 1\n          SGSIM\n          SEED {seed}",
+        ).replace("INTERP_METHOD OK", "INTERP_METHOD SK")
+        return run_t2p(
+            t2p,
+            extra_files={
+                "primary.csv": primary or _ck_variance_primary_dataset(0.0),
+                "secondary.csv": secondary or SK_CK_SECONDARY_DATASET,
+                "grid.grd": SK_2D_GRD,
+            },
+        )
+
+    @staticmethod
     def _run_ck(run_t2p, seed, first_variance=0.0, extra="", interp_dim=2,
                 mean_mode="LIBKRIGING"):
         options = f"SGSIM\nSEED {seed}"
@@ -1946,6 +1958,53 @@ class TestSGS:
         values2 = _read_coarse_texture_output(r2, ("Layer1",))["Layer1"].to_numpy()
         assert np.array_equal(values1, values2)
 
+    def test_sk_sgsim_point_support_is_finite_and_seeded(self, run_t2p):
+        first = self._run_sk(run_t2p, 101)
+        assert first.returncode == 0, first.combined
+        assert "Simple Kriging (libkriging) - SGSIM simulation mode" in first.log
+        first_values = _read_coarse_texture_output(
+            first, ("Layer1",)
+        )["Layer1"].to_numpy().copy()
+        assert np.isfinite(first_values).all()
+
+        repeat = self._run_sk(run_t2p, 101)
+        assert repeat.returncode == 0, repeat.combined
+        repeat_values = _read_coarse_texture_output(
+            repeat, ("Layer1",)
+        )["Layer1"].to_numpy()
+        changed = self._run_sk(run_t2p, 102)
+        assert changed.returncode == 0, changed.combined
+        changed_values = _read_coarse_texture_output(
+            changed, ("Layer1",)
+        )["Layer1"].to_numpy()
+        assert np.array_equal(first_values, repeat_values)
+        assert not np.array_equal(first_values, changed_values)
+
+    def test_sk_sgsim_accepts_observation_variance(self, run_t2p):
+        exact = self._run_sk(
+            run_t2p, 71, _ok_lib_variance_dataset(0.0),
+            "KVME\nWRITE_VARIANCE",
+        )
+        assert exact.returncode == 0, exact.combined
+        exact_df = _read_coarse_texture_output(exact, ("Layer1",)).copy()
+        exact_hit = exact_df[
+            (exact_df["X"] == 0.5) & (exact_df["Y"] == 0.5)
+        ].iloc[0]
+        assert exact_hit["Layer1"] == pytest.approx(0.10, abs=1e-10)
+        assert exact_hit["Var_Layer1"] == pytest.approx(0.0, abs=1e-10)
+
+        noisy = self._run_sk(
+            run_t2p, 71, _ok_lib_variance_dataset(1.0),
+            "KVME\nWRITE_VARIANCE",
+        )
+        assert noisy.returncode == 0, noisy.combined
+        noisy_df = _read_coarse_texture_output(noisy, ("Layer1",))
+        noisy_hit = noisy_df[
+            (noisy_df["X"] == 0.5) & (noisy_df["Y"] == 0.5)
+        ].iloc[0]
+        assert abs(noisy_hit["Layer1"] - exact_hit["Layer1"]) > 1e-4
+        assert noisy_hit["Var_Layer1"] > exact_hit["Var_Layer1"] + 1e-4
+
     def test_sgsim_zero_variance_exact_conditioning_and_soft_data(self, run_t2p):
         exact = self._run_2d(
             run_t2p, 71, _ok_lib_variance_dataset(0.0),
@@ -1967,9 +2026,10 @@ class TestSGS:
         assert abs(noisy_hit["Layer1"] - 0.10) > 1e-4
         assert noisy_hit["Var_Layer1"] > hit["Var_Layer1"] + 1e-4
 
-    def test_sgsim_runs_in_3d(self, run_t2p):
+    @pytest.mark.parametrize("method", ["OK", "SK"])
+    def test_sgsim_runs_in_3d(self, run_t2p, method):
         r = run_t2p(
-            _ok3d_multi_t2p(extra_options="SGSIM\nSEED 314"),
+            _ok3d_multi_t2p(extra_options="SGSIM\nSEED 314", method=method),
             extra_files={
                 "dataset.csv": _ok3d_irregular_dataset(),
                 "grid.grd": OK3D_INTERIOR_GRD,
@@ -1979,7 +2039,8 @@ class TestSGS:
         df = _read_coarse_texture_output(r)
         assert np.isfinite(df[["Layer1", "Layer2", "Layer3"]]).all().all()
 
-    def test_sgsim_preserves_category_masking(self, run_t2p):
+    @pytest.mark.parametrize("method", ["OK", "SK"])
+    def test_sgsim_preserves_category_masking(self, run_t2p, method):
         dataset = """\
 Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse,HSU1
 A1,1,1,0.5,0.5,100,0,10,0.10,A
@@ -1994,6 +2055,7 @@ A A A A A A B B B
 """
         r = run_t2p(
             _ok_lib_2d_t2p(
+                method=method,
                 options_extra="SGSIM\nSEED 41",
                 flow_extra="HSU_FILE hsus.dat",
                 variogram_lines="1 Sph 0.0 1.0 100.0 100.0 0.0 4",
@@ -2005,13 +2067,38 @@ A A A A A A B B B
             },
         )
         assert r.returncode == 0, r.combined
-        values = _read_coarse_texture_output(r, ("Layer1",))["Layer1"].to_numpy()
+        output = _read_coarse_texture_output(r, ("Layer1",))
+        values = output["Layer1"].to_numpy()
         assert np.isfinite(values).all()
-        assert values[:6].max() < 0.4
-        assert values[6:].min() > 0.6
+        if method == "OK":
+            assert values[:6].max() < 0.4
+            assert values[6:].min() > 0.6
+        else:
+            swapped_dataset = dataset.replace("0.85,B", "SWAP,B")
+            swapped_dataset = swapped_dataset.replace("0.90,B", "0.85,B")
+            swapped_dataset = swapped_dataset.replace("SWAP,B", "0.90,B")
+            swapped = run_t2p(
+                _ok_lib_2d_t2p(
+                    method=method,
+                    options_extra="SGSIM\nSEED 41",
+                    flow_extra="HSU_FILE hsus.dat",
+                    variogram_lines="1 Sph 0.0 1.0 100.0 100.0 0.0 4",
+                ),
+                extra_files={
+                    "dataset.csv": swapped_dataset,
+                    "grid.grd": SK_2D_GRD,
+                    "hsus.dat": hsu,
+                },
+            )
+            assert swapped.returncode == 0, swapped.combined
+            swapped_values = _read_coarse_texture_output(
+                swapped, ("Layer1",)
+            )["Layer1"].to_numpy()
+            assert swapped_values[:6] == pytest.approx(values[:6], abs=1e-10)
+            assert not np.array_equal(swapped_values[6:], values[6:])
 
-    @pytest.mark.parametrize("method", ["SK", "IDW"])
-    def test_sgsim_rejects_unsupported_interpolation_modes(self, run_t2p, method):
+    def test_sgsim_rejects_idw(self, run_t2p):
+        method = "IDW"
         r = run_t2p(
             _ok_lib_2d_t2p(method=method, options_extra="SGSIM\nSEED 1"),
             extra_files={"dataset.csv": SK_2D_DATASET, "grid.grd": SK_2D_GRD},
@@ -2019,6 +2106,34 @@ A A A A A A B B B
         assert r.returncode != 0
         assert method in r.combined
         assert "SGSIM" in r.combined
+
+    def test_sk_cosgsim_uses_secondary_data_and_its_mean(self, run_t2p):
+        cosim = self._run_sk_ck(run_t2p, 44)
+        assert cosim.returncode == 0, cosim.combined
+        cosim_values = _read_coarse_texture_output(
+            cosim, ("Layer1",)
+        ).sort_values(["X", "Y"])["Layer1"].to_numpy()
+
+        primary_only = self._run_sk(
+            run_t2p, 44, _ck_variance_primary_dataset(0.0)
+        )
+        assert primary_only.returncode == 0, primary_only.combined
+        primary_values = _read_coarse_texture_output(
+            primary_only, ("Layer1",)
+        ).sort_values(["X", "Y"])["Layer1"].to_numpy()
+        assert np.max(np.abs(cosim_values - primary_values)) > 1e-4
+
+        shifted = self._run_sk_ck(
+            run_t2p, 44,
+            secondary=_shift_dataset_column(
+                SK_CK_SECONDARY_DATASET, "Rho", 2.0
+            ),
+        )
+        assert shifted.returncode == 0, shifted.combined
+        shifted_values = _read_coarse_texture_output(
+            shifted, ("Layer1",)
+        ).sort_values(["X", "Y"])["Layer1"].to_numpy()
+        assert shifted_values == pytest.approx(cosim_values, abs=3e-6)
 
     @pytest.mark.parametrize("interp_dim", [2, 3])
     def test_ck_sgsim_runs_with_finite_primary_output(self, run_t2p, interp_dim):

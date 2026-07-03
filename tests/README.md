@@ -112,7 +112,7 @@ pytest --tb=long
 | `TestLibKrigingSimple` | default SK routing through the shared libkriging backend; global-mean 2D/3D references; simple-cokriging secondary influence and per-variable means; SK/OK distinction; independent libkriging-OK pilot-point route; unsupported-feature diagnostics |
 | `TestCorrectWeights` | CORRECT_WEIGHTS flag |
 | `TestCoincidentLocations` | duplicate XY/XYZ conditioning points are fatal; exact target hits remain valid |
-| `TestSGS` | libkriging-backed 2-D/3-D SGSIM; finite output; seed reproducibility; exact/soft conditioning variance; category masking; unsupported-mode diagnostics; no legacy runtime allocation |
+| `TestSGS` | libkriging-backed OK/SK/CK 2-D/3-D point SGSIM; finite output; seed reproducibility; exact/soft conditioning variance; category masking; simple co-simulation means and secondary influence; unsupported-mode diagnostics; no legacy runtime allocation |
 | `TestWeightCaching` | libkriging grid/PP saved-weight write/read, changed values, variance, CK, SK, block targets, and missing files |
 | `TestOnlyTexture` | no pilot points required; no hydraulic property files written |
 | `TestMaxLogLength` | INTERP_DIM 3 log interval splitting and processed XYZ support points |
@@ -138,6 +138,7 @@ contract tests above.
 | CK | Deterministic model/data point support in 2-D/3-D and structured blocks, including multiple secondary variables. |
 | CK mean modes | `LIBKRIGING` and `LEGACY_STANDARDIZED`; both use the libkriging CK solve. |
 | SGSIM OK | One point-support realization in 2-D/3-D, including categories/zones and observation variance. |
+| SGSIM SK | One point-support realization in 2-D/3-D, including categories/zones, observation variance, and simple co-simulation with one known global mean per variable. |
 | SGSIM CK | One primary-variable point-support realization in 2-D/3-D with CK mean modes, categories/zones, and observation variance. |
 | `BLOCK_MODE` | Deterministic OK/`OK_LIB`/SK/CK for structured MODFLOW cells through libkriging Gaussian block support. |
 | Kriging variance | End-to-end for deterministic OK/SK/CK point and block solves; grid factor files preserve it. |
@@ -146,7 +147,7 @@ contract tests above.
 | Saved PP weights | Deterministic PP OK through libkriging factor files. |
 | Saved IB weights | Deterministic interbed OK through libkriging factor files. |
 | IDW paths | Existing dense model/data, PP, and interbed paths remain active; IDW does not support blocks or SGSIM. |
-| Unsupported/future | SK+SGSIM; multiple SGSIM realizations; block SGSIM; PP/interbed SGSIM; saved SGSIM weights/paths; custom/unstructured blocks; sector search; asymmetric cross-variograms; factor-file versioning and geometry fingerprints. |
+| Unsupported/future | Multiple SGSIM realizations; block SGSIM; PP/interbed SGSIM; saved SGSIM weights/paths; custom/unstructured blocks; sector search; asymmetric cross-variograms; factor-file versioning and geometry fingerprints. |
 
 ### Cokriging Reference Tests
 
@@ -217,10 +218,13 @@ write run; the native header diagnoses dimension mismatches but cannot verify
 all of that semantic geometry.
 
 `SGSIM` is a simulation mode of the shared `t_libkrige` backend, not a separate
-interpolator. `OK + SGSIM`, the equivalent `OK_LIB + SGSIM`, and CK + SGSIM
+interpolator. `OK + SGSIM`, the equivalent `OK_LIB + SGSIM`, `SK + SGSIM`, and CK + SGSIM
 reuse the same observation/target/category packing, variogram mapping, search
 configuration, observation variance, solve, and scatter path as their
-deterministic kriging modes. CK passes its existing multivariable observations,
+deterministic kriging modes. SK passes `unbias=0` and the existing known global
+mean for every packed primary/secondary variable. Simple co-simulation uses
+mean-centered residuals for both hard data and previously simulated nodes. CK
+passes its existing multivariable observations,
 auto/cross variograms, searches, and mean-mode configuration to libkriging's
 native joint simulation and returns only the primary variable. The adapter
 initializes libkriging with one simulation and the
@@ -230,8 +234,8 @@ result structure. Both `INTERP_DIM 2` and `3` and category/HSU solves are
 supported. The current input flag and output arrays represent exactly one
 realization.
 
-SGSIM currently applies only to model/data point-support OK and CK
-interpolation. SK, IDW, `BLOCK_MODE`, saved weights or simulation paths, and
+SGSIM currently applies only to model/data point-support OK, SK, and CK
+interpolation. IDW, `BLOCK_MODE`, saved weights or simulation paths, and
 separate PP/interbed simulation are unsupported and fail clearly where those
 combinations can be requested; no saved-path input option is exposed and the
 native path remains in memory. Deterministic PP/interbed interpolation remains
@@ -252,9 +256,9 @@ target. SK uses the libkriging search path and `NNEAR`; the removed
 SK follows libkriging's GSLIB-style anisotropy convention, not Texture2Par's
 historical rotation behavior. Because PP/interbed methods default independently
 to OK, `INTERP_METHOD SK` routes both workflows through libkriging ordinary
-kriging. SGSIM and
-`INTERP_ORDER AFTER` are rejected for SK rather than silently falling back;
-the latter generated parameter data never had an initialized legacy SK mean.
+kriging. `INTERP_ORDER AFTER` remains rejected for SK rather than silently
+falling back because the generated parameter data never had an initialized
+legacy SK mean.
 
 Deterministic secondary-data interpolation under default `OK` and its `OK_LIB`
 alias now uses the same libkriging backend with `nvar > 1`. Observations are
@@ -303,7 +307,12 @@ Texture2Par does not currently expose custom block support points or weights.
 That may be added later for irregular grids such as IWFM. For now, block mode
 remains restricted to structured MODFLOW because other flow-model readers do
 not define cell dimensions. IDW and SGSIM are rejected explicitly rather than
-performing point interpolation under a block label. Pilot-point and interbed
+performing point interpolation under a block label. Native libkriging currently
+integrates hard-data-to-block covariance and each target block's conditional
+variance, but previously simulated blocks re-enter the sequential system at
+their centre coordinates rather than through block-to-block covariance. Block
+SGSIM therefore remains disabled until that joint covariance is consistently
+integrated. Pilot-point and interbed
 interpolation remain point-support workflows even when model/data block mode is
 active.
 

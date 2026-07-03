@@ -257,17 +257,9 @@ contains
       call error_handler(4, opt_msg='libkriging received inconsistent cokriging variable metadata')
     if (size(obs_data) > 1 .and. opt%ASYMMETRIC_COV) &
       call error_handler(4, opt_msg='libkriging CK requires symmetric cross-variograms; ASYMMETRIC_COV is unsupported')
-    if (opt%NSIM > 0 .and. this_is_simple(opt)) &
-      call error_handler(1, opt_msg='SK with SGSIM is unsupported; only OK and CK simulation are implemented')
     if (opt%NSIM > 1) &
       call error_handler(1, opt_msg='Texture2Par SGSIM output currently supports exactly one realization')
   end subroutine validate_libkriging_scope
-!-------------------------------------------------------------------------------------------------!
-
-  logical function this_is_simple(opt)
-    type(t_options), intent(in) :: opt
-    this_is_simple = opt%INTERP_METHOD == 'SK'
-  end function this_is_simple
 !-------------------------------------------------------------------------------------------------!
 
   subroutine validate_metadata(this, class_id)
