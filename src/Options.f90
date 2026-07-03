@@ -123,7 +123,7 @@ module m_options
     this%WRITE_IB_WEIGHTS     = .false.
     this%READ_PP_WEIGHTS      = .false.
     this%READ_GRID_WEIGHTS    = .false.
-    this%READ_GRID_WEIGHTS    = .false.
+    this%READ_IB_WEIGHTS      = .false.
     this%WRITE_NONE           = .false.
     this%WRITE_NODE_FILES     = .false.
     this%WRITE_DATASET_FILES  = .false.

@@ -1544,28 +1544,6 @@ class TestLibKrigingOrdinary:
         assert r.returncode != 0
         assert "co-located" in r.combined.lower()
 
-    @pytest.mark.parametrize(
-        ("options_extra", "flow_extra", "diagnostic"),
-        [
-            ("WRITE_GRID_WEIGHTS", "", "grid weight"),
-            ("READ_GRID_WEIGHTS", "", "grid weight"),
-            ("READ_PP_WEIGHTS", "", "pilot-point weight"),
-            ("WRITE_PP_WEIGHTS", "", "pilot-point weight"),
-            ("READ_IB_WEIGHTS", "", "interbed weight"),
-            ("WRITE_IB_WEIGHTS", "", "interbed weight"),
-        ],
-    )
-    def test_default_ok_unsupported_combinations_are_fatal(
-        self, run_t2p, options_extra, flow_extra, diagnostic
-    ):
-        r = run_t2p(
-            _ok_lib_2d_t2p(options_extra=options_extra, flow_extra=flow_extra),
-            extra_files=self._files(),
-        )
-        assert r.returncode != 0
-        assert diagnostic.lower() in r.combined.lower()
-
-
 # ---------------------------------------------------------------------------
 # 3. Block kriging status
 # ---------------------------------------------------------------------------
@@ -1751,9 +1729,6 @@ class TestLibKrigingSimple:
     @pytest.mark.parametrize(
         ("options_extra", "diagnostic"),
         [
-            ("WRITE_GRID_WEIGHTS", "grid weight"),
-            ("READ_PP_WEIGHTS", "pilot-point weight"),
-            ("WRITE_IB_WEIGHTS", "interbed weight"),
             ("SGSIM", "SGSIM"),
             ("INTERP_ORDER AFTER", "no defined SK mean"),
         ],
@@ -1968,6 +1943,9 @@ A A A A A A B B B
         assert "allocate(t_sgsim::" not in source.lower()
         assert "use m_sgsim" not in source.lower()
 
+        for legacy_source in ("kriging.f90", "sgsim.f90", "kriging_vecback.f90"):
+            assert not (root / "src" / legacy_source).exists()
+
         for makefile in (
             root / "build_ifx" / "makefile",
             root / "build" / "makefile",
@@ -1994,79 +1972,154 @@ A A A A A A B B B
 
 class TestWeightCaching:
 
-    def test_grid_weight_cache_is_unsupported(self, run_t2p):
-        """The removed legacy route must not silently handle external weights."""
-        # Use NZ=1 (single layer) so observations fall in the only layer, ensuring
-        # the WRITE run produces non-empty weight files that the READ run can consume.
-        # Use explicit Fine variogram (no INFER_LAST_CLASS) so Fine is also kriged
-        # and its weight file is complete.
-        single_grd = """\
-NX    5
-NY    5
-NZ    1
-DX    3000.0
-DY    3000.0
-TOP   constant 100.0
-BOT   constant 80.0
-IBOUND constant 1
-"""
-        def _t2p(extra_options):
-            return f"""\
-                BEGIN OPTIONS
-                  MAX_VSTRUCT 1
-                  WRITE_NODE_FILES
-                  {extra_options}
-                END OPTIONS
-                BEGIN CLASSES
-                  Coarse
-                  Fine
-                END CLASSES
-                BEGIN DATASET
-                  FILE dataset.csv
-                END DATASET
-                BEGIN FLOW_MODEL
-                  TYPE GRID
-                  GRID_FILE grid.grd
-                END FLOW_MODEL
-                BEGIN VARIOGRAMS
-                  CLASS Coarse
-                    1 Sph 0.05 0.038 1.5E4 1.5E4 0.0 16
-                  CLASS Fine
-                    1 Sph 0.05 0.038 1.5E4 1.5E4 0.0 16
-                  CLASS PilotPoints
-                    1 Sph 0.00 1.0 1.0E5 1.0E5 0.0 25
-                END VARIOGRAMS
-                BEGIN PP_LOCS
-                  1 5050.0 4005.0 1
-                END PP_LOCS
-                BEGIN PP_PARAMETERS
-                  TYPE Global
-                  1  0.5  -0.5  0.0
-                  TYPE Aquifer
-                  1 Coarse  0.1  100.0  1e-5  0.15  10.0  0.001
-                  1 Fine  0.001    0.5  1e-4  0.05   5.0  0.001
-                END PP_PARAMETERS
-                """
+    @pytest.mark.parametrize("method", ["OK", "SK"])
+    def test_grid_weight_write_read_preserves_estimates_and_variance(
+        self, run_t2p, method
+    ):
+        files = TestLibKrigingSimple._files_2d() if method == "SK" else {
+            "dataset.csv": OK_LIB_2D_DATASET,
+            "grid.grd": OK_LIB_2D_GRD,
+        }
+        write = run_t2p(
+            _ok_lib_2d_t2p(
+                method=method,
+                options_extra="WRITE_GRID_WEIGHTS\nWRITE_VARIANCE",
+            ),
+            extra_files=files,
+        )
+        assert write.returncode == 0, write.combined
+        expected = _read_coarse_texture_output(write, ("Layer1",)).copy()
+        weight_files = sorted(write.workdir.glob("*_grdweights_*.wts"))
+        assert weight_files
 
-        files = {**FILES, "grid.grd": single_grd}
-        r1 = run_t2p(_t2p("WRITE_GRID_WEIGHTS"), extra_files=files)
-        assert r1.returncode != 0
-        assert "external grid weight" in r1.combined.lower()
+        read = run_t2p(
+            _ok_lib_2d_t2p(
+                method=method,
+                options_extra="READ_GRID_WEIGHTS\nWRITE_VARIANCE",
+            ),
+            extra_files=files,
+        )
+        assert read.returncode == 0, read.combined
+        actual = _read_coarse_texture_output(read, ("Layer1",))
+        assert actual["Layer1"].to_numpy() == pytest.approx(
+            expected["Layer1"].to_numpy(), abs=1e-10
+        )
+        assert actual["Var_Layer1"].to_numpy() == pytest.approx(
+            expected["Var_Layer1"].to_numpy(), abs=1e-10
+        )
 
-    def test_pp_weight_cache_is_unsupported(self, run_t2p):
-        r1 = run_t2p(
+    def test_grid_read_weights_uses_current_observation_values(self, run_t2p):
+        files = {"dataset.csv": OK_LIB_2D_DATASET, "grid.grd": OK_LIB_2D_GRD}
+        write = run_t2p(
+            _ok_lib_2d_t2p(options_extra="WRITE_GRID_WEIGHTS"),
+            extra_files=files,
+        )
+        assert write.returncode == 0, write.combined
+        original = _read_coarse_texture_output(write, ("Layer1",)).copy()
+
+        changed_files = {
+            **files,
+            "dataset.csv": OK_LIB_2D_DATASET.replace("0.10", "0.90", 1),
+        }
+        read = run_t2p(
+            _ok_lib_2d_t2p(options_extra="READ_GRID_WEIGHTS"),
+            extra_files=changed_files,
+        )
+        assert read.returncode == 0, read.combined
+        changed = _read_coarse_texture_output(read, ("Layer1",))
+        assert np.max(np.abs(
+            changed["Layer1"].to_numpy() - original["Layer1"].to_numpy()
+        )) > 0.1
+
+    def test_ck_weight_write_read_preserves_mean_mode(self, run_t2p):
+        files = {
+            "primary.csv": _ck_variance_primary_dataset(0.0),
+            "secondary.csv": CK_VARIANCE_SECONDARY_DATASET,
+            "grid.grd": OK_LIB_2D_GRD,
+        }
+        write_t2p = _ck_variance_t2p().replace(
+            "KVME", "KVME\n          WRITE_GRID_WEIGHTS"
+        )
+        write = run_t2p(write_t2p, extra_files=files)
+        assert write.returncode == 0, write.combined
+        expected = _read_coarse_texture_output(write, ("Layer1",)).copy()
+        assert list(write.workdir.glob("*_grdweights_*.wts"))
+
+        read_t2p = _ck_variance_t2p().replace(
+            "KVME", "KVME\n          READ_GRID_WEIGHTS"
+        )
+        read = run_t2p(read_t2p, extra_files=files)
+        assert read.returncode == 0, read.combined
+        actual = _read_coarse_texture_output(read, ("Layer1",))
+        assert actual["Layer1"].to_numpy() == pytest.approx(
+            expected["Layer1"].to_numpy(), abs=1e-10
+        )
+        assert actual["Var_Layer1"].to_numpy() == pytest.approx(
+            expected["Var_Layer1"].to_numpy(), abs=1e-10
+        )
+
+    def test_block_weight_write_read(self, run_t2p):
+        write = run_t2p(
+            _block_modflow_t2p(options_extra="WRITE_GRID_WEIGHTS"),
+            extra_files=BLOCK_FILES,
+        )
+        assert write.returncode == 0, write.combined
+        expected = _read_coarse_texture_output(write, ("Layer1",)).copy()
+        assert list(write.workdir.glob("*_grdweights_*.wts"))
+
+        read = run_t2p(
+            _block_modflow_t2p(options_extra="READ_GRID_WEIGHTS"),
+            extra_files=BLOCK_FILES,
+        )
+        assert read.returncode == 0, read.combined
+        actual = _read_coarse_texture_output(read, ("Layer1",))
+        assert actual["Layer1"].to_numpy() == pytest.approx(
+            expected["Layer1"].to_numpy(), abs=1e-10
+        )
+        assert actual["Var_Layer1"].to_numpy() == pytest.approx(
+            expected["Var_Layer1"].to_numpy(), abs=1e-10
+        )
+
+    def test_pp_weight_write_read_reuses_multi_parameter_geometry(self, run_t2p):
+        write = run_t2p(
             _grid_t2p(options_extra="WRITE_PP_WEIGHTS"), extra_files=FILES
         )
-        assert r1.returncode != 0
-        assert "external pilot-point weight" in r1.combined.lower()
+        assert write.returncode == 0, write.combined
+        weight_files = sorted(write.workdir.glob("*_ppweights_*.wts"))
+        assert weight_files
+        output_names = {
+            path.name for pattern in ("*KH*.csv", "*KV*.csv", "*SS*.csv", "*SY*.csv")
+            for path in write.workdir.glob(pattern)
+        }
+        assert output_names
+        expected = {
+            name: (write.workdir / name).read_text() for name in output_names
+        }
 
-    def test_text_grid_weight_cache_is_unsupported(self, run_t2p):
+        read = run_t2p(
+            _grid_t2p(options_extra="READ_PP_WEIGHTS"), extra_files=FILES
+        )
+        assert read.returncode == 0, read.combined
+        for name, content in expected.items():
+            assert (read.workdir / name).read_text() == content
+
+    def test_missing_grid_weight_file_is_fatal(self, run_t2p):
         r = run_t2p(
-            _grid_t2p(options_extra="WRITE_GRID_WEIGHTS TEXT"),
-            extra_files=FILES,
+            _ok_lib_2d_t2p(options_extra="READ_GRID_WEIGHTS"),
+            extra_files={"dataset.csv": OK_LIB_2D_DATASET, "grid.grd": OK_LIB_2D_GRD},
         )
         assert r.returncode != 0
-        assert "external grid weight" in r.combined.lower()
+        assert "Could not open weight_file" in r.combined
+
+    def test_text_option_uses_native_text_factor_file(self, run_t2p):
+        r = run_t2p(
+            _ok_lib_2d_t2p(options_extra="WRITE_GRID_WEIGHTS TEXT"),
+            extra_files={"dataset.csv": OK_LIB_2D_DATASET, "grid.grd": OK_LIB_2D_GRD},
+        )
+        assert r.returncode == 0, r.combined
+        weight_file = next(r.workdir.glob("*_grdweights_*.wts"))
+        header = weight_file.read_text().splitlines()[0].split()
+        assert [int(value) for value in header[:2]] == [4, 1]
 
 
 # ---------------------------------------------------------------------------

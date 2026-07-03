@@ -477,6 +477,31 @@ class TestSubsidenceOutputs:
         )
         assert "Inverse Distance Weighting (IDW)" in ib_line
 
+    def test_interbed_weight_write_read_reuses_three_value_columns(self, run_t2p):
+        files = {"dataset.csv": SUBSIDENCE_DATASET, "grid.grd": GRD}
+        write = run_t2p(
+            self._sub_t2p(options_extra="WRITE_IB_WEIGHTS"),
+            extra_files=files,
+        )
+        assert write.returncode == 0, write.combined
+        assert list(write.workdir.glob("*_ibweights_*.wts"))
+        output_names = {
+            path.name for path in write.workdir.glob("*.csv")
+            if "IB_" in path.name.upper()
+        }
+        assert output_names
+        expected = {
+            name: (write.workdir / name).read_text() for name in output_names
+        }
+
+        read = run_t2p(
+            self._sub_t2p(options_extra="READ_IB_WEIGHTS"),
+            extra_files=files,
+        )
+        assert read.returncode == 0, read.combined
+        for name, content in expected.items():
+            assert (read.workdir / name).read_text() == content
+
 
 # ---------------------------------------------------------------------------
 # 7. Row count sanity (5×5 grid, 2 layers = 50 nodes per layer file)

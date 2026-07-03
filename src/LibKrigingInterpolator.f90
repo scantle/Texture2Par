@@ -136,6 +136,12 @@ contains
       request%model_layer = layer
       request%class_id = obs_idx(1)
       request%zone_id = zone
+      request%store_weight = opt%WRITE_GRID_WEIGHTS
+      request%use_old_weight = opt%READ_GRID_WEIGHTS
+      if (request%store_weight .or. request%use_old_weight) &
+        write(request%weight_file, '(A,I2.2,A,I0,A,I0,A)') &
+          trim(opt%PROJECT_NAME)//'_grdweights_arr', layer, '_obs', obs_idx(1), &
+          '_cat', cat, '.wts'
       request%search%n_nearest_primary = variables(1)%nmax
       request%search%max_primary_distance = opt%MAX_PRIMARY_DIST
       if (size(variables) > 1) then
@@ -256,8 +262,6 @@ contains
       call error_handler(1, opt_msg='SK with SGSIM is not supported in this migration stage')
     if (opt%NSIM > 1) &
       call error_handler(1, opt_msg='Texture2Par SGSIM output currently supports exactly one realization')
-    if (opt%READ_GRID_WEIGHTS .or. opt%WRITE_GRID_WEIGHTS) &
-      call error_handler(1, opt_msg='libkriging OK/SK does not support READ_GRID_WEIGHTS or WRITE_GRID_WEIGHTS currently')
   end subroutine validate_libkriging_scope
 !-------------------------------------------------------------------------------------------------!
 

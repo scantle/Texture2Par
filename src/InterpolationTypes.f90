@@ -71,6 +71,9 @@ module m_interpolation_types
     logical :: request_block_support   = .false.
     logical :: request_reusable_weights = .false.
     integer :: weight_cache_id = 0
+    logical :: store_weight = .false.
+    logical :: use_old_weight = .false.
+    character(len=1024) :: weight_file = ""
   end type t_interp_request
 
   type, public :: t_interp_result

@@ -3506,7 +3506,11 @@ contains
     !   parallel block loop can use load_block_weights without any file I/O.
     if (self%use_old_weight) then
       if (trim(self%weight_file) /= "") then
-        open(newunit=self%ifile, file=trim(self%weight_file), status='old')
+        open(newunit=self%ifile, file=trim(self%weight_file), status='old', iostat=ios)
+        if (ios /= 0) then
+          call kriging_error(subname, 'Could not open weight_file: '//trim(self%weight_file))
+          return
+        end if
         read(self%ifile, *, iostat=ios) hdr_nblock, hdr_nvar, nmax
         if (ios /= 0) then
           call kriging_error(subname, 'Failed to read weight_file header.')

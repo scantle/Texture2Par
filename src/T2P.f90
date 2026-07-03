@@ -288,24 +288,11 @@ module m_T2P
                                      ' (supported values: OK, IDW)')
     end select
 
-    ! External weight files are not part of the libkriging paths.
-    if (this%opt%INTERP_METHOD=="OK".or.this%opt%INTERP_METHOD=="OK_LIB") then
-        if (this%opt%WRITE_GRID_WEIGHTS.or.this%opt%READ_GRID_WEIGHTS) &
-          call error_handler(1,opt_msg='libkriging OK does not support external grid weight read/write')
-    end if
     if (this%opt%INTERP_METHOD=="SK") then
         if (this%opt%INTERP_ORDER=="AFTER") &
           call error_handler(1,opt_msg='libkriging SK does not support INTERP_ORDER AFTER because '// &
                                        'generated parameter data have no defined SK mean')
-        if (this%opt%WRITE_GRID_WEIGHTS.or.this%opt%READ_GRID_WEIGHTS) &
-          call error_handler(1,opt_msg='libkriging SK does not support grid weight read/write')
     end if
-    if (this%opt%PP_INTERP_METHOD=="OK".and. &
-        (this%opt%WRITE_PP_WEIGHTS.or.this%opt%READ_PP_WEIGHTS)) &
-      call error_handler(1,opt_msg='libkriging OK does not support external pilot-point weight read/write')
-    if (this%opt%IB_INTERP_METHOD=="OK".and. &
-        (this%opt%WRITE_IB_WEIGHTS.or.this%opt%READ_IB_WEIGHTS)) &
-      call error_handler(1,opt_msg='libkriging OK does not support external interbed weight read/write')
     call this%interp_data%initialize()  ! Todo - custom parameters?
     call this%interp_pp%initialize()    ! Todo - custom parameters?
 
@@ -341,10 +328,6 @@ module m_T2P
     if (this%opt%nsim > 0) then
       if (this%opt%WRITE_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot WRITE_GRID_WEIGHTS while using SGSIM (NSIM>0)')
       if (this%opt%READ_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot READ_GRID_WEIGHTS while using SGSIM (NSIM>0)')
-    end if
-
-    if (this%opt%READ_GRID_WEIGHTS.and.this%opt%WRITE_VARIANCE) then
-      call error_handler(1,opt_msg='Cannot WRITE_VARIANCE while reusing weights from READ_GRID_WEIGHTS')
     end if
 
     if (this%opt%READ_GRID.and.this%opt%ONLY_TEXTURE) then
@@ -924,7 +907,7 @@ module m_T2P
 
       select type(lib => this%interp_pp)
         type is(t_libkrige)
-          call interpolate_pp_libkriging(this, lib, obs_data(1), to_grid, to_active, &
+          call interpolate_pp_libkriging(this, lib, k, obs_data(1), to_grid, to_active, &
                                          to_categories%catlist(1:to_categories%arrncat(k),k), &
                                          to_categories%array(:,k), results(k))
           cycle
@@ -972,10 +955,11 @@ module m_T2P
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine interpolate_pp_libkriging(this, lib, observations, to_grid, active, &
+  subroutine interpolate_pp_libkriging(this, lib, array_index, observations, to_grid, active, &
                                         catlist, to_cats, results)
     class(t_T2P), intent(inout)      :: this
     class(t_libkrige), intent(inout) :: lib
+    integer, intent(in)              :: array_index
     type(t_pilotpoints), intent(in)  :: observations
     class(t_grid), intent(in)        :: to_grid
     logical, intent(in)              :: active(:)
@@ -1019,6 +1003,11 @@ module m_T2P
 
       request%purpose = INTERP_PURPOSE_PILOT_POINT
       request%class_id = 1
+      request%store_weight = this%opt%WRITE_PP_WEIGHTS
+      request%use_old_weight = this%opt%READ_PP_WEIGHTS
+      if (request%store_weight .or. request%use_old_weight) &
+        write(request%weight_file, '(A,I2.2,A,I0,A)') &
+          trim(this%opt%PROJECT_NAME)//'_ppweights_arr', array_index, '_cat', cat, '.wts'
       call lib%interpolate_many(request, value_matrix, this%opt, estimates, variance)
 
       column = 0
@@ -1262,6 +1251,11 @@ module m_T2P
 
       request%purpose = INTERP_PURPOSE_INTERBED
       request%class_id = 1
+      request%store_weight = this%opt%WRITE_IB_WEIGHTS
+      request%use_old_weight = this%opt%READ_IB_WEIGHTS
+      if (request%store_weight .or. request%use_old_weight) &
+        write(request%weight_file, '(A,I2.2,A,I0,A)') &
+          trim(this%opt%PROJECT_NAME)//'_ibweights_lay', layer, '_cat', cat, '.wts'
       call lib%interpolate_many(request, value_matrix, this%opt, estimates, variance)
       do value_idx = 1, 3
         results%values(value_idx,request%target_index) = estimates(:,value_idx)

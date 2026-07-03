@@ -120,7 +120,11 @@ contains
         call solver%initialize(ndim=request%dimension, nvar=nvar, unbias=unbias, &
                                std_ck=nvar == 1, &
                                nonstd_ck_mean_correction=nonstd_ck_mean_correction, &
-                               anisotropic_search=request%search%anisotropic_search, verbose=.false.)
+                               anisotropic_search=request%search%anisotropic_search, &
+                               use_old_weight=request%use_old_weight, &
+                               store_weight=request%store_weight, &
+                               pf_cache=.not. request%use_old_weight, &
+                               weight_file=trim(request%weight_file), verbose=.false.)
       case (PREDICT_SGSIM)
         if (request%simulation_count < 1) &
           call error_handler(4, opt_msg='libkriging SGSIM requires at least one realization')
@@ -261,7 +265,11 @@ contains
     ! for value columns sharing the same observation and target geometry.
     call solver%initialize(ndim=request%dimension, nvar=1, unbias=unbias, &
                            anisotropic_search=request%search%anisotropic_search, &
-                           store_weight=nvalues > 1, verbose=.false.)
+                           use_old_weight=request%use_old_weight, &
+                           store_weight=(request%store_weight .or. nvalues > 1) .and. &
+                                        .not. request%use_old_weight, &
+                           pf_cache=.not. request%use_old_weight, &
+                           weight_file=trim(request%weight_file), verbose=.false.)
     initialized = .true.
     if (kriging_failed()) goto 900
 
@@ -298,11 +306,13 @@ contains
     if (kriging_failed() .or. .not. solver%solved) goto 900
     estimates(:,1) = solver%block%value(1,1,:)
     variance(:,1) = solver%block%variance(1,1,:)
+    ! The first solve has populated wstore from either calculation or file.
+    ! Keep later value columns entirely in memory instead of reopening the file.
+    if (nvalues > 1) solver%weight_file = ""
 
     do column = 2, nvalues
       ! update_obs_value preserves observation variance and activates reuse of
-      ! the populated in-memory weights. External Texture2Par READ/WRITE weight
-      ! files remain a separate compatibility task.
+      ! the populated or loaded in-memory weights.
       call solver%update_obs_value(1, value_matrix(:,column))
       if (kriging_failed()) goto 900
       call solver%solve(nthread=1)

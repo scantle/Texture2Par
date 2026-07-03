@@ -113,7 +113,7 @@ pytest --tb=long
 | `TestCorrectWeights` | CORRECT_WEIGHTS flag |
 | `TestCoincidentLocations` | duplicate XY/XYZ conditioning points are fatal; exact target hits remain valid |
 | `TestSGS` | libkriging-backed 2-D/3-D SGSIM; finite output; seed reproducibility; exact/soft conditioning variance; category masking; unsupported-mode diagnostics; no legacy runtime allocation |
-| `TestWeightCaching` | clear unsupported diagnostics for external grid and pilot-point saved weights |
+| `TestWeightCaching` | libkriging grid/PP saved-weight write/read, changed values, variance, CK, SK, block targets, and missing files |
 | `TestOnlyTexture` | no pilot points required; no hydraulic property files written |
 | `TestMaxLogLength` | INTERP_DIM 3 log interval splitting and processed XYZ support points |
 | `TestInterpDim3GridGeometry` | 3D grid elevation output and implied layer-center Z coordinates |
@@ -172,8 +172,30 @@ The pilot-point and interbed libkriging paths pack geometry
 once per category and interpolate multiple value columns through the
 libkriging adapter. The first solve stores libkriging's in-memory weights;
 later columns update only the observation values and reuse those weights.
-External grid, pilot-point, and interbed saved-weight files remain unsupported
-under their respective libkriging OK paths and fail with a diagnostic.
+
+Saved deterministic kriging weights use libkriging's native factor-file system.
+The existing `WRITE_GRID_WEIGHTS`/`READ_GRID_WEIGHTS`,
+`WRITE_PP_WEIGHTS`/`READ_PP_WEIGHTS`, and
+`WRITE_IB_WEIGHTS`/`READ_IB_WEIGHTS` options remain the user interface. Model
+OK, `OK_LIB`, SK, CK, and structured `BLOCK_MODE` are supported, as are PP OK
+and interbed OK. `READ_GRID_WEIGHTS` can be combined with `WRITE_VARIANCE`:
+libkriging stores and restores the kriging variance along with neighbour
+indices and weights. Observation variance is therefore baked into a factor
+file and must not change when that file is reused. Observation values may
+change; the loaded weights are applied to the current values.
+
+Files retain the historical project/type stems but add a category suffix
+because each category is a separate libkriging solve:
+`<project>_grdweights_arrNN_obsN_catN.wts`,
+`<project>_ppweights_arrNN_catN.wts`, and
+`<project>_ibweights_layNN_catN.wts`. PP and interbed value columns share the
+single category file and reuse its loaded in-memory weights. Native files are
+formatted text whether or not the historical optional `TEXT` suffix is used.
+Pre-libkriging `.wts` contents are not compatible and should be regenerated.
+Target and observation counts and ordering, categories, search limits, support
+mode, variograms, observation variance, and CK/SK configuration must match the
+write run; the native header diagnoses dimension mismatches but cannot verify
+all of that semantic geometry.
 
 `SGSIM` is a simulation mode of the shared `t_libkrige` backend, not a separate
 interpolator. `OK + SGSIM` and the equivalent `OK_LIB + SGSIM` reuse the same
@@ -187,7 +209,7 @@ supported. The current input flag and output arrays represent exactly one
 realization.
 
 SGSIM currently applies only to model/data point-support interpolation. CK,
-SK, IDW, `BLOCK_MODE`, external saved weights or simulation paths, and separate
+SK, IDW, `BLOCK_MODE`, saved weights or simulation paths, and separate
 PP/interbed simulation are unsupported and fail clearly where those
 combinations can be requested; deterministic PP/interbed interpolation remains
 independently controlled by `PP_INTERP_METHOD` and `IB_INTERP_METHOD` during an
@@ -207,7 +229,7 @@ the removed `t_globkrige` assembled all observations in the current category.
 SK follows libkriging's GSLIB-style anisotropy convention, not Texture2Par's
 historical rotation behavior. Because PP/interbed methods default independently
 to OK, `INTERP_METHOD SK` no longer routes either workflow through legacy
-ordinary kriging. External saved weights, cokriging, SGSIM, and
+ordinary kriging. Cokriging, SGSIM, and
 `INTERP_ORDER AFTER` are rejected for SK rather than silently falling back;
 the latter generated parameter data never had an initialized legacy SK mean.
 
@@ -237,9 +259,9 @@ in the secondary auto-variogram. Full-secondary Python references must still
 set a large explicit value such as `1e10`.
 
 New-path CK follows libkriging/GSLIB-style covariance and search anisotropy.
-SK cokriging, asymmetric cross-variograms, sector search, and external
-saved-weight files remain unsupported. SGSIM support and limits are described
-above.
+SK cokriging, asymmetric cross-variograms, and sector search remain unsupported.
+Saved CK weights are supported for deterministic runs; retain the same
+`CK_MEAN_MODE` when reusing them. SGSIM support and limits are described above.
 
 `BLOCK_MODE` historically used 4-point Gaussian quadrature per spatial axis
 (16 support points in 2-D and 64 in 3-D) for structured MODFLOW cells. The
@@ -261,10 +283,13 @@ active.
 
 The old block covariance calculations and support-point storage have been
 removed. The runtime no longer allocates `t_sgsim` or uses `t_treekrige` for
-SGSIM. The legacy `sgsim.f90` and `kriging.f90` sources remain in the repository
-for archival review but have been removed from all makefile source lists and
-object prerequisites. No production makefile route compiles their modules or
-references their types.
+SGSIM. The legacy `sgsim.f90`, `kriging.f90`, and `kriging_vecback.f90` sources
+have been retired; production interpolation is libkriging-backed.
+
+Saved weights remain unsupported for SGSIM and saved simulation paths. Custom
+or unstructured block support is not exposed. IDW continues to use the existing
+dense Texture2Par weight implementation and `weights.f90`; deterministic
+kriging factor files do not use that legacy format.
 
 In `INTERP_DIM 3`, processed observations remain XYZ support points; they are
 not reduced to the per-model-layer XY averages used by 2D layer interpolation.
