@@ -2,7 +2,7 @@
 
 ## Project context
 
-Texture2Par is a modern Fortran codebase. The current migration goal is to replace the legacy Texture2Par kriging/SGSIM implementation with native Fortran libkriging while preserving Texture2Par input/output behavior through staged, tested changes.
+Texture2Par is a modern Fortran codebase. Production deterministic kriging and SGSIM use native Fortran libkriging while preserving Texture2Par input/output behavior.
 
 Use only the local repository state. Do not fetch Texture2Par source files from GitHub unless explicitly asked.
 
@@ -47,15 +47,15 @@ Typical previous-executable baseline command:
 $env:T2P_EXE=(Resolve-Path '.\bin\Texture2Par_prev.exe').Path; conda run -n t2p_tests pytest --basetemp=.pytest_tmp -x --tb=long
 ```
 
-Because the legacy KD-tree has temporarily been replaced by brute-force search, the full pytest suite currently takes about 9 minutes 20 seconds. Use focused tests during development and a timeout of at least 20 minutes for full-suite runs.
+Kriging grid search uses `GridKDTree.f90` over libkriging's bundled KD-tree. Use focused tests during development and a timeout of at least 20 minutes for full-suite runs.
 
 A `.pytest_tmp` cleanup/cache warning may occur due to Windows ACL issues. Do not treat it as a failure if tests otherwise pass.
 
-## Migration guardrails
+## Kriging guardrails
 
-- Do not permanently remove Texture2Par features merely because the legacy kriging implementation is being retired. Preserve supported behavior by migrating it to libkriging through staged, tested changes; if a correct migration is not yet available, keep the feature explicitly pending rather than treating removal as the end state.
+- Do not permanently remove historical Texture2Par features merely because their legacy implementation was retired. Preserve supported behavior through libkriging; keep combinations without a correct implementation explicitly pending rather than treating removal as the end state.
 - Keep existing `OK`, `SK`, `IDW`, and SGSIM behavior unchanged unless the task explicitly says to change them.
-- `OK_LIB` is the experimental libkriging ordinary-kriging path.
+- `OK` is the production libkriging ordinary-kriging path; `OK_LIB` is a compatibility alias for the same path.
 - Do not reproduce the old OK/SK duplication in new libkriging code. libkriging uses one `t_kriging` type with OK/SK as configuration.
 - Do not silently switch OK to SK for efficiency. Preserve the requested kriging mode.
 - Texture2Par's legacy anisotropy/dip convention differs from libkriging/GSLIB/scipy-style rotation. Do not force libkriging to match the legacy convention unless explicitly asked.

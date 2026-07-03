@@ -129,7 +129,7 @@ contains
         if (request%simulation_count < 1) &
           call error_handler(4, opt_msg='libkriging SGSIM requires at least one realization')
         if (request%request_block_support) &
-          call error_handler(1, opt_msg='BLOCK_MODE with SGSIM is not supported in this migration stage')
+          call error_handler(1, opt_msg='BLOCK_MODE with SGSIM is unsupported; simulation currently requires point support')
         call solver%initialize(ndim=request%dimension, nvar=nvar, unbias=unbias, &
                                nsim=request%simulation_count, seed=request%random_seed, &
                                std_ck=nvar == 1, &

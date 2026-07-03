@@ -136,7 +136,7 @@ module m_grid
     end if
 
     ! A query-time rotation can differ from the metric used to build the tree.
-    ! Preserve that legacy override with the exact brute-force implementation.
+    ! Use the exact fallback only for that override or an unavailable KD-tree.
     if (present(rotmat) .or. .not. this%tree%kdtree%is_ready()) then
       call get_nnear_brute_force(this, qpoint, nnear, idx, dis, mask, rotmat)
       return

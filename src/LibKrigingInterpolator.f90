@@ -51,7 +51,6 @@ contains
     type(t_libkriging_variable), allocatable :: variables(:)
     integer, allocatable   :: vgm_index(:,:)
     integer                :: i, d, cat, zone, vgm_idx, nmax, unbias
-    real                   :: sk_mean
     logical                :: missing_variable, shift_secondary_mean, local_mean_correction
 
     call validate_libkriging_scope(obs_data, obs_idx, val_idx, opt)
@@ -65,14 +64,17 @@ contains
     select case (this%kriging_mode)
       case (LIBKRIGE_MODE_ORDINARY)
         unbias = 1
-        sk_mean = 0.0
       case (LIBKRIGE_MODE_SIMPLE)
         unbias = 0
-        sk_mean = obs_data(1)%mean(val_idx(1))
       case default
         call error_handler(4, opt_msg='libkriging has an invalid kriging mode')
     end select
-    call configure_ck_mean_mode(opt, shift_secondary_mean, local_mean_correction)
+    if (this%kriging_mode == LIBKRIGE_MODE_ORDINARY) then
+      call configure_ck_mean_mode(opt, shift_secondary_mean, local_mean_correction)
+    else
+      shift_secondary_mean = .false.
+      local_mean_correction = .false.
+    end if
 
     allocate(variables(size(obs_data)), vgm_index(size(obs_data),size(obs_data)))
 
@@ -97,6 +99,8 @@ contains
         end if
         if (d > 1 .and. shift_secondary_mean) variables(d)%values = variables(d)%values + &
           obs_data(1)%mean(val_idx(1)) - obs_data(d)%mean(val_idx(d))
+        if (this%kriging_mode == LIBKRIGE_MODE_SIMPLE) &
+          variables(d)%sk_mean = obs_data(d)%mean(val_idx(d))
         variables(d)%nmax = min(this%nnear(obs_idx(d)), size(variables(d)%values))
       end do
       if (missing_variable) then
@@ -120,7 +124,6 @@ contains
         call error_handler(4, opt_msg='libkriging OK could not map all auto/cross variograms')
 
       variables(1)%max_distance = opt%MAX_PRIMARY_DIST
-      variables(1)%sk_mean = sk_mean
       do d = 2, size(variables)
         if (opt%MAX_SECONDARY_DIST > 0.1) then
           variables(d)%max_distance = opt%MAX_SECONDARY_DIST
@@ -165,7 +168,7 @@ contains
       variance(batch%target_index) = batch%variance
     end do
 
-    ! TODO(Stage 6C+): when nnear >= nobs, use a cached/global solve if libkriging exposes
+    ! TODO: when nnear >= nobs, use a cached/global solve if libkriging exposes
     ! that optimization while preserving kriging_mode (never silently convert OK to SK).
   end subroutine calc_libkrige
 !-------------------------------------------------------------------------------------------------!
@@ -214,7 +217,7 @@ contains
         sk_mean = 0.0
       case (LIBKRIGE_MODE_SIMPLE)
         call error_handler(4, opt_msg='libkriging SK pilot-point/interbed interpolation is not enabled; '// &
-                                     'legacy ordinary kriging is retained for those paths')
+                                     'those workflows do not define an SK mean convention')
       case default
         call error_handler(4, opt_msg='libkriging has an invalid kriging mode')
     end select
@@ -252,14 +255,10 @@ contains
 
     if (size(obs_data) /= size(obs_idx) .or. size(obs_data) /= size(val_idx)) &
       call error_handler(4, opt_msg='libkriging received inconsistent cokriging variable metadata')
-    if (size(obs_data) > 1 .and. this_is_simple(opt)) &
-      call error_handler(4, opt_msg='libkriging SK does not currently support covariates/cokriging')
-    if (opt%NSIM > 0 .and. size(obs_data) > 1) &
-      call error_handler(1, opt_msg='CK with SGSIM is not supported in this migration stage')
     if (size(obs_data) > 1 .and. opt%ASYMMETRIC_COV) &
       call error_handler(4, opt_msg='libkriging CK requires symmetric cross-variograms; ASYMMETRIC_COV is unsupported')
     if (opt%NSIM > 0 .and. this_is_simple(opt)) &
-      call error_handler(1, opt_msg='SK with SGSIM is not supported in this migration stage')
+      call error_handler(1, opt_msg='SK with SGSIM is unsupported; only OK and CK simulation are implemented')
     if (opt%NSIM > 1) &
       call error_handler(1, opt_msg='Texture2Par SGSIM output currently supports exactly one realization')
   end subroutine validate_libkriging_scope

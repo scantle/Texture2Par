@@ -184,7 +184,7 @@ module m_read_main_input
 
     if (t2p%opt%BLOCK_KRIGE > 0) then
       if (t2p%opt%NSIM > 0) &
-        call error_handler(1,opt_msg='BLOCK_MODE is unsupported with SGSIM; no legacy fallback is available')
+        call error_handler(1,opt_msg='BLOCK_MODE is unsupported with SGSIM; simulation currently requires point support')
       if (t2p%opt%INTERP_METHOD == 'IDW') &
         call error_handler(1,opt_msg='BLOCK_MODE requires libkriging OK, OK_LIB, or SK; IDW has no block implementation')
     end if
@@ -272,7 +272,7 @@ module m_read_main_input
       if (t2p%opt%INTERP_METHOD == "OK".or.t2p%opt%INTERP_METHOD == "OK_LIB") then
         call error_handler(4,opt_msg="libkriging OK does not currently support this covariate/cokriging configuration")
       else if (t2p%opt%INTERP_METHOD == "SK") then
-        call error_handler(4,opt_msg="libkriging SK does not currently support covariates/cokriging")
+        call error_handler(4,opt_msg="libkriging SK covariates were not enabled during option processing")
       else
         call error_handler(4,opt_msg="Covariates are not supported for non-kriging options.")
       end if

@@ -109,7 +109,7 @@ pytest --tb=long
 | `TestOrdinaryKriging` | run completes; KH written; texture bounded [0,1]; INFER classes |
 | `TestLibKrigingOrdinary` | default OK data, pilot-point, and interbed routing; OK_LIB alias; rejection of removed OK_LEGACY; explicit libkriging/GSLIB anisotropy and anisotropic-search coverage; NNEAR; nested structures; supported variogram mappings; duplicate and unsupported-feature diagnostics |
 | `TestBlockKriging` | structured-MODFLOW block OK estimate/variance against an independent weighted-support reference; shared OK_LIB/SK routing; diagnostics for other models, IDW, and SGSIM |
-| `TestLibKrigingSimple` | default SK routing through the shared libkriging backend; global-mean 2D/3D references; SK/OK distinction; retained legacy-OK pilot-point route; unsupported-feature diagnostics |
+| `TestLibKrigingSimple` | default SK routing through the shared libkriging backend; global-mean 2D/3D references; simple-cokriging secondary influence and per-variable means; SK/OK distinction; independent libkriging-OK pilot-point route; unsupported-feature diagnostics |
 | `TestCorrectWeights` | CORRECT_WEIGHTS flag |
 | `TestCoincidentLocations` | duplicate XY/XYZ conditioning points are fatal; exact target hits remain valid |
 | `TestSGS` | libkriging-backed 2-D/3-D SGSIM; finite output; seed reproducibility; exact/soft conditioning variance; category masking; unsupported-mode diagnostics; no legacy runtime allocation |
@@ -129,6 +129,25 @@ including anisotropy, 3D interpolation, and CK covariance checks. They run last
 because they are broader and more computationally involved than the basic
 contract tests above.
 
+### Libkriging feature matrix
+
+| Feature | Current support |
+|---|---|
+| OK | Production libkriging path for model/data point support in 2-D/3-D and deterministic PP/interbed interpolation; `OK_LIB` is an alias. |
+| SK | Deterministic model/data point support in 2-D/3-D and structured blocks, including simple cokriging with a known mean per variable; PP/interbed SK is unsupported because those workflows define no SK mean. |
+| CK | Deterministic model/data point support in 2-D/3-D and structured blocks, including multiple secondary variables. |
+| CK mean modes | `LIBKRIGING` and `LEGACY_STANDARDIZED`; both use the libkriging CK solve. |
+| SGSIM OK | One point-support realization in 2-D/3-D, including categories/zones and observation variance. |
+| SGSIM CK | One primary-variable point-support realization in 2-D/3-D with CK mean modes, categories/zones, and observation variance. |
+| `BLOCK_MODE` | Deterministic OK/`OK_LIB`/SK/CK for structured MODFLOW cells through libkriging Gaussian block support. |
+| Kriging variance | End-to-end for deterministic OK/SK/CK point and block solves; grid factor files preserve it. |
+| Observation variance | End-to-end for deterministic OK/SK/CK and SGSIM; deterministic factor files bind the write-run values. |
+| Saved grid weights | Deterministic OK/`OK_LIB`/SK/CK, including structured block targets, through libkriging factor files. |
+| Saved PP weights | Deterministic PP OK through libkriging factor files. |
+| Saved IB weights | Deterministic interbed OK through libkriging factor files. |
+| IDW paths | Existing dense model/data, PP, and interbed paths remain active; IDW does not support blocks or SGSIM. |
+| Unsupported/future | SK+SGSIM; multiple SGSIM realizations; block SGSIM; PP/interbed SGSIM; saved SGSIM weights/paths; custom/unstructured blocks; sector search; asymmetric cross-variograms; factor-file versioning and geometry fingerprints. |
+
 ### Cokriging Reference Tests
 
 Butte CK reference tests use a full augmented CK matrix in Python. For
@@ -147,7 +166,7 @@ backend.
 
 Default `INTERP_METHOD OK` now uses libkriging for ordinary kriging and passes
 angles using libkriging's GSLIB-style rotation convention. `OK_LIB` remains a
-temporary alias for that same path. `OK_LEGACY` has been removed. Any
+compatibility alias for that same path. `OK_LEGACY` has been removed. Any
 anisotropic default-OK test must state which convention it
 validates and must not reuse legacy
 anisotropic expectations without explicitly documenting the expected
@@ -158,8 +177,8 @@ results where the historical rotation convention differs.
 `ANISOTROPIC_SEARCH` controls only the libkriging OK/SK neighbor-selection metric;
 covariance evaluation continues to use every structure's own variogram
 anisotropy regardless of that flag. Search currently uses the first variogram
-structure's major/minor range ratios and angles. Sector search remains a TODO
-and is not exposed by Texture2Par in this migration stage.
+structure's major/minor range ratios and angles. Sector search remains future
+work and is not exposed by Texture2Par.
 
 `INTERP_METHOD` controls model/data interpolation. Pilot-point and interbed
 interpolation are configured independently with `PP_INTERP_METHOD` and
@@ -198,20 +217,24 @@ write run; the native header diagnoses dimension mismatches but cannot verify
 all of that semantic geometry.
 
 `SGSIM` is a simulation mode of the shared `t_libkrige` backend, not a separate
-interpolator. `OK + SGSIM` and the equivalent `OK_LIB + SGSIM` reuse the same
-observation/target/category packing, variogram mapping, search configuration,
-observation variance, solve, and scatter path as deterministic ordinary
-kriging. The adapter initializes libkriging with one simulation and the
+interpolator. `OK + SGSIM`, the equivalent `OK_LIB + SGSIM`, and CK + SGSIM
+reuse the same observation/target/category packing, variogram mapping, search
+configuration, observation variance, solve, and scatter path as their
+deterministic kriging modes. CK passes its existing multivariable observations,
+auto/cross variograms, searches, and mean-mode configuration to libkriging's
+native joint simulation and returns only the primary variable. The adapter
+initializes libkriging with one simulation and the
 Texture2Par `SEED`, supplies an in-memory randomized path and Gaussian samples,
 calls `set_sim`, and returns the first simulated-value plane through the normal
 result structure. Both `INTERP_DIM 2` and `3` and category/HSU solves are
 supported. The current input flag and output arrays represent exactly one
 realization.
 
-SGSIM currently applies only to model/data point-support interpolation. CK,
-SK, IDW, `BLOCK_MODE`, saved weights or simulation paths, and separate
-PP/interbed simulation are unsupported and fail clearly where those
-combinations can be requested; deterministic PP/interbed interpolation remains
+SGSIM currently applies only to model/data point-support OK and CK
+interpolation. SK, IDW, `BLOCK_MODE`, saved weights or simulation paths, and
+separate PP/interbed simulation are unsupported and fail clearly where those
+combinations can be requested; no saved-path input option is exposed and the
+native path remains in memory. Deterministic PP/interbed interpolation remains
 independently controlled by `PP_INTERP_METHOD` and `IB_INTERP_METHOD` during an
 SGSIM run. Observation variance is passed to libkriging, so zero variance gives
 exact conditioning at coincident targets while positive variance provides soft
@@ -223,13 +246,13 @@ backend mode selects `unbias=1` for OK and `unbias=0` for SK; SK passes the
 dataset/class global mean to libkriging's `set_obs`. That mean is computed by
 the existing dataset readers across all layers/categories (and is
 thickness-weighted for 3D interval data), not recomputed per category or
-target. SK uses the libkriging search path and `NNEAR`, whereas legacy
-the removed `t_globkrige` assembled all observations in the current category.
+target. SK uses the libkriging search path and `NNEAR`; the removed
+`t_globkrige` instead assembled all observations in the current category.
 
 SK follows libkriging's GSLIB-style anisotropy convention, not Texture2Par's
 historical rotation behavior. Because PP/interbed methods default independently
-to OK, `INTERP_METHOD SK` no longer routes either workflow through legacy
-ordinary kriging. Cokriging, SGSIM, and
+to OK, `INTERP_METHOD SK` routes both workflows through libkriging ordinary
+kriging. SGSIM and
 `INTERP_ORDER AFTER` are rejected for SK rather than silently falling back;
 the latter generated parameter data never had an initialized legacy SK mean.
 
@@ -258,8 +281,11 @@ zero, the retained Texture2Par default is three times the largest major range
 in the secondary auto-variogram. Full-secondary Python references must still
 set a large explicit value such as `1e10`.
 
-New-path CK follows libkriging/GSLIB-style covariance and search anisotropy.
-SK cokriging, asymmetric cross-variograms, and sector search remain unsupported.
+Libkriging CK follows libkriging/GSLIB-style covariance and search anisotropy.
+Simple cokriging uses each primary/secondary dataset's global mean and the same
+multivariable packing, covariance, and search path as ordinary CK. Asymmetric
+cross-variograms and sector search remain unsupported. `CK_MEAN_MODE` applies
+only to ordinary CK; simple cokriging always uses its per-variable known means.
 Saved CK weights are supported for deterministic runs; retain the same
 `CK_MEAN_MODE` when reusing them. SGSIM support and limits are described above.
 
@@ -284,12 +310,20 @@ active.
 The old block covariance calculations and support-point storage have been
 removed. The runtime no longer allocates `t_sgsim` or uses `t_treekrige` for
 SGSIM. The legacy `sgsim.f90`, `kriging.f90`, and `kriging_vecback.f90` sources
-have been retired; production interpolation is libkriging-backed.
+have been retired and are absent from the makefile production builds;
+production interpolation is libkriging-backed. The `kriging.F90` compiled under
+`src/Libraries/libkriging` is libkriging's active implementation, not the
+retired top-level source. Stale Visual Studio source entries remain pending a
+separate project-file update.
 
 Saved weights remain unsupported for SGSIM and saved simulation paths. Custom
 or unstructured block support is not exposed. IDW continues to use the existing
 dense Texture2Par weight implementation and `weights.f90`; deterministic
 kriging factor files do not use that legacy format.
+
+Future factor-file hardening should add an explicit format version and geometry
+fingerprint. This is separate from the currently enforced dimensions and
+configuration metadata.
 
 In `INTERP_DIM 3`, processed observations remain XYZ support points; they are
 not reduced to the per-model-layer XY averages used by 2D layer interpolation.

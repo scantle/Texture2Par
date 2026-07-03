@@ -3940,8 +3940,15 @@ contains
           end do
         end if
 
-        if (self%unbias == 0 .and. self%obs(jvar)%sk_mean /= 0.0) &
-          avg = avg + (1.0 - sum(total_weight)) * self%obs(jvar)%sk_mean
+        ! Simple cokriging uses one known mean per variable:
+        ! m_j + sum_i w_ij * (z_i - m_i). This reduces to the usual
+        ! (1-sum(w))*m correction when nvar == 1.
+        if (self%unbias == 0) then
+          avg = avg + self%obs(jvar)%sk_mean
+          do ivar = 1, self%nvar
+            avg = avg - total_weight(ivar) * self%obs(ivar)%sk_mean
+          end do
+        end if
 
         val(:, jvar) = avg
       end do
