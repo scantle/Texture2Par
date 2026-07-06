@@ -26,6 +26,7 @@ module m_options
     integer                  :: INTERP_DIM            ! 2D, 3D, stored as integer, read as string
     integer                  :: NSIM                  ! number of sequential gaussian simulation; default is zero which is Kriging
     integer                  :: SEED                  ! seed number for generating random path and samples for SGSIM
+    integer                  :: NTHREADS              ! threads used by deterministic libkriging solves
     character(10)            :: INTERP_METHOD         ! Model/data: OK, OK_LIB, SK, IDW
     character(10)            :: PP_INTERP_METHOD      ! Pilot points: OK, IDW
     character(10)            :: IB_INTERP_METHOD      ! Interbeds: OK, IDW
@@ -103,6 +104,7 @@ module m_options
     this%INTERP_DIM           = 2
     this%NSIM                 = 0
     this%SEED                 = 0
+    this%NTHREADS             = 1
     this%INTERP_METHOD        = 'OK'
     this%PP_INTERP_METHOD     = 'OK'
     this%IB_INTERP_METHOD     = 'OK'
@@ -185,6 +187,11 @@ subroutine read_options(this, reader)
         this%NSIM              = 1
       case("SEED")
         this%SEED              = item2int(strings, 2)
+      case("NTHREADS")
+        call item2char(strings, 2, temp)
+        read(temp, *, iostat=status) this%NTHREADS
+        if (status /= 0 .or. this%NTHREADS < 1) &
+          call error_handler(1,reader%file,"NTHREADS must be at least 1")
       case("INTERP_METHOD")
         call item2char(strings, 2, this%INTERP_METHOD,toupper=.true.)
       case("PP_INTERP_METHOD")
@@ -342,6 +349,7 @@ subroutine write_input_summary(this, ndatafiles)
     call log%write_valueline('Max Outside Bounds Dist:', this%MAX_OUTSIDE_DIST)
     if (this%INTERP_DIM == 3) call log%write_valueline('Max Log Interval Length:', this%MAX_LOG_LENGTH(1:ndatafiles))
     call log%write_valueline('Interpolation Dimensions:',this%INTERP_DIM)
+    call log%write_valueline('Libkriging Threads:',this%NTHREADS)
     !call log%write_valueline('',this%INTERP_DIM)  ! unimplemented
     ! Going to do something a little nicer for the Interpolation Method
     select case(this%INTERP_METHOD)

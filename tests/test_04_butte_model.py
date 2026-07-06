@@ -42,18 +42,18 @@ def ok(obsloc, obsval, newloc, vgm=_VGM_sph, is3d=False):
     if vtype not in _covfunc:
         raise ValueError(f"Unknown covariance function {vtype}")
     im = 0
-    nugget = float(v[im:=im+1])
-    sill   = float(v[im:=im+1])
-    hmin = float(v[im:=im+1])
-    hmax = float(v[im:=im+1])
+    nugget = float(v[(im:=im+1)])
+    sill   = float(v[(im:=im+1)])
+    hmin = float(v[(im:=im+1)])
+    hmax = float(v[(im:=im+1)])
     if is3d:
-        hvert = float(v[im:=im+1])
+        hvert = float(v[(im:=im+1)])
     else:
         hvert = hmin
-    azimuth = float(v[im:=im+1])
+    azimuth = float(v[(im:=im+1)])
     if is3d:
-      dip = float(v[im:=im+1])
-      plunge = float(v[im:=im+1])
+      dip = float(v[(im:=im+1)])
+      plunge = float(v[(im:=im+1)])
     else:
       dip = 0.
       plunge = 0.
@@ -70,7 +70,7 @@ def ok(obsloc, obsval, newloc, vgm=_VGM_sph, is3d=False):
     obsloc = rot.apply(obsloc) / hh
     newloc = rot.apply(newloc) / hh
 
-    nmax = int(v[im:=im+1])
+    nmax = int(v[(im:=im+1)])
     nobs = len(obsloc)
     nnew = len(newloc)
     if nmax < nobs:

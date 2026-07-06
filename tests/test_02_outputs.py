@@ -132,6 +132,15 @@ class TestLogFile:
                    ("MAX_VSTRUCT", "INFER_LAST_CLASS", "OPTIONS")), (
             "Log file does not echo options block")
 
+    def test_log_echoes_selected_nthreads(self, run_t2p):
+        r = run_t2p(
+            _base_t2p().replace("MAX_VSTRUCT 1", "MAX_VSTRUCT 1\n          NTHREADS 2"),
+            extra_files=FILES,
+        )
+        assert r.returncode == 0, r.combined
+        line = next(line for line in r.log.splitlines() if "Libkriging Threads:" in line)
+        assert line.rstrip().endswith("2")
+
     def test_log_records_errors_on_bad_run(self, run_t2p, minimal_grd):
         """A failed run should write an error message to the log."""
         bad = _base_t2p().replace("MAX_VSTRUCT 1", "")  # remove mandatory option

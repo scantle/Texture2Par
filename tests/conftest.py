@@ -8,10 +8,14 @@ or set the T2P_EXE environment variable to the full path before running.
     pytest tests/ -v
 """
 
+from __future__ import annotations
+
 import os
+import json
 import shutil
 import subprocess
 import textwrap
+import time
 from pathlib import Path
 from .data import aem2d, grid2d, gridspec, pc2d
 import pytest
@@ -35,6 +39,7 @@ def _find_exe() -> str:
 
 
 T2P_EXE = _find_exe()
+T2P_TIMINGS = []
 
 
 def pytest_report_header(config):
@@ -42,12 +47,21 @@ def pytest_report_header(config):
     return f"Texture2Par executable: {T2P_EXE}"
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """Write optional per-invocation executable timings for benchmark runs."""
+    timings_file = os.environ.get("T2P_TIMINGS_FILE")
+    if timings_file:
+        Path(timings_file).write_text(
+            json.dumps(T2P_TIMINGS, indent=2), encoding="utf-8"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Core runner fixture
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def run_t2p(tmp_path):
+def run_t2p(tmp_path, request):
     """
     Returns a callable: run_t2p(input_file, extra_files=None)
     Copies every file in extra_files to tmp_path, then runs Texture2Par
@@ -68,14 +82,27 @@ def run_t2p(tmp_path):
             for fname, content in extra_files.items():
                 (workdir / fname).write_text(textwrap.dedent(content))
 
-        result = subprocess.run(
-            [T2P_EXE, filename],
-            cwd=workdir,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
+        started = time.perf_counter()
+        try:
+            result = subprocess.run(
+                [T2P_EXE, filename],
+                cwd=workdir,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+        finally:
+            elapsed = time.perf_counter() - started
+
+        T2P_TIMINGS.append({
+            "nodeid": request.node.nodeid,
+            "invocation": sum(
+                item["nodeid"] == request.node.nodeid for item in T2P_TIMINGS
+            ) + 1,
+            "seconds": elapsed,
+            "returncode": result.returncode,
+        })
 
         log_path = workdir / (Path(filename).stem + ".out")
         log = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""

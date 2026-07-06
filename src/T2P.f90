@@ -328,6 +328,8 @@ module m_T2P
     if (this%opt%nsim > 0) then
       if (this%opt%WRITE_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot WRITE_GRID_WEIGHTS while using SGSIM (NSIM>0)')
       if (this%opt%READ_GRID_WEIGHTS) call error_handler(1,opt_msg='Cannot READ_GRID_WEIGHTS while using SGSIM (NSIM>0)')
+      if (this%opt%NTHREADS > 1) &
+        call warning_handler('SGSIM is single-threaded; NTHREADS applies only to deterministic libkriging solves')
     end if
 
     if (this%opt%READ_GRID.and.this%opt%ONLY_TEXTURE) then

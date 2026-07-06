@@ -30,6 +30,7 @@ ifeq ($(OS),Windows_NT)
   IFX_OBJ = /object:$@
   IFX_EXE = /exe:$@
   IFX_LINK = /nologo /libs:static /Qm64
+  IFX_OPENMP = /Qopenmp
   INC = /I
   ARFLAGS = /nologo /machine:x64 /out:$@
   RCFLAGS = /nologo /I$(SRCDIR)
@@ -62,6 +63,7 @@ MFUSGMODDIR := $(MODDIR)/mfUSGLib
 FLIB_LIB := $(LIBDIR)/flibs$(LIBEXT)
 MFUSG_LIB := $(LIBDIR)/mfUSGLib$(LIBEXT)
 KRIG_LIB := $(LIBDIR)/libkriging$(LIBEXT)
+OMP_RUNTIME := $(BINDIR)/libiomp5md.dll
 FLIB_DEP = $(objflibs)
 
 LIBS := $(FLIB_LIB) $(MFUSG_LIB) $(KRIG_LIB)
@@ -82,12 +84,9 @@ T2P_MODFLAGS := $(subst $(MODDIR),$(T2PMODDIR),$(IFX_MOD)) $(INC)$(FLIBMODDIR) $
 
 FLIB_FFLAGS := $(FLIB_COMMON) $(FLIB_MODFLAGS) $(INC)$(FLIBDIR) $(LIB_OPTFLAGS)
 MFUSG_FFLAGS := $(MFUSG_COMMON) $(MFUSG_MODFLAGS) $(LIB_OPTFLAGS)
-# Keep the candidate independent of an external Intel OpenMP DLL. The conda
-# regression environment ships an incompatible libiomp5md.dll; parallel
-# libkriging packaging can be revisited when the backend enters runtime use.
-KRIG_FFLAGS := $(FLIB_COMMON) $(KRIG_MODFLAGS) $(INC)$(KRIGDIR) $(LIB_OPTFLAGS) $(IFX_REAL8) /DKRIGEKIT_HCACHE_SLOTS=256 /DUSE_COV_TABLE
+KRIG_FFLAGS := $(FLIB_COMMON) $(KRIG_MODFLAGS) $(INC)$(KRIGDIR) $(LIB_OPTFLAGS) $(IFX_REAL8) $(IFX_OPENMP) /DKRIGEKIT_HCACHE_SLOTS=256 /DUSE_COV_TABLE
 T2P_FFLAGS := $(T2P_COMMON) $(T2P_MODFLAGS) $(INC)$(FLIBDIR) $(T2P_OPTFLAGS) $(IFX_REAL8)
-LDFLAGS := $(IFX_LINK) $(LINKDEBUG)
+LDFLAGS := $(IFX_LINK) $(IFX_OPENMP) $(LINKDEBUG)
 
 flibs := \
     m_vstring.f90 \
@@ -237,6 +236,7 @@ dirs:
 
 $(PROGRAM): $(objects) $(resources) | dirs
 	$(FC) $(LDFLAGS) $(IFX_EXE) $(objects) $(resources)
+	copy /Y "$(subst /,\,$(CMPLR_ROOT)/bin/libiomp5md.dll)" "$(subst /,\,$(OMP_RUNTIME))" >nul
 
 $(FLIB_LIB): $(objflibs) | dirs
 	$(AR) $(ARFLAGS) $(objflibs)
@@ -279,6 +279,7 @@ clean:
 	$(call RM_F,$(PROGRAM))
 	$(call RM_F,$(BINDIR)/Texture2Par.pdb)
 	$(call RM_F,$(BINDIR)/Texture2Par.ilk)
+	$(call RM_F,$(OMP_RUNTIME))
 
 # Module-level prerequisites. The object list above is intentionally ordered
 # for clean builds; these dependencies cover normal incremental GNU make builds.

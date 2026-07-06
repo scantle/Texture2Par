@@ -72,22 +72,22 @@ def parse_vgm(svgm, is3d=False):
     if vtype not in _covfunc:
         raise ValueError(f"Unknown covariance function {vtype!r}")
     im = 0
-    nugget  = float(v[im:=im+1])
-    sill    = float(v[im:=im+1])
-    hmin    = float(v[im:=im+1])
-    hmax    = float(v[im:=im+1])
+    nugget  = float(v[(im:=im+1)])
+    sill    = float(v[(im:=im+1)])
+    hmin    = float(v[(im:=im+1)])
+    hmax    = float(v[(im:=im+1)])
     if is3d:
-        hvert = float(v[im:=im+1])
+        hvert = float(v[(im:=im+1)])
     else:
         hvert = hmin
-    azimuth = float(v[im:=im+1])
+    azimuth = float(v[(im:=im+1)])
     if is3d:
-        dip    = float(v[im:=im+1])
-        plunge = float(v[im:=im+1])
+        dip    = float(v[(im:=im+1)])
+        plunge = float(v[(im:=im+1)])
     else:
         dip = plunge = 0.0
     try:
-        nmax = int(v[im:=im+1])
+        nmax = int(v[(im:=im+1)])
     except (IndexError, ValueError):
         nmax = 9999                   # cross-variograms have no nnear token
     rot = Rotation.from_euler('zxy', [azimuth, -dip, -plunge], degrees=True)
@@ -1060,6 +1060,30 @@ def calc_ck_correlation_3d(
 # ---------------------------------------------------------------------------
 
 class TestCokrigingButteCK:
+
+    def test_ck_nthreads_12_matches_single_thread(self, run_t2p, butte_ck_data):
+        single = run_t2p(
+            _t2p_ck(options_extra="NTHREADS 1"),
+            filename="single.t2p",
+            extra_files=butte_ck_data["files"],
+        )
+        assert single.returncode == 0, single.combined
+        single_output = pd.read_csv(single.workdir / "single_Coarse.csv").copy()
+
+        parallel = run_t2p(
+            _t2p_ck(options_extra="NTHREADS 12"),
+            filename="parallel.t2p",
+            extra_files=butte_ck_data["files"],
+        )
+        assert parallel.returncode == 0, parallel.combined
+        parallel_output = pd.read_csv(parallel.workdir / "parallel_Coarse.csv")
+
+        assert parallel_output["Layer1"].to_numpy() == pytest.approx(
+            single_output["Layer1"].to_numpy(), abs=1e-12
+        )
+        assert parallel_output["Var_Layer1"].to_numpy() == pytest.approx(
+            single_output["Var_Layer1"].to_numpy(), abs=1e-12
+        )
 
     def test_ck_produces_output(self, run_t2p, butte_ck_data):
         """CK runs without error and the expected output CSV is produced."""

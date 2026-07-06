@@ -42,10 +42,10 @@ contains
 !-------------------------------------------------------------------------------------------------!
   ! Translate a backend-neutral batch request plus Texture2Par variograms into one native
   ! libkriging solve. OK and SK share this path; unbias/sk_mean are configuration, not classes.
-  subroutine libkriging_solve_single(request, variograms, nstruct, unbias, sk_mean, result)
+  subroutine libkriging_solve_single(request, variograms, nstruct, unbias, sk_mean, nthread, result)
     type(t_interp_request), intent(in)  :: request
     type(t_vgm), intent(in)             :: variograms(:)
-    integer, intent(in)                 :: nstruct, unbias
+    integer, intent(in)                 :: nstruct, unbias, nthread
     real, intent(in)                    :: sk_mean
     type(t_interp_result), intent(out)  :: result
 
@@ -65,23 +65,23 @@ contains
     vgm_index(1,1) = 1
 
     call libkriging_solve_variables(request, variables, variogram_matrix, &
-                                    nstruct_by_vgm, vgm_index, unbias, .true., result)
+                                    nstruct_by_vgm, vgm_index, unbias, .true., nthread, result)
   end subroutine libkriging_solve_single
 !-------------------------------------------------------------------------------------------------!
 
   subroutine libkriging_solve_variables(request, variables, variograms, nstruct, &
-                                        vgm_index, unbias, nonstd_ck_mean_correction, result)
+                                        vgm_index, unbias, nonstd_ck_mean_correction, nthread, result)
     type(t_interp_request), intent(in)      :: request
     type(t_libkriging_variable), intent(in) :: variables(:)
     type(t_vgm), intent(in)                 :: variograms(:,:)
-    integer, intent(in)                     :: nstruct(:), vgm_index(:,:), unbias
+    integer, intent(in)                     :: nstruct(:), vgm_index(:,:), unbias, nthread
     logical, intent(in)                     :: nonstd_ck_mean_correction
     type(t_interp_result), intent(out)      :: result
 
     type(t_kriging)           :: solver
     character(3)              :: vtype
     character(:), allocatable :: failure
-    integer                   :: i, isim, ivar, jvar, nvar, ntarget, vidx
+    integer                   :: i, isim, ivar, jvar, nvar, ntarget, solve_nthread, vidx
     integer, allocatable      :: simulation_path(:)
     real, allocatable         :: simulation_sample(:,:,:), draw(:)
     logical                   :: initialized, succeeded
@@ -90,6 +90,8 @@ contains
     succeeded = .false.
     nvar = size(variables)
     ntarget = size(request%target_coordinates, 2)
+    solve_nthread = nthread
+    if (request%prediction_mode == PREDICT_SGSIM) solve_nthread = 1
     allocate(result%estimates(ntarget), result%variance(ntarget), result%target_index(ntarget))
     result%estimates = 0.0
     result%variance = 0.0
@@ -201,7 +203,7 @@ contains
       if (kriging_failed()) goto 900
     end do
 
-    call solver%solve(nthread=1)
+    call solver%solve(nthread=solve_nthread)
     if (kriging_failed() .or. .not. solver%solved) goto 900
 
     ! Texture2Par's current output contract stores one primary realization.
@@ -225,10 +227,10 @@ contains
   ! value_matrix is (observation, value-column); estimates and variance are
   ! (target, value-column).
   subroutine libkriging_interpolate_many(request, variograms, nstruct, unbias, sk_mean, &
-                                         value_matrix, estimates, variance)
+                                         nthread, value_matrix, estimates, variance)
     type(t_interp_request), intent(in)   :: request
     type(t_vgm), intent(in)              :: variograms(:)
-    integer, intent(in)                  :: nstruct, unbias
+    integer, intent(in)                  :: nstruct, unbias, nthread
     real, intent(in)                     :: sk_mean
     real, intent(in)                     :: value_matrix(:,:)
     real, allocatable, intent(out)       :: estimates(:,:), variance(:,:)
@@ -302,7 +304,7 @@ contains
     end if
     if (kriging_failed()) goto 900
 
-    call solver%solve(nthread=1)
+    call solver%solve(nthread=nthread)
     if (kriging_failed() .or. .not. solver%solved) goto 900
     estimates(:,1) = solver%block%value(1,1,:)
     variance(:,1) = solver%block%variance(1,1,:)
@@ -315,7 +317,7 @@ contains
       ! the populated or loaded in-memory weights.
       call solver%update_obs_value(1, value_matrix(:,column))
       if (kriging_failed()) goto 900
-      call solver%solve(nthread=1)
+      call solver%solve(nthread=nthread)
       if (kriging_failed() .or. .not. solver%solved) goto 900
       estimates(:,column) = solver%block%value(1,1,:)
       variance(:,column) = solver%block%variance(1,1,:)

@@ -1250,6 +1250,16 @@ class TestLibKrigingOrdinary:
     def _files():
         return {"dataset.csv": OK_LIB_2D_DATASET, "grid.grd": OK_LIB_2D_GRD}
 
+    @pytest.mark.parametrize("nthreads", [1, 2])
+    def test_deterministic_nthreads_runs(self, run_t2p, nthreads):
+        r = run_t2p(
+            _ok_lib_2d_t2p(options_extra=f"NTHREADS {nthreads}"),
+            extra_files=self._files(),
+        )
+        assert r.returncode == 0, r.combined
+        line = next(line for line in r.log.splitlines() if "Libkriging Threads:" in line)
+        assert line.rstrip().endswith(str(nthreads))
+
     def test_ok_lib_alias_is_accepted_and_exact_hits_run_in_2d(self, run_t2p):
         r = run_t2p(_ok_lib_2d_t2p(method="OK_LIB"), extra_files=self._files())
         assert r.returncode == 0, r.combined
@@ -1939,6 +1949,12 @@ class TestSGS:
         assert np.isfinite(df["Layer1"]).all()
         assert not (r.workdir / "sgs_path.dat").exists()
         assert not (r.workdir / "sgs_sample.dat").exists()
+
+    def test_sgsim_nthreads_two_warns_and_runs_single_threaded(self, run_t2p):
+        r = self._run_2d(run_t2p, 12345, extra="NTHREADS 2")
+        assert r.returncode == 0, r.combined
+        assert "SGSIM is single-threaded" in r.combined
+        assert "NTHREADS applies only to deterministic libkriging solves" in r.combined
 
     def test_sgsim_different_seeds_differ(self, run_t2p):
         r1 = self._run_2d(run_t2p, 1)

@@ -73,6 +73,21 @@ pytest -x
 pytest --tb=long
 ```
 
+### Recording executable timings
+
+Set `T2P_TIMINGS_FILE` to record the wall time of each Texture2Par invocation,
+excluding pytest setup, Python reference calculations, and assertions:
+
+```powershell
+$env:T2P_EXE = (Resolve-Path bin\Texture2Par.exe).Path
+$env:T2P_TIMINGS_FILE = (Join-Path (Get-Location) timings.json)
+pytest -q -p no:cacheprovider
+```
+
+The JSON output identifies the pytest node, invocation number, elapsed seconds,
+and executable return code. Tests that invoke Texture2Par more than once produce
+one record per invocation.
+
 ---
 
 ## Test categories

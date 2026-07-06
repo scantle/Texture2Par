@@ -64,3 +64,4 @@ training*
 /.claude
 /T2P
 /.codex*
+/.bench*_tmp/

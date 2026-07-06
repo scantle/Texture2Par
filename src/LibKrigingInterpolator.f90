@@ -26,6 +26,7 @@ module m_libkriging_interpolator
     integer :: kriging_mode = LIBKRIGE_MODE_ORDINARY
     integer :: prediction_mode = LIBKRIGE_PREDICT_ESTIMATE
     integer :: simulation_sequence = 0
+    integer :: nthreads = 1
   contains
     procedure :: calc => calc_libkrige
     procedure :: interpolate_many => interpolate_many_libkrige
@@ -54,6 +55,7 @@ contains
     logical                :: missing_variable, shift_secondary_mean, local_mean_correction
 
     call validate_libkriging_scope(obs_data, obs_idx, val_idx, opt)
+    this%nthreads = opt%NTHREADS
     do d = 1, size(obs_idx)
       call validate_metadata(this, obs_idx(d))
     end do
@@ -163,7 +165,7 @@ contains
       end if
 
       call libkriging_solve(request, variables, this%variograms, this%nstruct, &
-                            vgm_index, unbias, local_mean_correction, batch)
+                            vgm_index, unbias, local_mean_correction, this%nthreads, batch)
       results(batch%target_index) = batch%estimates
       variance(batch%target_index) = batch%variance
     end do
@@ -203,6 +205,7 @@ contains
     real    :: sk_mean
 
     call validate_metadata(this, request%class_id)
+    this%nthreads = opt%NTHREADS
     if (size(value_matrix,1) /= size(request%observation_coordinates,2)) &
       call error_handler(4, opt_msg='libkriging OK many-value observation geometry/value shape mismatch')
     call validate_unique_observations(request)
@@ -244,7 +247,7 @@ contains
 
     call libkriging_interpolate_many(request, this%variograms(:,vgm_idx), &
                                       this%nstruct(vgm_idx), unbias, sk_mean, &
-                                      value_matrix, estimates, variance)
+                                      this%nthreads, value_matrix, estimates, variance)
   end subroutine interpolate_many_libkrige
 !-------------------------------------------------------------------------------------------------!
 

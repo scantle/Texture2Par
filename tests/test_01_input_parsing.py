@@ -85,6 +85,29 @@ class TestOptionsBlock:
                                  "grid.grd": minimal_grd})
         assert r.returncode == 0, r.combined
 
+    @pytest.mark.parametrize("option, expected", [("", 1), ("NTHREADS 2", 2)])
+    def test_nthreads_default_and_explicit(
+        self, run_t2p, minimal_dataset, minimal_grd, option, expected
+    ):
+        r = run_t2p(
+            _simple_t2p(options_extra=option),
+            extra_files={"dataset.csv": minimal_dataset, "grid.grd": minimal_grd},
+        )
+        assert r.returncode == 0, r.combined
+        line = next(line for line in r.log.splitlines() if "Libkriging Threads:" in line)
+        assert line.rstrip().endswith(str(expected))
+
+    @pytest.mark.parametrize("value", [0, -1])
+    def test_nthreads_must_be_positive(
+        self, run_t2p, minimal_dataset, minimal_grd, value
+    ):
+        r = run_t2p(
+            _simple_t2p(options_extra=f"NTHREADS {value}"),
+            extra_files={"dataset.csv": minimal_dataset, "grid.grd": minimal_grd},
+        )
+        assert r.returncode != 0
+        assert "NTHREADS must be at least 1" in r.combined
+
     def test_pp_ib_interp_method_defaults_are_ok(
         self, run_t2p, minimal_dataset, minimal_grd
     ):
