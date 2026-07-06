@@ -165,7 +165,8 @@ contains
       end if
 
       call libkriging_solve(request, variables, this%variograms, this%nstruct, &
-                            vgm_index, unbias, local_mean_correction, this%nthreads, batch)
+                            vgm_index, unbias, local_mean_correction, opt%CORRECT_WEIGHTS, &
+                            opt%WRITE_MATRIX, this%nthreads, batch)
       results(batch%target_index) = batch%estimates
       variance(batch%target_index) = batch%variance
     end do
@@ -247,7 +248,8 @@ contains
 
     call libkriging_interpolate_many(request, this%variograms(:,vgm_idx), &
                                       this%nstruct(vgm_idx), unbias, sk_mean, &
-                                      this%nthreads, value_matrix, estimates, variance)
+                                      opt%CORRECT_WEIGHTS, opt%WRITE_MATRIX, this%nthreads, &
+                                      value_matrix, estimates, variance)
   end subroutine interpolate_many_libkrige
 !-------------------------------------------------------------------------------------------------!
 

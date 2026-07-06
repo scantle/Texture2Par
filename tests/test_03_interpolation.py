@@ -1818,11 +1818,146 @@ class TestLibKrigingSimple:
 # 4. CORRECT_WEIGHTS (non-negative kriging)
 # ---------------------------------------------------------------------------
 
+NEGATIVE_WEIGHT_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W1,1,1,0.0,0.0,100,0,10,1.0
+W2,2,1,0.1,0.1,100,0,10,1.0
+W3,3,1,0.2,0.2,100,0,10,0.0
+W4,4,1,2.0,0.0,100,0,10,0.0
+"""
+
+NEGATIVE_WEIGHT_GRD = """\
+NX    3
+NY    1
+NZ    1
+DX    1.0
+DY    1.0
+TOP   constant 100.0
+DZ    10.0
+IBOUND constant 1
+"""
+
+
+def _negative_weight_reference():
+    obsloc = np.array([[0.0, 0.0], [0.1, 0.1], [0.2, 0.2], [2.0, 0.0]])
+    obsval = np.array([1.0, 1.0, 0.0, 0.0])
+    target = np.array([[0.5, 0.5]])
+    obs_cov = _ok3d_covariance(
+        "sph", squareform(pdist(obsloc)) / 10.0
+    )
+    rhs_cov = _ok3d_covariance("sph", cdist(obsloc, target) / 10.0)
+    lhs = np.block([
+        [obs_cov, np.ones((len(obsloc), 1))],
+        [np.ones((1, len(obsloc))), np.zeros((1, 1))],
+    ])
+    rhs = np.vstack([rhs_cov, np.ones((1, 1))])
+    raw_weights = np.linalg.solve(lhs, rhs)[:-1, 0]
+    corrected_weights = np.maximum(raw_weights, 0.0)
+    corrected_weights /= corrected_weights.sum()
+    return obsval @ raw_weights, obsval @ corrected_weights, corrected_weights
+
+
 class TestCorrectWeights:
 
-    def test_correct_weights_flag_runs(self, run_t2p):
-        r = run_t2p(_grid_t2p(options_extra="CORRECT_WEIGHTS"), extra_files=FILES)
+    @staticmethod
+    def _files():
+        return {
+            "dataset.csv": NEGATIVE_WEIGHT_DATASET,
+            "grid.grd": NEGATIVE_WEIGHT_GRD,
+        }
+
+    def test_correct_weights_changes_estimate_to_clipped_normalized_reference(
+        self, run_t2p
+    ):
+        raw_expected, corrected_expected, _ = _negative_weight_reference()
+        assert raw_expected < -0.01
+        assert corrected_expected == pytest.approx(0.0)
+
+        baseline = run_t2p(
+            _ok_lib_2d_t2p(options_extra="NO_TEX_BOUNDS"),
+            extra_files=self._files(),
+        )
+        assert baseline.returncode == 0, baseline.combined
+        raw_actual = _read_coarse_texture_output(
+            baseline, ("Layer1",)
+        )["Layer1"].iloc[0]
+
+        corrected = run_t2p(
+            _ok_lib_2d_t2p(
+                options_extra="NO_TEX_BOUNDS\n          CORRECT_WEIGHTS"
+            ),
+            extra_files=self._files(),
+        )
+        assert corrected.returncode == 0, corrected.combined
+        assert "CORRECT_WEIGHTS is ignored for cokriging" not in corrected.combined
+        corrected_actual = _read_coarse_texture_output(
+            corrected, ("Layer1",)
+        )["Layer1"].iloc[0]
+
+        assert raw_actual == pytest.approx(raw_expected, abs=2e-6)
+        assert corrected_actual == pytest.approx(corrected_expected, abs=2e-6)
+        assert corrected_actual != pytest.approx(raw_actual, abs=1e-3)
+
+    def test_correct_weights_are_nonnegative_and_sum_to_one(self, run_t2p):
+        _, _, corrected_expected = _negative_weight_reference()
+        r = run_t2p(
+            _ok_lib_2d_t2p(
+                options_extra=(
+                    "NO_TEX_BOUNDS\n          CORRECT_WEIGHTS\n          WRITE_MATRIX"
+                )
+            ),
+            extra_files=self._files(),
+        )
         assert r.returncode == 0, r.combined
+        diagnostic = pd.read_csv(r.workdir / "data_1_var1_sim1.csv")
+        actual = diagnostic["weight"].to_numpy()
+        assert actual == pytest.approx(corrected_expected, abs=2e-6)
+        assert np.all(actual >= 0.0)
+        assert actual.sum() == pytest.approx(1.0, abs=2e-6)
+
+    def test_correct_weights_warns_when_cokriging_disables_correction(self, run_t2p):
+        t2p = _ck_variance_t2p().replace(
+            "KVME", "KVME\n          CORRECT_WEIGHTS", 1
+        )
+        r = run_t2p(
+            t2p,
+            extra_files={
+                "primary.csv": _ck_variance_primary_dataset(0.0),
+                "secondary.csv": CK_VARIANCE_SECONDARY_DATASET,
+                "grid.grd": OK_LIB_2D_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+        assert "CORRECT_WEIGHTS is ignored for cokriging" in r.combined
+        assert "multivariable primary/secondary weight constraints" in r.combined
+
+
+class TestWriteMatrix:
+
+    def test_write_matrix_creates_libkriging_diagnostic_csv_files(self, run_t2p):
+        r = run_t2p(
+            _ok_lib_2d_t2p(options_extra="NO_TEX_BOUNDS\n          WRITE_MATRIX"),
+            extra_files={
+                "dataset.csv": NEGATIVE_WEIGHT_DATASET,
+                "grid.grd": NEGATIVE_WEIGHT_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+
+        matrix_file = r.workdir / "matA_1.csv"
+        rhs_file = r.workdir / "rhsB_1.csv"
+        data_file = r.workdir / "data_1_var1_sim1.csv"
+        assert matrix_file.exists()
+        assert rhs_file.exists()
+        assert data_file.exists()
+
+        matrix = np.loadtxt(matrix_file, delimiter=",")
+        rhs = np.loadtxt(rhs_file, delimiter=",")
+        data = pd.read_csv(data_file)
+        assert matrix.shape == (5, 5)
+        assert rhs.shape == (5,)
+        assert len(data) == 4
+        assert {"source", "index", "x", "y", "value", "weight"} <= set(data.columns)
 
 
 # ---------------------------------------------------------------------------

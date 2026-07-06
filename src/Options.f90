@@ -40,7 +40,7 @@ module m_options
     logical                  :: DEBUG_MODE            ! UNIMPLMENTED
     logical                  :: ONLY_TEXTURE          ! Stops after calculating texture
     logical                  :: READ_GRID             ! Skips texture interpolation, reads file of gridded texture
-    logical                  :: WRITE_MATRIX          ! Writes kriging matrices to log
+    logical                  :: WRITE_MATRIX          ! Writes libkriging diagnostic matrices to CSV files
     logical                  :: WRITE_VARIANCE        ! Write kriging variance
     logical                  :: WRITE_PP_WEIGHTS      ! Write pilot point weights for reuse
     logical                  :: WRITE_GRID_WEIGHTS    ! Write grid (texture) weights for reuse

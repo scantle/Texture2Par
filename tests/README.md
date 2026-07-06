@@ -125,7 +125,8 @@ one record per invocation.
 | `TestLibKrigingOrdinary` | default OK data, pilot-point, and interbed routing; OK_LIB alias; rejection of removed OK_LEGACY; explicit libkriging/GSLIB anisotropy and anisotropic-search coverage; NNEAR; nested structures; supported variogram mappings; duplicate and unsupported-feature diagnostics |
 | `TestBlockKriging` | structured-MODFLOW block OK estimate/variance against an independent weighted-support reference; shared OK_LIB/SK routing; diagnostics for other models, IDW, and SGSIM |
 | `TestLibKrigingSimple` | default SK routing through the shared libkriging backend; global-mean 2D/3D references; simple-cokriging secondary influence and per-variable means; SK/OK distinction; independent libkriging-OK pilot-point route; unsupported-feature diagnostics |
-| `TestCorrectWeights` | CORRECT_WEIGHTS flag |
+| `TestCorrectWeights` | `CORRECT_WEIGHTS` clips negative univariate kriging weights, renormalizes them to one, and changes estimates to an independent corrected-weight reference |
+| `TestWriteMatrix` | `WRITE_MATRIX` emits libkriging neighbour, kriging-matrix, and right-hand-side CSV diagnostics |
 | `TestCoincidentLocations` | duplicate XY/XYZ conditioning points are fatal; exact target hits remain valid |
 | `TestSGS` | libkriging-backed OK/SK/CK 2-D/3-D point SGSIM; finite output; seed reproducibility; exact/soft conditioning variance; category masking; simple co-simulation means and secondary influence; unsupported-mode diagnostics; no legacy runtime allocation |
 | `TestWeightCaching` | libkriging grid/PP saved-weight write/read, changed values, variance, CK, SK, block targets, and missing files |
@@ -158,6 +159,8 @@ contract tests above.
 | `BLOCK_MODE` | Deterministic OK/`OK_LIB`/SK/CK for structured MODFLOW cells through libkriging Gaussian block support. |
 | Kriging variance | End-to-end for deterministic OK/SK/CK point and block solves; grid factor files preserve it. |
 | Observation variance | End-to-end for deterministic OK/SK/CK and SGSIM; deterministic factor files bind the write-run values. |
+| Corrected weights | `CORRECT_WEIGHTS` uses libkriging's univariate negative-weight clipping and normalization for model/data, PP, and interbed solves; libkriging deliberately leaves multivariable CK weights unchanged. |
+| Matrix diagnostics | `WRITE_MATRIX` writes libkriging `data_*.csv`, `matA_*.csv`, and `rhsB_*.csv` diagnostic files. |
 | Saved grid weights | Deterministic OK/`OK_LIB`/SK/CK, including structured block targets, through libkriging factor files. |
 | Saved PP weights | Deterministic PP OK through libkriging factor files. |
 | Saved IB weights | Deterministic interbed OK through libkriging factor files. |

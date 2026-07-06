@@ -403,6 +403,9 @@ module m_T2P
 
     if (maxval(this%nsecondary_by_id) > 0) then
       this%has_covar = .true.
+      if (this%opt%CORRECT_WEIGHTS) &
+        call warning_handler('CORRECT_WEIGHTS is ignored for cokriging because libkriging '// &
+                             'preserves multivariable primary/secondary weight constraints')
     end if
   end subroutine setup_covariates
 

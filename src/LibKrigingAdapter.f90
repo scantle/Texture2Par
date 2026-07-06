@@ -42,11 +42,13 @@ contains
 !-------------------------------------------------------------------------------------------------!
   ! Translate a backend-neutral batch request plus Texture2Par variograms into one native
   ! libkriging solve. OK and SK share this path; unbias/sk_mean are configuration, not classes.
-  subroutine libkriging_solve_single(request, variograms, nstruct, unbias, sk_mean, nthread, result)
+  subroutine libkriging_solve_single(request, variograms, nstruct, unbias, sk_mean, &
+                                     weight_correction, write_matrix, nthread, result)
     type(t_interp_request), intent(in)  :: request
     type(t_vgm), intent(in)             :: variograms(:)
     integer, intent(in)                 :: nstruct, unbias, nthread
     real, intent(in)                    :: sk_mean
+    logical, intent(in)                 :: weight_correction, write_matrix
     type(t_interp_result), intent(out)  :: result
 
     type(t_libkriging_variable) :: variables(1)
@@ -65,17 +67,20 @@ contains
     vgm_index(1,1) = 1
 
     call libkriging_solve_variables(request, variables, variogram_matrix, &
-                                    nstruct_by_vgm, vgm_index, unbias, .true., nthread, result)
+                                    nstruct_by_vgm, vgm_index, unbias, .true., &
+                                    weight_correction, write_matrix, nthread, result)
   end subroutine libkriging_solve_single
 !-------------------------------------------------------------------------------------------------!
 
   subroutine libkriging_solve_variables(request, variables, variograms, nstruct, &
-                                        vgm_index, unbias, nonstd_ck_mean_correction, nthread, result)
+                                        vgm_index, unbias, nonstd_ck_mean_correction, &
+                                        weight_correction, write_matrix, nthread, result)
     type(t_interp_request), intent(in)      :: request
     type(t_libkriging_variable), intent(in) :: variables(:)
     type(t_vgm), intent(in)                 :: variograms(:,:)
     integer, intent(in)                     :: nstruct(:), vgm_index(:,:), unbias, nthread
-    logical, intent(in)                     :: nonstd_ck_mean_correction
+    logical, intent(in)                     :: nonstd_ck_mean_correction, weight_correction, &
+                                               write_matrix
     type(t_interp_result), intent(out)      :: result
 
     type(t_kriging)           :: solver
@@ -123,6 +128,7 @@ contains
                                std_ck=nvar == 1, &
                                nonstd_ck_mean_correction=nonstd_ck_mean_correction, &
                                anisotropic_search=request%search%anisotropic_search, &
+                               weight_correction=weight_correction, write_mat=write_matrix, &
                                use_old_weight=request%use_old_weight, &
                                store_weight=request%store_weight, &
                                pf_cache=.not. request%use_old_weight, &
@@ -136,7 +142,9 @@ contains
                                nsim=request%simulation_count, seed=request%random_seed, &
                                std_ck=nvar == 1, &
                                nonstd_ck_mean_correction=nonstd_ck_mean_correction, &
-                               anisotropic_search=request%search%anisotropic_search, verbose=.false.)
+                               anisotropic_search=request%search%anisotropic_search, &
+                               weight_correction=weight_correction, write_mat=write_matrix, &
+                               verbose=.false.)
       case default
         call error_handler(4, opt_msg='libkriging received an invalid prediction mode')
     end select
@@ -227,11 +235,13 @@ contains
   ! value_matrix is (observation, value-column); estimates and variance are
   ! (target, value-column).
   subroutine libkriging_interpolate_many(request, variograms, nstruct, unbias, sk_mean, &
-                                         nthread, value_matrix, estimates, variance)
+                                         weight_correction, write_matrix, nthread, value_matrix, &
+                                         estimates, variance)
     type(t_interp_request), intent(in)   :: request
     type(t_vgm), intent(in)              :: variograms(:)
     integer, intent(in)                  :: nstruct, unbias, nthread
     real, intent(in)                     :: sk_mean
+    logical, intent(in)                  :: weight_correction, write_matrix
     real, intent(in)                     :: value_matrix(:,:)
     real, allocatable, intent(out)       :: estimates(:,:), variance(:,:)
 
@@ -267,6 +277,7 @@ contains
     ! for value columns sharing the same observation and target geometry.
     call solver%initialize(ndim=request%dimension, nvar=1, unbias=unbias, &
                            anisotropic_search=request%search%anisotropic_search, &
+                           weight_correction=weight_correction, write_mat=write_matrix, &
                            use_old_weight=request%use_old_weight, &
                            store_weight=(request%store_weight .or. nvalues > 1) .and. &
                                         .not. request%use_old_weight, &
