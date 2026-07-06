@@ -4,7 +4,7 @@ module m_subsidence
   use m_datasets, only: t_layerdata
   use m_interpolator, only: t_interpolator, t_idw
   use m_kriging_base, only: t_kriging_base
-  use m_libkriging_interpolator, only: t_libkrige
+  use m_libkriging_interpolator, only: t_kriging_interpolator
   use m_vario, only: t_vgm
   use m_options, only: t_options
   use m_error_handler, only: error_handler
@@ -50,7 +50,7 @@ module m_subsidence
     ! Handle Interpolation Method
     select case (opt%IB_INTERP_METHOD)
       case("OK")
-        allocate(t_libkrige::interp_ib)
+        allocate(t_kriging_interpolator::interp_ib)
       case("IDW")
         allocate(t_idw::interp_ib)
       case DEFAULT

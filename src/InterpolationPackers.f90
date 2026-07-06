@@ -1,8 +1,7 @@
 ! Helpers for translating existing Texture2Par storage into batch requests.
 !
-! This module is intentionally not used by the current interpolation path.
-! It provides a one-way adapter from existing grid/dataset types to the
-! backend-neutral types that a future libkriging adapter will consume.
+! These routines are the one-way adapter from Texture2Par grid/dataset types
+! to the backend-neutral batch interpolation request.
 module m_interpolation_packers
   use m_interpolation_types, only: t_interp_request
   use m_datasets, only: t_layerdata
@@ -93,6 +92,7 @@ contains
     end if
 
     request%dimension = dimension
+    request%target_total_count = grid%n
     if (present(category_id)) request%category_id = category_id
   end subroutine pack_grid_targets
 
@@ -106,8 +106,7 @@ contains
     integer, intent(in)                   :: dataval_idx(:)
     integer, intent(in)                   :: dimension, category_id
     logical, allocatable                  :: pack_mask(:)
-    logical                               :: has_variance
-    integer                               :: d, i, j, nobs
+    integer                               :: d, i, j, nobs, total_count
 
     if (dimension < 2 .or. dimension > 3) then
       call packer_error('observation dimension must be 2 or 3')
@@ -118,13 +117,13 @@ contains
     end if
 
     nobs = 0
-    has_variance = .true.
+    total_count = 0
     do d = 1, size(observations)
       call check_layerdata(observations(d), dataval_idx(d), dimension)
-      if (.not. allocated(observations(d)%variance)) has_variance = .false.
       allocate(pack_mask(observations(d)%grid%n))
       pack_mask = category_value_mask(observations(d), dataval_idx(d), category_id)
       nobs = nobs + count(pack_mask)
+      total_count = total_count + observations(d)%grid%n
       deallocate(pack_mask)
     end do
 
@@ -133,11 +132,16 @@ contains
     allocate(request%observation_values(nobs))
     allocate(request%observation_dataset_id(nobs))
     allocate(request%observation_class_id(nobs))
+    allocate(request%observation_variable_id(nobs))
     allocate(request%observation_source_index(nobs))
-    if (has_variance) allocate(request%observation_variance(nobs))
-
+    allocate(request%observation_variance(nobs))
+    allocate(request%variable_class_id(size(observations)))
+    allocate(request%variable_mean(size(observations)))
+    request%observation_variance = 0.0
     j = 0
     do d = 1, size(observations)
+      request%variable_class_id(d) = class_idx(d)
+      request%variable_mean(d) = observations(d)%mean(dataval_idx(d))
       allocate(pack_mask(observations(d)%grid%n))
       pack_mask = category_value_mask(observations(d), dataval_idx(d), category_id)
       do i = 1, observations(d)%grid%n
@@ -145,17 +149,19 @@ contains
         j = j + 1
         request%observation_coordinates(:,j) = observations(d)%grid%coords(1:dimension,i)
         request%observation_values(j) = observations(d)%values(dataval_idx(d),i)
-        if (has_variance) then
+        if (allocated(observations(d)%variance)) then
           request%observation_variance(j) = observations(d)%variance(dataval_idx(d),i)
         end if
         request%observation_dataset_id(j) = observations(d)%id
         request%observation_class_id(j) = class_idx(d)
+        request%observation_variable_id(j) = d
         request%observation_source_index(j) = i
       end do
       deallocate(pack_mask)
     end do
 
     request%dimension = dimension
+    request%observation_total_count = total_count
     request%category_id = category_id
     if (size(class_idx) == 1) request%class_id = class_idx(1)
   end subroutine pack_layerdata_observations
@@ -201,6 +207,7 @@ contains
     allocate(request%observation_values(nobs))
     allocate(request%observation_dataset_id(nobs))
     allocate(request%observation_class_id(nobs))
+    allocate(request%observation_variable_id(nobs))
     allocate(request%observation_source_index(nobs))
 
     j = 0
@@ -211,10 +218,12 @@ contains
       request%observation_values(j) = observations%values(i,parameter_idx,class_id)
       request%observation_dataset_id(j) = source_dataset_id
       request%observation_class_id(j) = class_id
+      request%observation_variable_id(j) = 1
       request%observation_source_index(j) = i
     end do
 
     request%dimension = observations%grid%dim
+    request%observation_total_count = observations%grid%n
     request%category_id = category_id
     request%class_id = class_id
   end subroutine pack_pilotpoint_observations
@@ -330,7 +339,10 @@ contains
     if (allocated(request%observation_variance)) deallocate(request%observation_variance)
     if (allocated(request%observation_dataset_id)) deallocate(request%observation_dataset_id)
     if (allocated(request%observation_class_id)) deallocate(request%observation_class_id)
+    if (allocated(request%observation_variable_id)) deallocate(request%observation_variable_id)
     if (allocated(request%observation_source_index)) deallocate(request%observation_source_index)
+    if (allocated(request%variable_class_id)) deallocate(request%variable_class_id)
+    if (allocated(request%variable_mean)) deallocate(request%variable_mean)
   end subroutine clear_observations
 
 !-------------------------------------------------------------------------------------------------!

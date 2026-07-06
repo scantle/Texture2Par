@@ -221,7 +221,7 @@ def ck(obsloc0, obsloc1, obsval0, obsval1,
     """
     2-D ordinary cokriging with a single unbiasedness constraint
     (Σ primary weights + Σ secondary weights = 1), matching the retired
-    Texture2Par implementation's pset_cok / predict_point_ok formulation.
+    Texture2Par ordinary-cokriging reference formulation.
 
     The augmented CK system solved for each target x₀ is::
 

@@ -7,7 +7,7 @@ module m_kriging_base
   use m_vstringlist
   implicit none
 
-  type, extends(t_interpolator) :: t_kriging_base
+  type, abstract, extends(t_interpolator) :: t_kriging_base
     integer                   :: nvario
     integer                   :: nzones
     integer,pointer           :: nstruct(:)

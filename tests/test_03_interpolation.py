@@ -1241,6 +1241,63 @@ class TestOrdinaryKriging:
 
 
 # ---------------------------------------------------------------------------
+# 1b. Batch model/data IDW
+# ---------------------------------------------------------------------------
+
+class TestBatchModelIDW:
+
+    @staticmethod
+    def _files():
+        return {"dataset.csv": OK_LIB_2D_DATASET, "grid.grd": OK_LIB_2D_GRD}
+
+    @staticmethod
+    def _input(options_extra=""):
+        text = _ok_lib_2d_t2p(method="IDW", options_extra=options_extra)
+        return text[:text.index("BEGIN VARIOGRAMS")]
+
+    def test_model_idw_exact_hits(self, run_t2p):
+        r = run_t2p(self._input(), extra_files=self._files())
+        assert r.returncode == 0, r.combined
+        df = _read_coarse_texture_output(r, ("Layer1",))
+        expected = {
+            (0.5, 0.5): 0.10,
+            (1.5, 0.5): 0.20,
+            (0.5, 1.5): 0.30,
+            (1.5, 1.5): 0.40,
+        }
+        for row in df.itertuples(index=False):
+            assert row.Layer1 == pytest.approx(expected[(row.X, row.Y)], abs=1e-10)
+
+    def test_model_idw_excludes_missing_values(self, run_t2p):
+        files = self._files()
+        files["dataset.csv"] = OK_LIB_2D_DATASET.replace("0,10,0.10", "0,10,-999", 1)
+        r = run_t2p(self._input(), extra_files=files)
+        assert r.returncode == 0, r.combined
+        df = _read_coarse_texture_output(r, ("Layer1",))
+        target = df[(df["X"] == 0.5) & (df["Y"] == 0.5)]
+        assert target["Layer1"].iloc[0] == pytest.approx(0.28, abs=1e-10)
+
+    def test_model_idw_saved_weights_use_current_values(self, run_t2p):
+        write = run_t2p(
+            self._input("WRITE_GRID_WEIGHTS"),
+            extra_files=self._files(),
+        )
+        assert write.returncode == 0, write.combined
+        assert list(write.workdir.glob("*_grdweights_*.wts"))
+
+        changed = self._files()
+        changed["dataset.csv"] = OK_LIB_2D_DATASET.replace("0.10", "0.90", 1)
+        read = run_t2p(
+            self._input("READ_GRID_WEIGHTS"),
+            extra_files=changed,
+        )
+        assert read.returncode == 0, read.combined
+        df = _read_coarse_texture_output(read, ("Layer1",))
+        exact = df[(df["X"] == 0.5) & (df["Y"] == 0.5)]
+        assert exact["Layer1"].iloc[0] == pytest.approx(0.90, abs=1e-10)
+
+
+# ---------------------------------------------------------------------------
 # 2. Default libkriging ordinary-kriging backend and transition aliases
 # ---------------------------------------------------------------------------
 

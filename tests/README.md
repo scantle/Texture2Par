@@ -122,6 +122,7 @@ one record per invocation.
 | Class | What it checks |
 |---|---|
 | `TestOrdinaryKriging` | run completes; KH written; texture bounded [0,1]; INFER classes |
+| `TestBatchModelIDW` | batch-backed model/data IDW exact hits, missing-value masks, and saved grid weights |
 | `TestLibKrigingOrdinary` | default OK data, pilot-point, and interbed routing; OK_LIB alias; rejection of removed OK_LEGACY; explicit libkriging/GSLIB anisotropy and anisotropic-search coverage; NNEAR; nested structures; supported variogram mappings; duplicate and unsupported-feature diagnostics |
 | `TestBlockKriging` | structured-MODFLOW block OK estimate/variance against an independent weighted-support reference; shared OK_LIB/SK routing; diagnostics for other models, IDW, and SGSIM |
 | `TestLibKrigingSimple` | default SK routing through the shared libkriging backend; global-mean 2D/3D references; simple-cokriging secondary influence and per-variable means; SK/OK distinction; independent libkriging-OK pilot-point route; unsupported-feature diagnostics |
@@ -164,7 +165,7 @@ contract tests above.
 | Saved grid weights | Deterministic OK/`OK_LIB`/SK/CK, including structured block targets, through libkriging factor files. |
 | Saved PP weights | Deterministic PP OK through libkriging factor files. |
 | Saved IB weights | Deterministic interbed OK through libkriging factor files. |
-| IDW paths | Existing dense model/data, PP, and interbed paths remain active; IDW does not support blocks or SGSIM. |
+| IDW paths | Model/data, PP, and interbed use the shared batch interface. IDW does not support blocks or SGSIM. |
 | Unsupported/future | Multiple SGSIM realizations; block SGSIM; PP/interbed SGSIM; saved SGSIM weights/paths; custom/unstructured blocks; sector search; asymmetric cross-variograms; factor-file versioning and geometry fingerprints. |
 
 ### Cokriging Reference Tests
@@ -235,7 +236,7 @@ mode, variograms, observation variance, and CK/SK configuration must match the
 write run; the native header diagnoses dimension mismatches but cannot verify
 all of that semantic geometry.
 
-`SGSIM` is a simulation mode of the shared `t_libkrige` backend, not a separate
+`SGSIM` is a simulation mode of the shared `t_kriging_interpolator` backend, not a separate
 interpolator. `OK + SGSIM`, the equivalent `OK_LIB + SGSIM`, `SK + SGSIM`, and CK + SGSIM
 reuse the same observation/target/category packing, variogram mapping, search
 configuration, observation variance, solve, and scatter path as their
@@ -263,7 +264,7 @@ exact conditioning at coincident targets while positive variance provides soft
 conditioning. Realizations are not expected to match the retired Texture2Par
 solver bit-for-bit.
 
-Default `INTERP_METHOD SK` now uses the same `t_libkrige` backend as OK. The
+Default `INTERP_METHOD SK` now uses the same `t_kriging_interpolator` backend as OK. The
 backend mode selects `unbias=1` for OK and `unbias=0` for SK; SK passes the
 dataset/class global mean to libkriging's `set_obs`. That mean is computed by
 the existing dataset readers across all layers/categories (and is
@@ -344,9 +345,9 @@ retired top-level source. Stale Visual Studio source entries remain pending a
 separate project-file update.
 
 Saved weights remain unsupported for SGSIM and saved simulation paths. Custom
-or unstructured block support is not exposed. IDW continues to use the existing
-dense Texture2Par weight implementation and `weights.f90`; deterministic
-kriging factor files do not use that legacy format.
+or unstructured block support is not exposed. Model/data, PP, and interbed IDW
+use the shared batch request and the dense factor-file format in `weights.f90`;
+deterministic kriging factor files do not use that format.
 
 Future factor-file hardening should add an explicit format version and geometry
 fingerprint. This is separate from the currently enforced dimensions and

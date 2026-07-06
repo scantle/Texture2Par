@@ -9,10 +9,10 @@ module m_T2P
   use m_pilotpoints, only: t_pilotpoints, setup_pilotpoint_property_arrays, add_pilotpoint_aquifer_parameter
   use m_interpolator, only: t_interpolator, t_idw
   use m_kriging_base, only: t_kriging_base
-  use m_libkriging_interpolator, only: t_libkrige, LIBKRIGE_MODE_SIMPLE, &
-                                       LIBKRIGE_PREDICT_SGSIM
-  use m_interpolation_types, only: t_interp_request, INTERP_PURPOSE_PILOT_POINT, &
-                                   INTERP_PURPOSE_INTERBED
+  use m_libkriging_interpolator, only: t_kriging_interpolator, KRIGING_MODE_SIMPLE, &
+                                       KRIGING_PREDICT_SGSIM
+  use m_interpolation_types, only: t_interp_request, t_interp_result, INTERP_PURPOSE_PILOT_POINT, &
+                                    INTERP_PURPOSE_INTERBED, INTERP_PURPOSE_MODEL
   use m_interpolation_packers, only: pack_grid_targets, pack_layerdata_observations, &
                                      pack_pilotpoint_observations
   use m_categories, only: t_category
@@ -27,8 +27,6 @@ module m_T2P
 #else
   integer :: nblank = 1
 #endif
-
-  private :: apply_dense_weights
 
   type t_T2P
     type(t_options)                    :: opt  ! avoid conflict with Fortran intrinsic 'options'
@@ -138,27 +136,6 @@ module m_T2P
   contains
 
 !-------------------------------------------------------------------------------------------------!
-  subroutine apply_dense_weights(a, x, y)
-    implicit none
-    real, intent(in)  :: a(:,:)
-    real, intent(in)  :: x(:)
-    real, intent(out) :: y(:)
-    integer           :: i, j
-
-    if (size(a,1) /= size(y) .or. size(a,2) /= size(x)) then
-      call error_handler(1, opt_msg='Invalid dimensions when applying dense interpolation weights')
-    end if
-
-    y = 0.0
-    do j=1, size(x)
-      do i=1, size(y)
-        y(i) = y(i) + a(i,j) * x(j)
-      end do
-    end do
-  end subroutine apply_dense_weights
-!-------------------------------------------------------------------------------------------------!
-
-!-------------------------------------------------------------------------------------------------!
 ! SETUP PROCEDURES
 !-------------------------------------------------------------------------------------------------!
 
@@ -229,29 +206,29 @@ module m_T2P
     ! Handle Interpolation Method
     select case (this%opt%INTERP_METHOD)
       case("OK")
-        allocate(t_libkrige::this%interp_data)
+        allocate(t_kriging_interpolator::this%interp_data)
         this%opt%INTERP_SECOND_OK = .true.
         if (this%opt%NSIM > 0) then
           select type(lib => this%interp_data)
-            type is(t_libkrige)
-              lib%prediction_mode = LIBKRIGE_PREDICT_SGSIM
+            type is(t_kriging_interpolator)
+              lib%prediction_mode = KRIGING_PREDICT_SGSIM
           end select
         end if
       case("SK")
-        allocate(t_libkrige::this%interp_data)
+        allocate(t_kriging_interpolator::this%interp_data)
         this%opt%INTERP_SECOND_OK = .true.
         select type(lib => this%interp_data)
-          type is(t_libkrige)
-            lib%kriging_mode = LIBKRIGE_MODE_SIMPLE
-            if (this%opt%NSIM > 0) lib%prediction_mode = LIBKRIGE_PREDICT_SGSIM
+          type is(t_kriging_interpolator)
+            lib%kriging_mode = KRIGING_MODE_SIMPLE
+            if (this%opt%NSIM > 0) lib%prediction_mode = KRIGING_PREDICT_SGSIM
         end select
       case("OK_LIB")
-        allocate(t_libkrige::this%interp_data)
+        allocate(t_kriging_interpolator::this%interp_data)
         this%opt%INTERP_SECOND_OK = .true.
         if (this%opt%NSIM > 0) then
           select type(lib => this%interp_data)
-            type is(t_libkrige)
-              lib%prediction_mode = LIBKRIGE_PREDICT_SGSIM
+            type is(t_kriging_interpolator)
+              lib%prediction_mode = KRIGING_PREDICT_SGSIM
           end select
         end if
       case("IDW")
@@ -266,7 +243,7 @@ module m_T2P
     ! Pilot-point interpolation is independent of model/data interpolation.
     select case (this%opt%PP_INTERP_METHOD)
       case("OK")
-        allocate(t_libkrige::this%interp_pp)
+        allocate(t_kriging_interpolator::this%interp_pp)
       case("IDW")
         allocate(t_idw::this%interp_pp)
       case("SK")
@@ -869,8 +846,6 @@ module m_T2P
 
   subroutine interpolate_pp(this, to_grid, to_categories, to_active, results)
     use m_grid, only: t_grid
-    use m_weights, only: t_weights
-    use m_pilotpoints, only: nproperties, naquitard_props, aquitard_props
     ! Pilot Point type in, Pilot Point type out
     implicit none
     class(t_T2P), intent(inout)     :: this
@@ -878,18 +853,16 @@ module m_T2P
     class(t_grid),pointer           :: to_grid
     type(t_category)                :: to_categories
     logical                         :: to_active(:)
-    type(t_weights)                 :: weights
-    integer                         :: i,j,k
-    integer                         :: class_idx(1)
-    type(t_pilotpoints)             :: obs_data(1)  ! a little trick to appease calc_weights
-    character(5)                    :: temp
-    real,pointer                    :: obs_vec(:)
-    integer                         :: nrows, m, glo_dim
-
-    class_idx(1) = 1
+    type(t_pilotpoints)             :: observations
+    type(t_interp_request)          :: request
+    type(t_interp_result)           :: batch
+    real, allocatable               :: values(:,:)
+    integer                         :: k, cat, cat_idx, class_id, active_idx, parameter_idx
+    integer                         :: column, nvalues
+    integer                         :: glo_dim
 
     ! Store INTERP_DIM, temporarily set to 2D (Pilot Points are hardwired to 2D, at least for now)
-    ! TODO separate INTERP_DIM for PP/data; have interp::setup() take a DIM argument; implement PP 3D kriging
+    ! TODO separate INTERP_DIM for PP/data; carry PP dimension through the batch request; implement PP 3D kriging
     glo_dim = this%opt%INTERP_DIM
     this%opt%INTERP_DIM = 2
 
@@ -899,59 +872,71 @@ module m_T2P
 
       ! Aquifer or Aquitard array?
       if (.not. this%fmodel%pparr_aqtard(k)) then
-        obs_data(1) = this%pilot_points
+        observations = this%pilot_points
       else
-        obs_data(1) = this%pilot_points_aquitard
+        observations = this%pilot_points_aquitard
       end if
 
       ! Initialize results for this array. Libkriging OK writes values directly and
       ! does not materialize the legacy dense weight matrix.
       call results(k)%initialize(to_grid%n, to_grid) ! Copies grid over
-      allocate(results(k)%values(to_grid%n, size(obs_data(1)%values,2), this%ntexclasses))
+      allocate(results(k)%values(to_grid%n, size(observations%values,2), this%ntexclasses))
       results(k)%values = NODATA
 
-      select type(lib => this%interp_pp)
-        type is(t_libkrige)
-          call interpolate_pp_libkriging(this, lib, k, obs_data(1), to_grid, to_active, &
-                                         to_categories%catlist(1:to_categories%arrncat(k),k), &
-                                         to_categories%array(:,k), results(k))
+      if (observations%nactive < 1) &
+        call error_handler(4, opt_msg='Pilot-point interpolation has no active value columns')
+      nvalues = observations%nactive * this%ntexclasses
+
+      do cat_idx = 1, to_categories%arrncat(k)
+        cat = to_categories%catlist(cat_idx,k)
+        call pack_pilotpoint_observations(request, observations, observations%active(1), 1, cat)
+        if (size(request%observation_values) == 0) then
+          write(*,'(a,i0)') 'Warning - no pilot-point data in this array for category ', cat
+          write(log%unit,'(a,i0)') 'Warning - no pilot-point data in this array for category ', cat
           cycle
-      end select
+        end if
+        call pack_grid_targets(request, to_grid, to_active, 2, to_categories%array(:,k), cat)
+        if (size(request%target_index) == 0) cycle
 
-      call weights%initialize(obs_data(1)%grid%n, to_grid%n)  !input_n, output_n
-
-      ! Check if we have precalculated weights for the pilot point interpolation
-      if (this%opt%READ_PP_WEIGHTS) then
-        write(temp,'(i2.2)') k
-        call weights%load_from_file(trim(this%opt%PROJECT_NAME)//'_ppweights_arr'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
-      else
-        call this%interp_pp%calc_weights(obs_data, &
-                                         class_idx,  &
-                                         to_grid,  &
-                                         to_active, &
-                                         weights%values, &
-                                         to_categories%catlist(1:to_categories%arrncat(k),k), &
-                                         to_categories%array(:,k),&
-                                         this%opt,&
-                                         'pp')
-      end if
-
-      ! Write PP weights
-      if (this%opt%WRITE_PP_WEIGHTS) then
-        write(temp,'(i2.2)') k
-        call weights%save_to_file(trim(this%opt%PROJECT_NAME)//'_ppweights_arr'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
-      end if
-
-      do i=1, this%ntexclasses
-        do j=1, obs_data(1)%nactive
-          call apply_dense_weights(weights%values, &
-                                   obs_data(1)%values(:,obs_data(1)%active(j),i), &
-                                   results(k)%values(:,obs_data(1)%active(j),i))
+        allocate(values(size(request%observation_values),nvalues))
+        column = 0
+        do class_id = 1, this%ntexclasses
+          do active_idx = 1, observations%nactive
+            parameter_idx = observations%active(active_idx)
+            column = column + 1
+            values(:,column) = observations%values(request%observation_source_index,parameter_idx,class_id)
+            if (any(values(:,column) == NODATA)) &
+              call error_handler(4, opt_msg='Pilot-point value column contains missing data')
+          end do
         end do
-      end do
 
-      ! reset weights
-      weights%values = 0.0
+        request%purpose = INTERP_PURPOSE_PILOT_POINT
+        request%class_id = 1
+        request%store_weight = this%opt%WRITE_PP_WEIGHTS
+        request%use_old_weight = this%opt%READ_PP_WEIGHTS
+        request%weight_file_text = this%opt%PP_WEIGHTS_TEXT
+        if (request%store_weight .or. request%use_old_weight) then
+          if (this%opt%PP_INTERP_METHOD == 'IDW') then
+            write(request%weight_file, '(A,I2.2,A)') &
+              trim(this%opt%PROJECT_NAME)//'_ppweights_arr', k, '.wts'
+          else
+            write(request%weight_file, '(A,I2.2,A,I0,A)') &
+              trim(this%opt%PROJECT_NAME)//'_ppweights_arr', k, '_cat', cat, '.wts'
+          end if
+        end if
+        call this%interp_pp%interpolate(request, values, this%opt, batch)
+
+        column = 0
+        do class_id = 1, this%ntexclasses
+          do active_idx = 1, observations%nactive
+            parameter_idx = observations%active(active_idx)
+            column = column + 1
+            results(k)%values(batch%target_index,parameter_idx,class_id) = &
+              batch%estimates_many(:,column)
+          end do
+        end do
+        deallocate(values)
+      end do
     end do
 
     this%opt%INTERP_DIM = glo_dim
@@ -960,88 +945,19 @@ module m_T2P
 
 !-------------------------------------------------------------------------------------------------!
 
-  subroutine interpolate_pp_libkriging(this, lib, array_index, observations, to_grid, active, &
-                                        catlist, to_cats, results)
-    class(t_T2P), intent(inout)      :: this
-    class(t_libkrige), intent(inout) :: lib
-    integer, intent(in)              :: array_index
-    type(t_pilotpoints), intent(in)  :: observations
-    class(t_grid), intent(in)        :: to_grid
-    logical, intent(in)              :: active(:)
-    integer, intent(in)              :: catlist(:), to_cats(:)
-    type(t_pilotpoints), intent(inout) :: results
-
-    type(t_interp_request) :: request
-    real, allocatable       :: value_matrix(:,:), estimates(:,:), variance(:,:)
-    integer                 :: cat, cat_idx, class_id, active_idx, parameter_idx
-    integer                 :: column, nvalues
-
-    if (observations%nactive < 1) &
-      call error_handler(4, opt_msg='libkriging OK pilot-point interpolation has no active value columns')
-    nvalues = observations%nactive * this%ntexclasses
-
-    do cat_idx = 1, size(catlist)
-      cat = catlist(cat_idx)
-      call pack_pilotpoint_observations(request, observations, observations%active(1), &
-                                        1, cat)
-      if (size(request%observation_values) == 0) then
-        write(*,'(a,i0)') 'Warning - no pilot-point data in this array for category ', cat
-        write(log%unit,'(a,i0)') 'Warning - no pilot-point data in this array for category ', cat
-        cycle
-      end if
-      call pack_grid_targets(request, to_grid, active, 2, to_cats, cat)
-      if (size(request%target_index) == 0) cycle
-
-      if (allocated(value_matrix)) deallocate(value_matrix)
-      allocate(value_matrix(size(request%observation_values), nvalues))
-      column = 0
-      do class_id = 1, this%ntexclasses
-        do active_idx = 1, observations%nactive
-          parameter_idx = observations%active(active_idx)
-          column = column + 1
-          value_matrix(:,column) = observations%values( &
-            request%observation_source_index, parameter_idx, class_id)
-          if (any(value_matrix(:,column) == NODATA)) &
-            call error_handler(4, opt_msg='libkriging OK pilot-point value column contains missing data')
-        end do
-      end do
-
-      request%purpose = INTERP_PURPOSE_PILOT_POINT
-      request%class_id = 1
-      request%store_weight = this%opt%WRITE_PP_WEIGHTS
-      request%use_old_weight = this%opt%READ_PP_WEIGHTS
-      if (request%store_weight .or. request%use_old_weight) &
-        write(request%weight_file, '(A,I2.2,A,I0,A)') &
-          trim(this%opt%PROJECT_NAME)//'_ppweights_arr', array_index, '_cat', cat, '.wts'
-      call lib%interpolate_many(request, value_matrix, this%opt, estimates, variance)
-
-      column = 0
-      do class_id = 1, this%ntexclasses
-        do active_idx = 1, observations%nactive
-          parameter_idx = observations%active(active_idx)
-          column = column + 1
-          results%values(request%target_index,parameter_idx,class_id) = estimates(:,column)
-        end do
-      end do
-    end do
-  end subroutine interpolate_pp_libkriging
-
-!-------------------------------------------------------------------------------------------------!
-
   subroutine interpolate_model(this, obs, dout)
     use m_grid, only: t_grid
-    use m_weights, only: t_weights
 
     implicit none
     class(t_T2P), intent(inout)   :: this
     class(t_layerdata)            :: obs(:,:)  ! (nprimary, nlayers)
     type(t_layerdata)             :: dout(this%fmodel%nlayers)
-    integer                       :: k, i, j, x, k_active, obslayer
-    integer                       :: wstart, wend
+    type(t_interp_request)        :: request
+    type(t_interp_result)         :: batch
+    real, allocatable             :: values(:,:)
+    integer                       :: k, i, x, obslayer, cat, cat_idx, variable_idx
     integer,allocatable           :: class_idx(:), dataset_idx(:), dataval_idx(:)
-    real                          :: v_adjust
     type(t_grid),pointer          :: modelgrid
-    !type(t_weights)               :: weights
 
     ! Loop over model layers
     do k=1, this%fmodel%nlayers
@@ -1061,23 +977,55 @@ module m_T2P
 
       ! Loop over primary classes
       do i=1, this%nprimary
-        ! Interpolate
         class_idx   = this%get_connection_list(i)           ! Classes involved
         dataset_idx = this%get_dataset_idx_list(class_idx)  ! What datasets those classes are in
         dataval_idx = this%get_dataval_idx_list(class_idx)  ! What index is associated with those values
 
         x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
-        call this%interp_data%calc(obs(dataset_idx,obslayer), &
-                                            class_idx,  &
-                                            dataval_idx,&
-                                            modelgrid,  &
-                                            this%fmodel%active_nodes_bylay(1:,k), &
-                                            dout(k)%values(i,1:), &
-                                            dout(k)%variance(i,1:), &
-                                            this%fmodel%hsus%catlist(1:this%fmodel%hsus%arrncat(x),x), &
-                                            this%fmodel%hsus%array(1:,x),&
-                                            this%opt,&
-                                            k)
+        dout(k)%values(i,:) = 0.0
+        dout(k)%variance(i,:) = 0.0
+        do cat_idx = 1, this%fmodel%hsus%arrncat(x)
+          cat = this%fmodel%hsus%catlist(cat_idx,x)
+          call pack_layerdata_observations(request, obs(dataset_idx,obslayer), class_idx, &
+                                           dataval_idx, this%opt%INTERP_DIM, cat)
+          do variable_idx = 1, size(class_idx)
+            if (count(request%observation_variable_id == variable_idx) == 0) exit
+          end do
+          if (variable_idx <= size(class_idx)) then
+            write(*,'(2(A,I0))') 'Warning - no data for layer ', k, ' in category ', cat
+            write(log%unit,'(2(A,I0))') 'Warning - no data for layer ', k, ' in category ', cat
+            cycle
+          end if
+
+          call pack_grid_targets(request, modelgrid, this%fmodel%active_nodes_bylay(:,k), &
+                                 this%opt%INTERP_DIM, this%fmodel%hsus%array(:,x), cat, &
+                                 include_block_support=this%opt%BLOCK_KRIGE > 0)
+          if (size(request%target_index) == 0) cycle
+
+          allocate(values(size(request%observation_values),1))
+          values(:,1) = request%observation_values
+          request%purpose = INTERP_PURPOSE_MODEL
+          request%model_layer = k
+          request%class_id = class_idx(1)
+          request%store_weight = this%opt%WRITE_GRID_WEIGHTS
+          request%use_old_weight = this%opt%READ_GRID_WEIGHTS
+          request%weight_file_text = this%opt%GRID_WEIGHTS_TEXT
+          request%weight_file = ''
+          if (request%store_weight .or. request%use_old_weight) then
+            if (this%opt%INTERP_METHOD == 'IDW') then
+              write(request%weight_file, '(A,I2.2,A,I0,A)') &
+                trim(this%opt%PROJECT_NAME)//'_grdweights_arr', k, '_obs', class_idx(1), '.wts'
+            else
+              write(request%weight_file, '(A,I2.2,A,I0,A,I0,A)') &
+                trim(this%opt%PROJECT_NAME)//'_grdweights_arr', k, '_obs', class_idx(1), &
+                '_cat', cat, '.wts'
+            end if
+          end if
+          call this%interp_data%interpolate(request, values, this%opt, batch)
+          dout(k)%values(i,batch%target_index) = batch%estimates_many(:,1)
+          dout(k)%variance(i,batch%target_index) = batch%variance_many(:,1)
+          deallocate(values)
+        end do
         ! Enforce values must be greater than zero
         if (.not. this%opt%NO_TEX_BOUNDS) then
           where(dout(k)%values(i,1:) < 0.0) dout(k)%values(i,1:) = 0.0
@@ -1131,21 +1079,20 @@ module m_T2P
 
   subroutine interpolate_ib(this, to_grid, to_categories, to_active, results)
     use m_grid, only: t_grid
-    use m_weights, only: t_weights
     implicit none
     class(t_T2P), intent(inout)     :: this
     type(t_layerdata)               :: results(this%fmodel%nlayers)
     class(t_grid),pointer           :: to_grid
     type(t_category)                :: to_categories
     logical                         :: to_active(:)
-    type(t_weights)                 :: weights
-    integer                         :: i,j,k,x
-    integer                         :: class_idx(1)
-    character(5)                    :: temp
-    real,pointer                    :: obs_vec(:)
-    integer                         :: nrows, m, glo_dim
+    type(t_interp_request)          :: request
+    type(t_interp_result)           :: batch
+    real, allocatable               :: values(:,:)
+    integer                         :: k, x, cat, cat_idx, value_idx
+    integer                         :: class_idx(1), dataval_idx(1), glo_dim
 
-    class_idx(1) = 1
+    class_idx = 1
+    dataval_idx = 1
 
     ! Store INTERP_DIM, temporarily set to 2D (Interbeds are hardwired to 2D, at least for now)
     glo_dim = this%opt%INTERP_DIM
@@ -1162,111 +1109,52 @@ module m_T2P
       ! Check if layer is active (generally IWFM: means it has thickness)
       if (.not. this%fmodel%is_active_layer(k)) cycle
 
-      select type(lib => interp_ib)
-        type is(t_libkrige)
-          x = this%fmodel%hsus%lay2arr(k)
-          call interpolate_ib_libkriging(this, lib, k, to_grid, to_active, &
-                                         to_categories%catlist(1:this%fmodel%hsus%arrncat(x),x), &
-                                         to_categories%array(1:,x), results(k))
+      x = this%fmodel%hsus%lay2arr(k)
+      do cat_idx = 1, this%fmodel%hsus%arrncat(x)
+        cat = to_categories%catlist(cat_idx,x)
+        call pack_layerdata_observations(request, this%interbed_count(k:k), &
+                                         class_idx, dataval_idx, 2, cat)
+        if (size(request%observation_values) == 0) then
+          write(*,'(a,i0)') 'Warning - no interbed data in this layer for category ', cat
+          write(log%unit,'(a,i0)') 'Warning - no interbed data in this layer for category ', cat
           cycle
-      end select
+        end if
+        call pack_grid_targets(request, to_grid, to_active, 2, to_categories%array(1:,x), cat)
+        if (size(request%target_index) == 0) cycle
 
-      call weights%initialize(this%interbed_count(1)%grid%n, to_grid%n)  !input_n, output_n
+        allocate(values(size(request%observation_values),3))
+        values(:,1) = this%interbed_count(k)%values(1,request%observation_source_index)
+        values(:,2) = this%interbed_thick(k)%values(1,request%observation_source_index)
+        values(:,3) = this%interbed_thick(k)%values(2,request%observation_source_index)
+        if (any(values == NODATA)) &
+          call error_handler(4, opt_msg='Interbed value columns contain missing data')
 
-      ! Check if we have precalculated weights for the interbed interpolation
-      if (this%opt%READ_IB_WEIGHTS) then
-        write(temp,'(i2.2)') k
-        call weights%load_from_file(trim(this%opt%PROJECT_NAME)//'_ibweights_lay'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
-      else
-        x = this%fmodel%hsus%lay2arr(k)  ! Array id for this layer
-        call interp_ib%calc_weights(this%interbed_count(k:k), &
-                                    class_idx,  &
-                                    to_grid,  &
-                                    to_active, &
-                                    weights%values, &
-                                    to_categories%catlist(1:this%fmodel%hsus%arrncat(x),x), &
-                                    to_categories%array(1:,x),&
-                                    this%opt,&
-                                    'ib')
-      end if
-
-      ! Write PP weights
-      if (this%opt%WRITE_IB_WEIGHTS) then
-        write(temp,'(i2.2)') k
-        call weights%save_to_file(trim(this%opt%PROJECT_NAME)//'_ibweights_lay'//trim(temp)//'.wts', this%opt%PP_WEIGHTS_TEXT)
-      end if
-
-      ! Apply weights for counts, thicknesses, and square thicknesses
-      call apply_dense_weights(weights%values, this%interbed_count(k)%values(1,:), &
-                               results(k)%values(1,:))
-      call apply_dense_weights(weights%values, this%interbed_thick(k)%values(1,:), &
-                               results(k)%values(2,:))
-      call apply_dense_weights(weights%values, this%interbed_thick(k)%values(2,:), &
-                               results(k)%values(3,:))
-
-      ! reset weights
-      weights%values = 0.0
+        request%purpose = INTERP_PURPOSE_INTERBED
+        request%model_layer = k
+        request%class_id = 1
+        request%store_weight = this%opt%WRITE_IB_WEIGHTS
+        request%use_old_weight = this%opt%READ_IB_WEIGHTS
+        request%weight_file_text = this%opt%PP_WEIGHTS_TEXT
+        if (request%store_weight .or. request%use_old_weight) then
+          if (this%opt%IB_INTERP_METHOD == 'IDW') then
+            write(request%weight_file, '(A,I2.2,A)') &
+              trim(this%opt%PROJECT_NAME)//'_ibweights_lay', k, '.wts'
+          else
+            write(request%weight_file, '(A,I2.2,A,I0,A)') &
+              trim(this%opt%PROJECT_NAME)//'_ibweights_lay', k, '_cat', cat, '.wts'
+          end if
+        end if
+        call interp_ib%interpolate(request, values, this%opt, batch)
+        do value_idx = 1, 3
+          results(k)%values(value_idx,batch%target_index) = batch%estimates_many(:,value_idx)
+        end do
+        deallocate(values)
+      end do
     end do
 
     this%opt%INTERP_DIM = glo_dim
 
   end subroutine interpolate_ib
-
-  !-------------------------------------------------------------------------------------------------!
-
-  subroutine interpolate_ib_libkriging(this, lib, layer, to_grid, active, &
-                                        catlist, to_cats, results)
-    class(t_T2P), intent(inout)      :: this
-    class(t_libkrige), intent(inout) :: lib
-    integer, intent(in)              :: layer
-    class(t_grid), intent(in)        :: to_grid
-    logical, intent(in)              :: active(:)
-    integer, intent(in)              :: catlist(:), to_cats(:)
-    type(t_layerdata), intent(inout) :: results
-
-    type(t_interp_request) :: request
-    real, allocatable       :: value_matrix(:,:), estimates(:,:), variance(:,:)
-    integer                 :: cat, cat_idx, value_idx
-    integer                 :: class_idx(1), dataval_idx(1)
-
-    class_idx = 1
-    dataval_idx = 1
-    do cat_idx = 1, size(catlist)
-      cat = catlist(cat_idx)
-      call pack_layerdata_observations(request, this%interbed_count(layer:layer), &
-                                       class_idx, dataval_idx, 2, cat)
-      if (size(request%observation_values) == 0) then
-        write(*,'(a,i0)') 'Warning - no interbed data in this layer for category ', cat
-        write(log%unit,'(a,i0)') 'Warning - no interbed data in this layer for category ', cat
-        cycle
-      end if
-      call pack_grid_targets(request, to_grid, active, 2, to_cats, cat)
-      if (size(request%target_index) == 0) cycle
-
-      if (allocated(value_matrix)) deallocate(value_matrix)
-      allocate(value_matrix(size(request%observation_values), 3))
-      value_matrix(:,1) = this%interbed_count(layer)%values( &
-        1, request%observation_source_index)
-      value_matrix(:,2) = this%interbed_thick(layer)%values( &
-        1, request%observation_source_index)
-      value_matrix(:,3) = this%interbed_thick(layer)%values( &
-        2, request%observation_source_index)
-      if (any(value_matrix == NODATA)) &
-        call error_handler(4, opt_msg='libkriging OK interbed value columns contain missing data')
-
-      request%purpose = INTERP_PURPOSE_INTERBED
-      request%class_id = 1
-      request%store_weight = this%opt%WRITE_IB_WEIGHTS
-      request%use_old_weight = this%opt%READ_IB_WEIGHTS
-      if (request%store_weight .or. request%use_old_weight) &
-        write(request%weight_file, '(A,I2.2,A,I0,A)') &
-          trim(this%opt%PROJECT_NAME)//'_ibweights_lay', layer, '_cat', cat, '.wts'
-      call lib%interpolate_many(request, value_matrix, this%opt, estimates, variance)
-      do value_idx = 1, 3
-        results%values(value_idx,request%target_index) = estimates(:,value_idx)
-      end do
-    end do
-  end subroutine interpolate_ib_libkriging
 
   !-------------------------------------------------------------------------------------------------!
 

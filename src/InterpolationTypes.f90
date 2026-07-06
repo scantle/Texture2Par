@@ -40,6 +40,8 @@ module m_interpolation_types
     integer :: zone_id     = 0
     integer :: class_id    = 0
     integer :: purpose     = INTERP_PURPOSE_UNSPECIFIED
+    integer :: observation_total_count = 0
+    integer :: target_total_count = 0
 
     ! Prediction and simulation configuration.  SGSIM uses the same packed
     ! observations, targets, categories, variograms, and search specification
@@ -56,7 +58,14 @@ module m_interpolation_types
     real, allocatable :: observation_variance(:)
     integer, allocatable :: observation_dataset_id(:)
     integer, allocatable :: observation_class_id(:)
+    integer, allocatable :: observation_variable_id(:)
     integer, allocatable :: observation_source_index(:)
+
+    ! Model/data requests may contain multiple geostatistical variables in one
+    ! packed observation matrix. These arrays define their order and known
+    ! global means without exposing dataset objects to interpolation backends.
+    integer, allocatable :: variable_class_id(:)
+    real, allocatable :: variable_mean(:)
 
     ! The preferred path packs only targets that should be interpolated.
     real, allocatable :: target_coordinates(:,:)
@@ -73,12 +82,18 @@ module m_interpolation_types
     integer :: weight_cache_id = 0
     logical :: store_weight = .false.
     logical :: use_old_weight = .false.
+    logical :: weight_file_text = .false.
     character(len=1024) :: weight_file = ""
   end type t_interp_request
 
   type, public :: t_interp_result
     real, allocatable :: estimates(:)
     real, allocatable :: variance(:)
+
+    ! Multiple value fields sharing one observation geometry.  Batch
+    ! interpolators return (target, value-column) arrays here.
+    real, allocatable :: estimates_many(:,:)
+    real, allocatable :: variance_many(:,:)
 
     ! Optional per-target status and mapping back to model nodes/cells.
     integer, allocatable :: target_status(:)

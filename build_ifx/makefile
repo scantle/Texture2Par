@@ -348,7 +348,7 @@ $(OBJDIR)/InterpolationPackers.obj: $(OBJDIR)/InterpolationTypes.obj $(OBJDIR)/D
 $(OBJDIR)/LibKrigingAdapter.obj: $(OBJDIR)/InterpolationTypes.obj $(OBJDIR)/variogram.obj $(OBJDIR)/ErrorHandler.obj $(KRIG_LIB)
 $(OBJDIR)/Options.obj: $(OBJDIR)/global.obj $(OBJDIR)/FileIO.obj $(FLIB_DEP) $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Tools.obj
 $(OBJDIR)/write_fmodel.obj: $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/FileIO.obj $(OBJDIR)/DataSets.obj $(MFUSG_LIB)
-$(OBJDIR)/Interpolators.obj: $(OBJDIR)/global.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Categories.obj
+$(OBJDIR)/Interpolators.obj: $(OBJDIR)/global.obj $(OBJDIR)/weights.obj $(OBJDIR)/Grid.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Options.obj $(OBJDIR)/InterpolationTypes.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Categories.obj
 $(OBJDIR)/KrigingBase.obj: $(OBJDIR)/global.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/variogram.obj $(OBJDIR)/Options.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/FileIO.obj $(FLIB_DEP)
 $(OBJDIR)/LibKrigingInterpolator.obj: $(OBJDIR)/KrigingBase.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/Grid.obj $(OBJDIR)/Options.obj $(OBJDIR)/InterpolationTypes.obj $(OBJDIR)/InterpolationPackers.obj $(OBJDIR)/LibKrigingAdapter.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/global.obj
 $(OBJDIR)/FlowModel.obj: $(OBJDIR)/FileIO.obj $(OBJDIR)/Grid.obj $(OBJDIR)/ErrorHandler.obj $(OBJDIR)/Categories.obj $(OBJDIR)/Options.obj $(OBJDIR)/cellblocks.obj $(OBJDIR)/global.obj $(OBJDIR)/DataSets.obj $(OBJDIR)/fpath.obj $(OBJDIR)/Interpolators.obj $(OBJDIR)/write_fmodel.obj $(MFUSG_LIB)
