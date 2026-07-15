@@ -302,7 +302,20 @@ module m_flow_model
 
     integer                   :: igrid
     do igrid = 1, size(this%grid)
-      if (.not. associated(this%grid(igrid)%ptrgrid%tree) .and. this%grid(igrid)%ptrgrid%n>1) call this%grid(igrid)%ptrgrid%build_tree()
+      if (this%grid(igrid)%ptrgrid%n<=1) cycle
+      select type(this)
+        class is(t_modflow_model)
+          if (associated(this%grid(igrid)%ptrgrid%tree)) then
+            if (size(this%grid(igrid)%ptrgrid%tree%mask) == size(this%active_nodes_flat)) then
+              if (.not. any(this%grid(igrid)%ptrgrid%tree%mask .neqv. this%active_nodes_flat)) cycle
+            end if
+            call this%grid(igrid)%ptrgrid%burn_tree()
+          end if
+          call this%grid(igrid)%ptrgrid%build_tree(this%active_nodes_flat)
+        class default
+          if (associated(this%grid(igrid)%ptrgrid%tree)) cycle
+          call this%grid(igrid)%ptrgrid%build_tree()
+      end select
     end do
   end subroutine build_tree
 
@@ -1836,8 +1849,19 @@ module m_flow_model
     integer                 :: cell, i, maxcell
 
     cell = 0
-    maxcell = min(4, this%grid(this%lay2grid(1))%ptrgrid%n)
-    call this%grid(this%lay2grid(1))%ptrgrid%get_nnear(coords, maxcell, cellids, celldist, mask=this%active_nodes_flat)  ! do we need more than 4 for USG?
+    maxcell = min(4, count(this%active_nodes_flat))
+    if (maxcell < 1) return
+    if (associated(this%grid(this%lay2grid(1))%ptrgrid%tree)) then
+      if (size(this%grid(this%lay2grid(1))%ptrgrid%tree%mask) == size(this%active_nodes_flat)) then
+        if (any(this%grid(this%lay2grid(1))%ptrgrid%tree%mask .neqv. this%active_nodes_flat)) &
+          call this%grid(this%lay2grid(1))%ptrgrid%burn_tree()
+      else
+        call this%grid(this%lay2grid(1))%ptrgrid%burn_tree()
+      end if
+    end if
+    if (.not. associated(this%grid(this%lay2grid(1))%ptrgrid%tree)) &
+      call this%grid(this%lay2grid(1))%ptrgrid%build_tree(this%active_nodes_flat)
+    call this%grid(this%lay2grid(1))%ptrgrid%get_nnear(coords, maxcell, cellids, celldist)  ! do we need more than 4 for USG?
 
     if (this%structured) then
       ! Check each cell center to see if well belongs

@@ -19,11 +19,10 @@ module m_grid_kdtree
 
 contains
 
-  subroutine build_grid_kdtree(this, coords, mask, rotmat)
+  subroutine build_grid_kdtree(this, coords, mask)
     class(t_grid_kdtree), intent(inout) :: this
     real, intent(in)                    :: coords(:,:)
     logical, intent(in)                 :: mask(:)
-    real, intent(in), optional          :: rotmat(:,:)
     integer                             :: i, j, n
 
     call this%clear()
@@ -39,11 +38,7 @@ contains
       if (.not. mask(i)) cycle
       j = j + 1
       this%source_idx(j) = i
-      if (present(rotmat)) then
-        this%data(:,j) = matmul(rotmat, coords(:,i))
-      else
-        this%data(:,j) = coords(:,i)
-      end if
+      this%data(:,j) = coords(:,i)
     end do
 
     this%handle => kdtree2_create(this%data, sort=.false., rearrange=.true.)

@@ -1,7 +1,5 @@
 module m_datasets
-  use m_global, only: NODATA
   use m_grid, only: t_grid, create_grid_object
-  use m_categories, only: CAT_ALL
   implicit none
 !-------------------------------------------------------------------------------------------------!
   type  :: t_dataset  ! Abstract Base Class
@@ -14,8 +12,6 @@ module m_datasets
     contains
       procedure,nopass             :: initialize_abc
       generic,public               :: initialize => initialize_abc
-      procedure,public             :: build_tree_by_category
-      procedure,public             :: get_data_by_category
       procedure,public             :: finalize
   end type t_dataset
 !-------------------------------------------------------------------------------------------------!
@@ -209,76 +205,6 @@ module m_datasets
     class(t_dataset),intent(inout)  :: this
 
   end subroutine initialize_abc
-
-!-------------------------------------------------------------------------------------------------!
-
-  subroutine build_tree_by_category(this, cat, class_idx, rotmat, has_data)
-    implicit none
-    class(t_dataset),intent(inout)  :: this
-    integer, intent(in)             :: cat, class_idx
-    !logical,allocatable             :: catmask(:), na_mask(:)
-    logical, allocatable            :: combined_mask(:)
-    real    ,optional               :: rotmat(:,:) ! Rotation Matrix
-    integer                         :: i
-    logical,intent(out)             :: has_data
-
-    has_data = .true.
-    
-    call this%grid%burn_tree()  ! Clear out previous tree
-    allocate(combined_mask(this%grid%n))
-    
-    ! Compute combined mask in a single loop - in category & not NA
-    ! Should consider parallelization
-    select type(this)
-      class is (t_layerdata)
-        do i = 1, this%grid%n
-          combined_mask(i) = ((this%category(i) == cat) .or. (this%category(i) == CAT_ALL)) .and. (this%values(class_idx, i) /= NODATA)
-        end do
-      class default
-        do i = 1, this%grid%n
-          combined_mask(i) = (this%category(i) == cat) .or. (this%category(i) == CAT_ALL)
-        end do
-    end select
-    
-    if (count(combined_mask) > 0) then  ! Should min_points be a setting??
-      if (present(rotmat)) then
-        call this%grid%build_tree(combined_mask, rotmat=rotmat)
-      else
-        call this%grid%build_tree(combined_mask)
-      end if
-    else
-      has_data = .false.
-    end if
-
-  end subroutine build_tree_by_category
-
-!-------------------------------------------------------------------------------------------------!
-
-  subroutine get_data_by_category(this, cat, class_idx, cat_idx, nidx, maxsize)
-    ! To get (1) how many items are in that category (nidx) and (2) what their indices are (cat_idx)
-    implicit none
-    class(t_dataset),intent(inout)  :: this
-    integer, intent(in)             :: cat, class_idx, maxsize
-    integer, intent(inout)          :: nidx
-    integer, intent(inout)          :: cat_idx(maxsize)
-    integer                         :: i
-
-    ! For dataset, ignore all NA values
-    cat_idx = 0
-    nidx = 1
-    select type(this)
-      class is (t_layerdata)
-        do i=1, this%grid%n
-          if ((this%values(class_idx,i) /= NODATA).and.((this%category(i) == cat) .or. (this%category(i) == CAT_ALL))) then
-            cat_idx(nidx) = i
-            nidx = nidx + 1
-          end if
-        end do
-    end select
-    ! Adjust for starting count at 1
-    nidx = nidx - 1
-
-  end subroutine get_data_by_category
 
 !-------------------------------------------------------------------------------------------------!
 
