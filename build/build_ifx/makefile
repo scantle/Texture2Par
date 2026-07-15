@@ -1,8 +1,13 @@
 # compiler
 FC = ifx
+OPENMP ?= 0
+OMPFLAGS =
+ifeq ($(OPENMP),1)
+OMPFLAGS = /Qopenmp
+endif
 
 # compile flags
-FCFLAGS = -traceback -heap-arrays -O2 -fpe:0 -fpp -nologo -libs:static
+FCFLAGS = -traceback -heap-arrays -O2 -fpe:0 -fpp -nologo -libs:static $(OMPFLAGS)
 #
 #TMPDIR := .temp
 #ifneq ($(TMPDIR),)
@@ -12,14 +17,15 @@ FCFLAGS = -traceback -heap-arrays -O2 -fpe:0 -fpp -nologo -libs:static
 #endif
 
 # link flags
-FLFLAGS =
+FLFLAGS = $(OMPFLAGS)
 
 # set src dir
 VPATH =                                \
-    ../src/                                \
-    ../src/Libraries/flibs/src/strings/    \
-    ../src/Libraries/mfUSGLib/Jan_23_2018/ \
-    ../src/Libraries/mfUSGLib/             \
+    ../../src/                                \
+    ../../src/Libraries/flibs/src/strings/    \
+    ../../src/Libraries/mfUSGLib/Jan_23_2018/ \
+    ../../src/Libraries/mfUSGLib/             \
+    ../../                                   \
 
 # source files and objects
 flibs = \
@@ -89,6 +95,7 @@ t2p2 = \
     data_transformer.f90        \
     Categories.f90              \
     Tools.f90                   \
+    cellblocks.f90              \
     Grid.f90                    \
     DataSets.f90                \
     weights.f90                 \
@@ -97,7 +104,9 @@ t2p2 = \
     write_fmodel.f90            \
     Interpolators.f90           \
     FlowModel.f90               \
+    ColMap.f90                  \
     T2P.f90                     \
+    version.f90                 \
     t2p_log.f90                 \
     Read_Datasets.f90           \
     Read_Main_Input.f90         \
@@ -127,7 +136,7 @@ all: $(PROGRAM)
 # $* -- The stem with which an implicit rule matches
 
 $(PROGRAM): $(objects)
-	$(FC) $(MODSWITCH) -o $@ $^
+	$(FC) $(FLFLAGS) $(MODSWITCH) -o $@ $^
 
 $(objflibs): %.obj: %
 	$(FC) $(FCFLAGS) -c               -o $@ $<

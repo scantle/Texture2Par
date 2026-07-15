@@ -1,9 +1,14 @@
 # compiler
 FC = gfortran
 MAKEFLAGS += --no-builtin-rules
+OPENMP ?= 0
+OMPFLAGS =
+ifeq ($(OPENMP),1)
+OMPFLAGS = -fopenmp
+endif
 
 # compile flags
-FCFLAGS =  -O2 -cpp -fbacktrace -ffree-line-length-none  -ffixed-line-length-none -fdec -fallow-argument-mismatch -fopenmp
+FCFLAGS =  -O2 -cpp -fbacktrace -ffree-line-length-none  -ffixed-line-length-none -fdec -fallow-argument-mismatch $(OMPFLAGS)
 #
 #TMPDIR := .mod
 #ifneq ($(TMPDIR),)
@@ -12,7 +17,7 @@ FCFLAGS =  -O2 -cpp -fbacktrace -ffree-line-length-none  -ffixed-line-length-non
 #endif
 
 # link flags
-FLFLAGS = -fopenmp
+FLFLAGS = $(OMPFLAGS)
 
 # set src dir
 WINDRES = windres

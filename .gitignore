@@ -36,6 +36,8 @@
 *.htm
 
 # VS junk
+*.aps
+*.APS
 *.u2d
 *.suo
 *.pdb

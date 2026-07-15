@@ -75,7 +75,8 @@ module kriging_base
 #ifdef _OPENMP
   use omp_lib, only: omp_lock_kind, omp_init_lock, omp_destroy_lock, &
                      omp_set_lock, omp_unset_lock, omp_test_lock, &
-                     omp_get_num_threads
+                     omp_get_num_threads, omp_get_max_threads, &
+                     omp_set_num_threads
 #endif
   implicit none
   private
@@ -2394,7 +2395,6 @@ contains
 
   !============================================================================
   subroutine solve_base(self, nthread, ncache)
-    use omp_lib
     class(t_kriging_base) :: self
     integer, intent(in), optional :: nthread
     integer, intent(in), optional :: ncache

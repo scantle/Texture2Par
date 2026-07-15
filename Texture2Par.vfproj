@@ -71,22 +71,67 @@
 			<Tool Name="VFPostBuildEventTool"/>
 			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
 		</Configuration>
+		<Configuration Name="Release_OpenMP|Win32" UseCompiler="ifortCompiler">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\Release\" RealKIND="realKIND8" Traceback="true"/>
+			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" SubSystem="subSystemConsole"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
+		</Configuration>
+		<Configuration Name="Release_OpenMP|x64" UseCompiler="ifxCompiler" OutputDirectory=".\bin\" IntermediateDirectory=".\build\$(PlatformName)\$(ConfigurationName)">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" RealKIND="realKIND8" Traceback="true" UseWindowsLibs="true"/>
+			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" OutputFile="$(OutDir)Texture2Par_parallel.exe" SubSystem="subSystemConsole"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
+		</Configuration>
+		<Configuration Name="Debug_OpenMP|Win32" UseCompiler="ifortCompiler">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\Debug\" WarnUnalignedData="false" RealKIND="realKIND8" Traceback="true" RuntimeChecks="rtChecksNone" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
+			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
+		</Configuration>
+		<Configuration Name="Debug_OpenMP|x64" UseCompiler="ifortCompiler" IntermediateDirectory=".\build\$(PlatformName)\$(ConfigurationName)">
+			<Tool Name="VFFortranCompilerTool" AdditionalOptions="/Qdiag-disable:10448" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" WarnUnalignedData="false" RealKIND="realKIND8" LocalSavedScalarsZero="true" Traceback="true" RuntimeChecks="rtChecksNone" BoundsCheck="true" RuntimeLibrary="rtMultiThreadedDebug" Interfaces="true"/>
+			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
+		</Configuration>
 	</Configurations>
 	<Files>
 		<Filter Name="Header Files" Filter="fi;fd"/>
 		<Filter Name="Resource Files" Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe">
 			<File RelativePath=".\src\T2P.ico"/>
-			<File RelativePath=".\src\T2P.rc"/>
+			<File RelativePath=".\src\T2P.rc">
+			</File>
 		</Filter>
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
 			<Filter Name="Data Structures">
 				<File RelativePath=".\src\Grid.f90"/>
-				<File RelativePath=".\src\GridKDTree.f90"/>
+				<File RelativePath=".\src\GridKDTree.f90">
+				</File>
 				<File RelativePath=".\src\Lists.f90"/>
 			</Filter>
 			<Filter Name="File IO">
-				<File RelativePath=".\src\FileIO.f90">
-				</File>
+				<File RelativePath=".\src\FileIO.f90"/>
 				<File RelativePath=".\src\fpath.f90"/>
 				<File RelativePath=".\src\Read_Datasets.f90"/>
 				<File RelativePath=".\src\Read_Main_Input.f90"/>
@@ -98,7 +143,8 @@
 				<File RelativePath=".\src\InterpolationTypes.f90"/>
 				<File RelativePath=".\src\Interpolators.f90"/>
 				<File RelativePath=".\src\KrigingBase.f90"/>
-				<File RelativePath=".\src\LibKrigingAdapter.f90"/>
+				<File RelativePath=".\src\LibKrigingAdapter.f90">
+				</File>
 				<File RelativePath=".\src\LibKrigingInterpolator.f90"/>
 				<File RelativePath=".\src\variogram.f90"/>
 			</Filter>
