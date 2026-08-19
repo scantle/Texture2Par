@@ -566,6 +566,13 @@ module m_T2P
     call this%fmodel%read_category_files()
     this%nhsus = this%fmodel%HSUS%ncat
 
+    ! With no pilot-point zone file, aquifer and aquitard pilot points each
+    ! belong to zone 1 of their independent pilot-point arrays.
+    if (.not. this%has_ppzones) then
+      if (associated(this%pilot_points))          this%pilot_points%category = 1
+      if (associated(this%pilot_points_aquitard)) this%pilot_points_aquitard%category = 1
+    end if
+
     ! Setup HSU categories
     select type(p => this%interp_data)
       class is(t_krige)
