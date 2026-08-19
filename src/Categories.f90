@@ -65,7 +65,7 @@ module m_categories
       call vstring_new(this%CAT_ALL_VKEY, CAT_ALL_KEY)
     end if
     
-    ! By Default
+    ! Safe initialization defaults; read_file may replace the layer-to-array mapping.
     this%ncat        =  0
     this%lay2arr     =  1
     this%array       =  1
@@ -79,7 +79,8 @@ module m_categories
   
   subroutine no_category_setup(this)
     class(t_category), intent(inout) :: this
-    
+
+    ! Without a category file, every internal array has one category: zone 1.
     this%ncat = 1
     this%catlist(1,:) = 1
     this%catlist_glo(1) = 1
@@ -227,7 +228,8 @@ module m_categories
     
     lay2arr = 0
     
-    ! Check if a file was actually passed. If not, we'll just initialize and be done
+    ! If no file was passed, create one implicit zone for each layer type.
+    ! Aquifer and aquitard zones are held in independent internal arrays.
     if (len(trim(file))>0) then
       this%from_file = .true.
       reader => open_file_reader(file)
@@ -251,9 +253,17 @@ module m_categories
     else
       this%from_file = .false.
       has_aquitard = any(lay_aquitard_flag .and. layer_exists)
-      narr = 1 + merge(1, 0, has_aquitard)  ! narr = 2 if there's any aquitard, otherwise 1
+      narr = 1 + merge(1, 0, has_aquitard)  ! Array 1 = aquifer; array 2 = aquitard, when present
       call this%initialize(narr, nlayers, nnodes, datatype)
-      call this%no_category_setup()
+      call this%no_category_setup()          ! Each internal array defaults to zone 1
+      ! Route layers to the independent aquifer and aquitard arrays.
+      if (has_aquitard) then
+        where (lay_aquitard_flag)
+          this%lay2arr = 2
+        elsewhere
+          this%lay2arr = 1
+        end where
+      end if
       
       ! Initialize arr_aquitard_flag
       allocate(arr_aquitard_flag(narr))
