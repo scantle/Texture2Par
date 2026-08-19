@@ -51,6 +51,7 @@ src/Libraries/*/Release/**
 src/Libraries/*/x64/**
 src/Libraries/*/Debug/**
 .vs/*
+.venv*/
 
 # Extras
 *.vfproj.*

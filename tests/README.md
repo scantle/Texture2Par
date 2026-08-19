@@ -13,11 +13,12 @@ tests/
   conftest.py               # shared fixtures (binary locator, run_t2p runner)
   test_01_input_parsing.py  # input syntax, required fields, and validation
   test_02_outputs.py        # output files, columns, elevation, and subsidence
+  test_03_aquitard_pilot_points.py # independent aquifer/aquitard PP-zone regression
   test_03_interpolation.py  # core interpolation, 3D OK, SGS, and weight caching
   test_04_butte_model.py    # larger Butte ordinary-kriging reference tests
   test_05_butte_model_ck.py # larger Butte cokriging and 3D CK reference tests
 pytest.ini               # pytest configuration
-requirements-test.txt    # pytest dependency
+requirements-test.txt    # Python test dependencies
 ```
 
 The numeric prefixes make the default pytest run grow from basic parsing and
@@ -138,6 +139,15 @@ one record per invocation.
 | `TestReadGridded` | pre-interpolated grid input accepted |
 | `TestAnisotropicSearch` | ANISOTROPIC_SEARCH flag |
 | `TestNoTexBounds` | NO_TEX_BOUNDS allows values outside [0,1] |
+
+### `test_03_aquitard_pilot_points.py`
+
+Runs a minimal IWFM model with one aquifer and one active aquitard and verifies
+that omitting `PP_ZONE_FILE` gives the same aquifer and aquitard conductivities
+as explicit constant zone 1 arrays. The no-file input deliberately retains
+legacy PP zone values of 7 for aquifer points and 2 for aquitard points,
+confirming that v2 defaults the two pilot-point arrays independently to zone 1
+and routes each layer type through the correct array.
 
 ### `test_04_butte_model.py` and `test_05_butte_model_ck.py`
 
