@@ -45,6 +45,7 @@ module m_options
     logical                  :: WRITE_NODE_FILES      ! Writes parameters by node/cell
     logical                  :: WRITE_DATASET_FILES   ! Writes out datasets averaged by layer
     logical                  :: WRITE_ELEVATION_FILE  ! Writes grid layer elevations
+    logical                  :: WRITE_DATA_ELEV_FILE  ! Writes layer elevations at dataset points
     logical                  :: OUTPUT_GRID           ! UNIMPLMENTED
     logical                  :: OUTPUT_ARRAY          ! UNIMPLMENTED
     logical                  :: LOG_KRIGE_K           ! UNIMPLMENTED
@@ -119,6 +120,7 @@ module m_options
     this%WRITE_NODE_FILES     = .false.
     this%WRITE_DATASET_FILES  = .false.
     this%WRITE_ELEVATION_FILE = .false.
+    this%WRITE_DATA_ELEV_FILE = .false.
     this%OUTPUT_GRID          = .false.
     this%OUTPUT_ARRAY         = .false.
     this%LOG_KRIGE_K          = .false.
@@ -266,6 +268,8 @@ subroutine read_options(this, reader)
         this%WRITE_DATASET_FILES  = .true.
       case("WRITE_ELEVATION_FILE")
         this%WRITE_ELEVATION_FILE  = .true.
+      case("WRITE_DATA_ELEV_FILE", "WRITE_DATA_ELEVATION_FILE")
+        this%WRITE_DATA_ELEV_FILE = .true.
       case("OUTPUT_GRID")
         this%OUTPUT_GRID          = .true.
       case("OUTPUT_ARRAY")
@@ -361,6 +365,9 @@ subroutine write_input_summary(this, ndatafiles)
     if (this%WRITE_NONE         ) logic_true = trim(logic_true) // "WRITE_NONE"          // ","
     if (this%WRITE_NODE_FILES   ) logic_true = trim(logic_true) // "WRITE_NODE_FILES"    // ","
     if (this%WRITE_DATASET_FILES) logic_true = trim(logic_true) // "WRITE_DATASET_FILES" // ","
+    if (this%WRITE_ELEVATION_FILE) logic_true = trim(logic_true) // "WRITE_ELEVATION_FILE" // ","
+    if (this%WRITE_DATA_ELEV_FILE) &
+      logic_true = trim(logic_true) // "WRITE_DATA_ELEV_FILE" // ","
     if (this%OUTPUT_GRID        ) logic_true = trim(logic_true) // "OUTPUT_GRID"         // ","
     if (this%OUTPUT_ARRAY       ) logic_true = trim(logic_true) // "OUTPUT_ARRAY"        // ","
     if (this%LOG_KRIGE_K        ) logic_true = trim(logic_true) // "LOG_KRIGE_K"         // ","

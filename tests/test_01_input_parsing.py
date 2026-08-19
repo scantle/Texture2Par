@@ -89,6 +89,7 @@ class TestOptionsBlock:
         "WRITE_DATASET_FILES",
         "WRITE_NODE_FILES",
         "WRITE_ELEVATION_FILE",
+        "WRITE_DATA_ELEVATION_FILE",
         "INFER_LAST_CLASS",
     ])
     def test_boolean_flag_options_accepted(self, run_t2p, minimal_dataset,

@@ -108,6 +108,7 @@ module m_T2P
     ! I/O Procedures
     procedure,public   :: write_output
     procedure,public   :: write_dataset_files
+    procedure,public   :: WRITE_DATA_ELEV_FILE
     procedure,public   :: write_dataset_file
     procedure,public   :: write_dataset_file_aqtard
     procedure,public   :: write_connections
@@ -1186,6 +1187,12 @@ module m_T2P
       call this%fmodel%write_elev_file(trim(this%opt%PROJECT_NAME)//'_ELEVATION.csv')
     end if
 
+    if (this%opt%WRITE_DATA_ELEV_FILE) then
+      call this%write_minor_status("Writing Dataset Elevation File")
+      call this%WRITE_DATA_ELEV_FILE( &
+        trim(this%opt%PROJECT_NAME)//'_DATA_ELEVATION.csv')
+    end if
+
     if (.not. (this%opt%WRITE_NODE_FILES.and.this%opt%ONLY_TEXTURE)) then
       call this%write_minor_status('Writing Parameter Node Files')
       call this%fmodel%write_node_files(this%par, this%parnames, .false.)
@@ -1273,6 +1280,50 @@ module m_T2P
     end if
 
   end subroutine write_dataset_files
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine WRITE_DATA_ELEV_FILE(this, fname)
+    implicit none
+    class(t_T2P), intent(inout) :: this
+    character(*), intent(in)    :: fname
+    integer                     :: unit, idataset, ipoint, ilay, locid
+    real,allocatable            :: point_elevs(:)
+    character(:),allocatable    :: header
+    character(20)               :: tmpstr
+
+    header = "Dataset,Point,X,Y,Top"
+    do ilay=1, this%fmodel%nlayers
+      write(tmpstr,'(I0)') ilay
+      header = trim(header) // ',Bottom' // trim(tmpstr)
+    end do
+
+    allocate(point_elevs(0:this%fmodel%nlayers))
+    open(newunit=unit, file=trim(fname), status='replace')
+    write(unit,"(A)") header
+
+    do idataset=1, size(this%datasets, 1)
+      do ipoint=1, this%datasets(idataset,1)%grid%n
+        locid = this%fmodel%find_in_grid( &
+          this%datasets(idataset,1)%grid%coords(1:2,ipoint), &
+          this%opt%MAX_OUTSIDE_DIST)
+        if (locid==0) then
+          write(tmpstr,'(I0)') ipoint
+          call error_handler(1, opt_msg= &
+            "Could not find dataset point "//trim(tmpstr)//" in model domain")
+        end if
+        call this%fmodel%get_elev_at_point( &
+          this%datasets(idataset,1)%grid%coords(1:2,ipoint), &
+          point_elevs, locid)
+        write(unit, "(I0,',',I0,9999(:',',G0.10))") &
+          idataset, ipoint, &
+          this%datasets(idataset,1)%grid%coords(1:2,ipoint), point_elevs
+      end do
+    end do
+
+    close(unit)
+    deallocate(point_elevs)
+  end subroutine WRITE_DATA_ELEV_FILE
 
 !-------------------------------------------------------------------------------------------------!
 
