@@ -98,7 +98,7 @@ module m_T2P
     procedure,public   :: setup_categories   ! AKA HSUs & PPZones
     procedure,public   :: setup_subsidence
     procedure,public   :: check_major_inputs
-    !procedure,private  :: check_pp_zone_layertype_assignments
+    procedure,private  :: ppzones_match
     procedure,private  :: nvario_estimator
     procedure,private  :: no_covariates
 
@@ -113,6 +113,7 @@ module m_T2P
     ! I/O Procedures
     procedure,public   :: write_output
     procedure,public   :: write_dataset_files
+    procedure,public   :: WRITE_DATA_ELEV_FILE
     procedure,public   :: write_dataset_file
     procedure,public   :: write_dataset_file_aqtard
     procedure,public   :: write_connections
@@ -718,6 +719,46 @@ module m_T2P
 
 !-------------------------------------------------------------------------------------------------!
 
+  function ppzones_match(this, p, is_aquitard) result(match)
+    implicit none
+    class(t_T2P), intent(in)       :: this
+    type(t_pilotpoints),intent(in) :: p
+    logical,intent(in)             :: is_aquitard
+    logical                        :: match, found
+    integer                        :: i, j, k
+
+    match = .false.
+
+    ! Every model grid zone must have a matching pilot point zone
+    do i=1, this%fmodel%ppzones%narr
+      if (this%fmodel%pparr_aqtard(i) .neqv. is_aquitard) cycle
+      do j=1, this%fmodel%ppzones%arrncat(i)
+        if (.not. any(p%zonelist == this%fmodel%ppzones%catlist(j,i))) return
+      end do
+    end do
+
+    ! Every pilot point zone must occur in at least one matching model grid array
+    do i=1, p%nppzones
+      found = .false.
+      do j=1, this%fmodel%ppzones%narr
+        if (this%fmodel%pparr_aqtard(j) .neqv. is_aquitard) cycle
+        do k=1, this%fmodel%ppzones%arrncat(j)
+          if (p%zonelist(i) == this%fmodel%ppzones%catlist(k,j)) then
+            found = .true.
+            exit
+          end if
+        end do
+        if (found) exit
+      end do
+      if (.not. found) return
+    end do
+
+    match = .true.
+
+  end function ppzones_match
+
+!-------------------------------------------------------------------------------------------------!
+
   subroutine check_major_inputs(this)
     ! Run in main Texture2Par file, currently before datasets are read but after fmodel/categories
     implicit none
@@ -744,10 +785,8 @@ module m_T2P
     if (.not. this%opt%ONLY_TEXTURE) then  ! Pilot point info
       if(.not. this%has_pplocs) call error_handler(1,opt_msg="Missing Required PP_LOCS Block")
       if(.not. this%has_pp    ) call error_handler(1,opt_msg="Missing Required PP_PARAMETERS Block")
-      ! Check pilot point zones
-      ! Doesn't ensure they are the same ID values...
-      if (this%pilot_points%nppzones /= this%fmodel%get_active_ppzones()) then
-        print*, this%pilot_points%nppzones, this%fmodel%get_active_ppzones()
+      ! Check aquifer pilot point zones
+      if (.not. this%ppzones_match(this%pilot_points, .false.)) then
         call error_handler(1,opt_msg="Mismatch between Pilot Point Zones assigned to Pilot Points vs Model Grid")
       end if
 
@@ -755,6 +794,13 @@ module m_T2P
       ! TODO - more robust? Nothing checks to ensure values at this points
       if (this%has_pplocs_aquitards .neqv. this%fmodel%has_aquitards) then
         call error_handler(1,opt_msg="Mismatch in aquitard existance between Pilot Points and Model")
+      end if
+
+      ! Check aquitard pilot point zones
+      if (this%has_pplocs_aquitards) then
+        if (.not. this%ppzones_match(this%pilot_points_aquitard, .true.)) then
+          call error_handler(1,opt_msg="Mismatch between Aquitard Pilot Point Zones assigned to Pilot Points vs Model Grid")
+        end if
       end if
     end if
 
@@ -1304,6 +1350,12 @@ module m_T2P
       call this%fmodel%write_elev_file(trim(this%opt%PROJECT_NAME)//'_ELEVATION.csv')
     end if
 
+    if (this%opt%WRITE_DATA_ELEV_FILE) then
+      call this%write_minor_status("Writing Dataset Elevation File")
+      call this%WRITE_DATA_ELEV_FILE( &
+        trim(this%opt%PROJECT_NAME)//'_DATA_ELEVATION.csv')
+    end if
+
     if (.not. (this%opt%WRITE_NODE_FILES.and.this%opt%ONLY_TEXTURE)) then
       call this%write_minor_status('Writing Parameter Node Files')
       call this%fmodel%write_node_files(this%par, this%parnames, .false.)
@@ -1391,6 +1443,50 @@ module m_T2P
     end if
 
   end subroutine write_dataset_files
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine WRITE_DATA_ELEV_FILE(this, fname)
+    implicit none
+    class(t_T2P), intent(inout) :: this
+    character(*), intent(in)    :: fname
+    integer                     :: unit, idataset, ipoint, ilay, locid
+    real,allocatable            :: point_elevs(:)
+    character(:),allocatable    :: header
+    character(20)               :: tmpstr
+
+    header = "Dataset,Point,X,Y,Top"
+    do ilay=1, this%fmodel%nlayers
+      write(tmpstr,'(I0)') ilay
+      header = trim(header) // ',Bottom' // trim(tmpstr)
+    end do
+
+    allocate(point_elevs(0:this%fmodel%nlayers))
+    open(newunit=unit, file=trim(fname), status='replace')
+    write(unit,"(A)") header
+
+    do idataset=1, size(this%datasets, 1)
+      do ipoint=1, this%datasets(idataset,1)%grid%n
+        locid = this%fmodel%find_in_grid( &
+          this%datasets(idataset,1)%grid%coords(1:2,ipoint), &
+          this%opt%MAX_OUTSIDE_DIST)
+        if (locid==0) then
+          write(tmpstr,'(I0)') ipoint
+          call error_handler(1, opt_msg= &
+            "Could not find dataset point "//trim(tmpstr)//" in model domain")
+        end if
+        call this%fmodel%get_elev_at_point( &
+          this%datasets(idataset,1)%grid%coords(1:2,ipoint), &
+          point_elevs, locid)
+        write(unit, "(I0,',',I0,9999(:',',G0.10))") &
+          idataset, ipoint, &
+          this%datasets(idataset,1)%grid%coords(1:2,ipoint), point_elevs
+      end do
+    end do
+
+    close(unit)
+    deallocate(point_elevs)
+  end subroutine WRITE_DATA_ELEV_FILE
 
 !-------------------------------------------------------------------------------------------------!
 

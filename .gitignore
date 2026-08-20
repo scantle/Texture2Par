@@ -68,3 +68,4 @@ training*
 /T2P
 /.codex*
 /.bench*_tmp/
+.venv*/

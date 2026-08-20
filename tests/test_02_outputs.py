@@ -292,6 +292,39 @@ class TestElevationFile:
         assert not elev_files, "Elevation file unexpectedly written"
 
 
+class TestDataElevationFile:
+
+    @pytest.mark.parametrize("option", [
+        "WRITE_DATA_ELEV_FILE",
+        "WRITE_DATA_ELEVATION_FILE",
+    ])
+    def test_data_elevation_file_contents(self, run_t2p, option):
+        t2p = _base_t2p(extra_options=option)
+        r = run_t2p(t2p, extra_files=FILES)
+        assert r.returncode == 0, r.combined
+        assert "WRITE_DATA_ELEV_FILE" in r.log
+
+        output = r.output_file("test_DATA_ELEVATION.csv")
+        assert output.exists()
+        rows = _csv_rows(output)
+        assert len(rows) == 4
+        assert list(rows[0]) == [
+            "Dataset", "Point", "X", "Y", "Top", "Bottom1", "Bottom2"
+        ]
+        assert [int(row["Point"]) for row in rows] == [1, 2, 3, 4]
+        assert all(int(row["Dataset"]) == 1 for row in rows)
+        assert [float(row["X"]) for row in rows] == [5000.0, 5100.0, 5050.0, 4980.0]
+        assert [float(row["Y"]) for row in rows] == [4000.0, 4000.0, 4010.0, 4008.0]
+        assert all(float(row["Top"]) == 100.0 for row in rows)
+        assert all(float(row["Bottom1"]) == 90.0 for row in rows)
+        assert all(float(row["Bottom2"]) == 80.0 for row in rows)
+
+    def test_data_elevation_file_is_opt_in(self, run_t2p):
+        r = run_t2p(_base_t2p(), extra_files=FILES)
+        assert r.returncode == 0, r.combined
+        assert not r.output_exists("test_DATA_ELEVATION.csv")
+
+
 # ---------------------------------------------------------------------------
 # 5. WRITE_NONE suppresses model output
 # ---------------------------------------------------------------------------
