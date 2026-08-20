@@ -72,7 +72,6 @@ module m_flow_model
       procedure,public             :: get_elev_at_point
       procedure,public             :: get_midpoint_depths
       procedure,public             :: get_layer_thicknesses
-      procedure,public             :: get_active_ppzones
       procedure,public             :: get_layer_id   ! For when layer =/ layer_id (e.g., IWFM aquitards): id = aquifer id... iwfm == k/2
       procedure,public             :: get_layer_no   ! Other direction k*2. TODO come up with a clearer name
       procedure,public             :: is_active_layer
@@ -143,7 +142,6 @@ module m_flow_model
     procedure,public          :: get_layer_id => get_layer_id_iwfm
     procedure,public          :: get_layer_no => get_layer_no_iwfm
     procedure,public          :: is_aquitard_layer => is_aquitard_layer_iwfm
-    !procedure,public          :: get_active_ppzones => get_active_ppzones_iwfm
     procedure,public          :: write_fmodel_input => write_fmodel_input_iwfm
     procedure,public          :: write_node_file => write_node_file_iwfm
     procedure,public          :: write_node_file_aqtard => write_node_file_aqtard_iwfm
@@ -467,17 +465,6 @@ module m_flow_model
     end do
 
   end subroutine get_layer_thicknesses
-
-!-------------------------------------------------------------------------------------------------!
-
-  function get_active_ppzones(this) result(nactive)
-    ! To be overloaded where necessary
-    implicit none
-    class(t_flow_model)     :: this
-    integer                 :: nactive
-    !nactive = this%ppzones%ncat
-    nactive = maxval(this%ppzones%arrncat(1:))
-  end function get_active_ppzones
 
 !-------------------------------------------------------------------------------------------------!
 
