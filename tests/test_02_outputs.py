@@ -285,11 +285,15 @@ class TestElevationFile:
 
 class TestDataElevationFile:
 
-    def test_data_elevation_file_contents(self, run_t2p):
-        t2p = _base_t2p(extra_options="WRITE_DATA_ELEVATION_FILE")
+    @pytest.mark.parametrize("option", [
+        "WRITE_DATA_ELEV_FILE",
+        "WRITE_DATA_ELEVATION_FILE",
+    ])
+    def test_data_elevation_file_contents(self, run_t2p, option):
+        t2p = _base_t2p(extra_options=option)
         r = run_t2p(t2p, extra_files=FILES)
         assert r.returncode == 0, r.combined
-        assert "WRITE_DATA_ELEVATION_FILE" in r.log
+        assert "WRITE_DATA_ELEV_FILE" in r.log
 
         output = r.output_file("test_DATA_ELEVATION.csv")
         assert output.exists()

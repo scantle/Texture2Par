@@ -60,6 +60,133 @@ def _simple_t2p(options_extra="", classes="Coarse\n  Fine",
         """
 
 
+def _zoned_t2p() -> str:
+    return """\
+        BEGIN OPTIONS
+          MAX_VSTRUCT 1
+          WRITE_NONE
+        END OPTIONS
+
+        BEGIN CLASSES
+          Coarse
+          Fine
+        END CLASSES
+
+        BEGIN DATASET
+          FILE dataset.csv
+        END DATASET
+
+        BEGIN FLOW_MODEL
+          TYPE GRID
+          GRID_FILE grid.grd
+          PP_ZONE_FILE ppzones.txt
+        END FLOW_MODEL
+
+        BEGIN VARIOGRAMS
+          CLASS Coarse
+            1 Sph 0.05 0.038 1.5E4 1.5E4 0.0 16
+          CLASS Fine
+            1 Sph 0.05 0.038 1.5E4 1.5E4 0.0 16
+          CLASS PilotPoints
+            1 Sph 0.00 1.0 1.0E5 1.0E5 0.0 3
+        END VARIOGRAMS
+
+        BEGIN PP_LOCS
+          1 1000.0 1000.0 1
+          2 3000.0 1000.0 2
+          3 1000.0 3000.0 3
+        END PP_LOCS
+
+        BEGIN PP_PARAMETERS
+          TYPE Global
+          1 0.5 -0.5 0.0
+          2 0.5 -0.5 0.0
+          3 0.5 -0.5 0.0
+
+          TYPE Aquifer
+          1 Coarse 0.1   100.0 1e-5 0.15 10.0 0.001
+          1 Fine   0.001 0.5   1e-4 0.05 5.0  0.001
+          2 Coarse 0.1   100.0 1e-5 0.15 10.0 0.001
+          2 Fine   0.001 0.5   1e-4 0.05 5.0  0.001
+          3 Coarse 0.1   100.0 1e-5 0.15 10.0 0.001
+          3 Fine   0.001 0.5   1e-4 0.05 5.0  0.001
+        END PP_PARAMETERS
+        """
+
+
+def _hsu_t2p(interp_dim=2, variogram_extra="") -> str:
+    t2p = _zoned_t2p().replace(
+        "          WRITE_NONE",
+        f"          WRITE_NONE\n          INTERP_DIM {interp_dim}",
+    ).replace(
+        "          PP_ZONE_FILE ppzones.txt",
+        "          HSU_FILE hsus.txt",
+    ).replace(
+        "          2 3000.0 1000.0 2",
+        "          2 3000.0 1000.0 1",
+    ).replace(
+        "          3 1000.0 3000.0 3",
+        "          3 1000.0 3000.0 1",
+    )
+    if interp_dim == 3:
+        t2p = t2p.replace(
+            "1 Sph 0.05 0.038 1.5E4 1.5E4 0.0 16",
+            "1 Sph 0.05 0.038 1.5E4 1.5E4 100.0 0.0 0.0 0.0 16",
+        )
+    return t2p.replace(
+        "          CLASS PilotPoints",
+        f"{variogram_extra}          CLASS PilotPoints",
+    )
+
+
+ZONED_GRD = """\
+NX    2
+NY    2
+NZ    3
+DX    2000.0
+DY    2000.0
+TOP   constant 100.0
+BOT   constant 70.0
+IBOUND constant 1
+"""
+
+ZONED_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse,Fine
+W1,1,1,1000.0,1000.0,100.0,0.0,10.0,0.6,0.4
+W1,1,2,1000.0,1000.0,100.0,10.0,20.0,0.5,0.5
+W1,1,3,1000.0,1000.0,100.0,20.0,30.0,0.4,0.6
+W2,2,1,3000.0,1000.0,100.0,0.0,10.0,0.5,0.5
+W2,2,2,3000.0,1000.0,100.0,10.0,20.0,0.4,0.6
+W2,2,3,3000.0,1000.0,100.0,20.0,30.0,0.6,0.4
+W3,3,1,1000.0,3000.0,100.0,0.0,10.0,0.4,0.6
+W3,3,2,1000.0,3000.0,100.0,10.0,20.0,0.6,0.4
+W3,3,3,1000.0,3000.0,100.0,20.0,30.0,0.5,0.5
+"""
+
+HSUS = """\
+1 2 3
+Sand Clay Sand Clay
+Clay Gravel Clay Gravel
+Gravel Sand Gravel Sand
+"""
+
+HSU_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse,Fine,HSU1,HSU2,HSU3
+W1,1,1,1000.0,1000.0,100.0,0.0,10.0,0.6,0.4,sand,clay,gravel
+W1,1,2,1000.0,1000.0,100.0,10.0,20.0,0.5,0.5,sand,clay,gravel
+W1,1,3,1000.0,1000.0,100.0,20.0,30.0,0.4,0.6,sand,clay,gravel
+W2,2,1,3000.0,1000.0,100.0,0.0,10.0,0.5,0.5,CLAY,GRAVEL,SAND
+W2,2,2,3000.0,1000.0,100.0,10.0,20.0,0.4,0.6,CLAY,GRAVEL,SAND
+W2,2,3,3000.0,1000.0,100.0,20.0,30.0,0.6,0.4,CLAY,GRAVEL,SAND
+W3,3,1,1000.0,3000.0,100.0,0.0,10.0,0.4,0.6,Sand,Clay,Gravel
+W3,3,2,1000.0,3000.0,100.0,10.0,20.0,0.6,0.4,Sand,Clay,Gravel
+W3,3,3,1000.0,3000.0,100.0,20.0,30.0,0.5,0.5,Sand,Clay,Gravel
+W4,4,1,3000.0,3000.0,100.0,0.0,10.0,0.5,0.5,Clay,Gravel,Sand
+W4,4,2,3000.0,3000.0,100.0,10.0,20.0,0.4,0.6,Clay,Gravel,Sand
+W4,4,3,3000.0,3000.0,100.0,20.0,30.0,0.6,0.4,Clay,Gravel,Sand
+"""
+
+
 # ---------------------------------------------------------------------------
 # 1. OPTIONS block
 # ---------------------------------------------------------------------------
@@ -259,12 +386,78 @@ class TestFlowModelBlock:
                                             "grid.grd": minimal_grd})
         assert r.returncode != 0 or "error" in r.combined.lower()
 
+    def test_pp_zone_ids_can_be_distributed_across_arrays(self, run_t2p):
+        """The model-wide zone set need not occur together in any one array."""
+        ppzones = """\
+            1 2 3
+            1 2 1 2
+            2 3 2 3
+            1 3 1 3
+            """
+        r = run_t2p(_zoned_t2p(), extra_files={
+            "dataset.csv": ZONED_DATASET,
+            "grid.grd": ZONED_GRD,
+            "ppzones.txt": ppzones,
+        })
+        assert r.returncode == 0, r.combined
+
+    def test_pp_zone_ids_must_match_model_grid(self, run_t2p):
+        """Equal zone counts must not hide different pilot-point zone IDs."""
+        ppzones = """\
+            1 2 3
+            1 2 4 1
+            2 4 2 4
+            1 4 1 4
+            """
+        r = run_t2p(_zoned_t2p(), extra_files={
+            "dataset.csv": ZONED_DATASET,
+            "grid.grd": ZONED_GRD,
+            "ppzones.txt": ppzones,
+        })
+        assert r.returncode != 0
+        assert "Mismatch between Pilot Point Zones" in r.combined
+
     def test_missing_grid_file_errors(self, run_t2p, minimal_dataset):
         """GRID_FILE referencing a non-existent file must error."""
         r = run_t2p(_simple_t2p(),
                     extra_files={"dataset.csv": minimal_dataset})
         assert r.returncode != 0 or "error" in r.combined.lower()
 
+
+class TestHSUCategories:
+
+    def test_hsus_can_be_distributed_across_arrays_and_ignore_case(self, run_t2p):
+        """Global HSU IDs are shared across arrays and matched case-insensitively."""
+        r = run_t2p(_hsu_t2p(), extra_files={
+            "dataset.csv": HSU_DATASET,
+            "grid.grd": ZONED_GRD,
+            "hsus.txt": HSUS,
+        })
+        assert r.returncode == 0, r.combined
+
+    @pytest.mark.parametrize("interp_dim", [2, 3])
+    def test_unknown_dataset_hsu_is_rejected(self, run_t2p, interp_dim):
+        dataset = HSU_DATASET.replace(",sand,clay,gravel", ",Missing,clay,gravel", 1)
+        r = run_t2p(_hsu_t2p(interp_dim), extra_files={
+            "dataset.csv": dataset,
+            "grid.grd": ZONED_GRD,
+            "hsus.txt": HSUS,
+        })
+        assert r.returncode != 0
+        assert "Invalid HSU: Missing" in r.combined
+
+    def test_unknown_variogram_hsu_is_rejected(self, run_t2p):
+        zonal_variogram = """\
+          CLASS Coarse%Missing
+            1 Sph 0.05 0.038 1.5E4 1.5E4 0.0
+"""
+        r = run_t2p(_hsu_t2p(variogram_extra=zonal_variogram), extra_files={
+            "dataset.csv": HSU_DATASET,
+            "grid.grd": ZONED_GRD,
+            "hsus.txt": HSUS,
+        })
+        assert r.returncode != 0
+        assert "Invalid HSU Variogram Used: Missing" in r.combined
 
 # ---------------------------------------------------------------------------
 # 5. GRD file parsing

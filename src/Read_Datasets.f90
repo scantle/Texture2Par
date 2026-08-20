@@ -586,6 +586,9 @@ module m_read_datasets
         ! Store HSU category for this interval - if multiple HSUs, we just take the first one, but this can be expanded in the future if needed
         if (t2p%has_hsus) then
           hsu_id = t2p%fmodel%hsus%get_id(hsus(1))
+          if (hsu_id==0) then
+            call error_handler(1,file,"Invalid HSU: "//trim(hsus(1))//" (No matching category in HSU file)")
+          end if
         end if
         do k=1, resized_intervals
           grid%coords(1, ipoint) = x

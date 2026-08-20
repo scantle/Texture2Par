@@ -93,7 +93,7 @@ module m_T2P
     procedure,public   :: setup_categories   ! AKA HSUs & PPZones
     procedure,public   :: setup_subsidence
     procedure,public   :: check_major_inputs
-    !procedure,private  :: check_pp_zone_layertype_assignments
+    procedure,private  :: ppzones_match
     procedure,private  :: nvario_estimator
     procedure,private  :: no_covariates
 
@@ -663,6 +663,46 @@ module m_T2P
 
 !-------------------------------------------------------------------------------------------------!
 
+  function ppzones_match(this, p, is_aquitard) result(match)
+    implicit none
+    class(t_T2P), intent(in)       :: this
+    type(t_pilotpoints),intent(in) :: p
+    logical,intent(in)             :: is_aquitard
+    logical                        :: match, found
+    integer                        :: i, j, k
+
+    match = .false.
+
+    ! Every model grid zone must have a matching pilot point zone
+    do i=1, this%fmodel%ppzones%narr
+      if (this%fmodel%pparr_aqtard(i) .neqv. is_aquitard) cycle
+      do j=1, this%fmodel%ppzones%arrncat(i)
+        if (.not. any(p%zonelist == this%fmodel%ppzones%catlist(j,i))) return
+      end do
+    end do
+
+    ! Every pilot point zone must occur in at least one matching model grid array
+    do i=1, p%nppzones
+      found = .false.
+      do j=1, this%fmodel%ppzones%narr
+        if (this%fmodel%pparr_aqtard(j) .neqv. is_aquitard) cycle
+        do k=1, this%fmodel%ppzones%arrncat(j)
+          if (p%zonelist(i) == this%fmodel%ppzones%catlist(k,j)) then
+            found = .true.
+            exit
+          end if
+        end do
+        if (found) exit
+      end do
+      if (.not. found) return
+    end do
+
+    match = .true.
+
+  end function ppzones_match
+
+!-------------------------------------------------------------------------------------------------!
+
   subroutine check_major_inputs(this)
     ! Run in main Texture2Par file, currently before datasets are read but after fmodel/categories
     implicit none
@@ -688,10 +728,8 @@ module m_T2P
     if (.not. this%opt%ONLY_TEXTURE) then  ! Pilot point info
       if(.not. this%has_pplocs) call error_handler(1,opt_msg="Missing Required PP_LOCS Block")
       if(.not. this%has_pp    ) call error_handler(1,opt_msg="Missing Required PP_PARAMETERS Block")
-      ! Check pilot point zones
-      ! Doesn't ensure they are the same ID values...
-      if (this%pilot_points%nppzones /= this%fmodel%get_active_ppzones()) then
-        print*, this%pilot_points%nppzones, this%fmodel%get_active_ppzones()
+      ! Check aquifer pilot point zones
+      if (.not. this%ppzones_match(this%pilot_points, .false.)) then
         call error_handler(1,opt_msg="Mismatch between Pilot Point Zones assigned to Pilot Points vs Model Grid")
       end if
 
@@ -699,6 +737,13 @@ module m_T2P
       ! TODO - more robust? Nothing checks to ensure values at this points
       if (this%has_pplocs_aquitards .neqv. this%fmodel%has_aquitards) then
         call error_handler(1,opt_msg="Mismatch in aquitard existance between Pilot Points and Model")
+      end if
+
+      ! Check aquitard pilot point zones
+      if (this%has_pplocs_aquitards) then
+        if (.not. this%ppzones_match(this%pilot_points_aquitard, .true.)) then
+          call error_handler(1,opt_msg="Mismatch between Aquitard Pilot Point Zones assigned to Pilot Points vs Model Grid")
+        end if
       end if
     end if
 
