@@ -785,9 +785,11 @@ module m_T2P
     if (.not. this%opt%ONLY_TEXTURE) then  ! Pilot point info
       if(.not. this%has_pplocs) call error_handler(1,opt_msg="Missing Required PP_LOCS Block")
       if(.not. this%has_pp    ) call error_handler(1,opt_msg="Missing Required PP_PARAMETERS Block")
-      ! Check aquifer pilot point zones
-      if (.not. this%ppzones_match(this%pilot_points, .false.)) then
-        call error_handler(1,opt_msg="Mismatch between Pilot Point Zones assigned to Pilot Points vs Model Grid")
+      ! Check aquifer pilot point zones when explicitly assigned
+      if (this%has_ppzones) then
+        if (.not. this%ppzones_match(this%pilot_points, .false.)) then
+          call error_handler(1,opt_msg="Mismatch between Pilot Point Zones assigned to Pilot Points vs Model Grid")
+        end if
       end if
 
       ! Make sure pilot points and flow model agree on existance of aquitards
@@ -797,7 +799,7 @@ module m_T2P
       end if
 
       ! Check aquitard pilot point zones
-      if (this%has_pplocs_aquitards) then
+      if (this%has_ppzones.and.this%has_pplocs_aquitards) then
         if (.not. this%ppzones_match(this%pilot_points_aquitard, .true.)) then
           call error_handler(1,opt_msg="Mismatch between Aquitard Pilot Point Zones assigned to Pilot Points vs Model Grid")
         end if
