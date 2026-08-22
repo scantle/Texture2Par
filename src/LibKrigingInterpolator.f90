@@ -4,7 +4,6 @@ module m_libkriging_interpolator
   use m_options, only: t_options, CK_MEAN_LIBKRIGING, CK_MEAN_LEGACY_STANDARDIZED
   use m_interpolation_types, only: t_interp_request, t_interp_result, INTERP_PURPOSE_MODEL, &
                                    PREDICT_ESTIMATE, PREDICT_SGSIM
-  use m_interpolation_packers, only: validate_unique_observations
   use m_libkriging_adapter, only: libkriging_solve, libkriging_interpolate_many, &
                                   t_libkriging_variable
   use m_error_handler, only: error_handler
@@ -104,8 +103,6 @@ contains
     do d = 1, nvar
       call validate_metadata(this, request%variable_class_id(d))
     end do
-    call validate_unique_observations(request)
-
     select case (this%kriging_mode)
       case (KRIGING_MODE_ORDINARY)
         unbias = 1
@@ -212,7 +209,6 @@ contains
     this%nthreads = opt%NTHREADS
     if (size(value_matrix,1) /= size(request%observation_coordinates,2)) &
       call error_handler(4, opt_msg='libkriging OK many-value observation geometry/value shape mismatch')
-    call validate_unique_observations(request)
     if (.not. allocated(request%observation_variance)) then
       allocate(request%observation_variance(size(value_matrix,1)))
       request%observation_variance = 0.0

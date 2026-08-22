@@ -1638,7 +1638,10 @@ class TestLibKrigingOrdinary:
             },
         )
         assert r.returncode != 0
-        assert "co-located" in r.combined.lower()
+        assert any(
+            term in r.combined.lower()
+            for term in ("duplicate coordinate", "co-located data point")
+        )
 
 # ---------------------------------------------------------------------------
 # 3. Block kriging status

@@ -16,8 +16,6 @@ module m_interpolation_packers
   public :: pack_grid_targets
   public :: pack_layerdata_observations
   public :: pack_pilotpoint_observations
-  public :: find_duplicate_observations
-  public :: validate_unique_observations
 
 contains
 
@@ -227,64 +225,6 @@ contains
     request%category_id = category_id
     request%class_id = class_id
   end subroutine pack_pilotpoint_observations
-
-!-------------------------------------------------------------------------------------------------!
-
-  subroutine find_duplicate_observations(request, found, first, second)
-    type(t_interp_request), intent(in) :: request
-    logical, intent(out)               :: found
-    integer, intent(out)               :: first, second
-    integer                            :: i, j
-    logical                            :: same_class
-
-    ! Exact coordinate equality is intentional. Observations of different
-    ! geostatistical variables may be collocated in a cokriging request, so
-    ! class ids are compared when present. Targets are never examined here.
-    found = .false.
-    first = 0
-    second = 0
-    if (.not. allocated(request%observation_coordinates)) return
-
-    do j = 2, size(request%observation_coordinates,2)
-      do i = 1, j - 1
-        same_class = .true.
-        if (allocated(request%observation_class_id)) then
-          same_class = request%observation_class_id(i) == request%observation_class_id(j)
-        end if
-        if (same_class .and. all(request%observation_coordinates(:,i) == &
-                                request%observation_coordinates(:,j))) then
-          found = .true.
-          first = i
-          second = j
-          return
-        end if
-      end do
-    end do
-  end subroutine find_duplicate_observations
-
-!-------------------------------------------------------------------------------------------------!
-
-  subroutine validate_unique_observations(request)
-    type(t_interp_request), intent(in) :: request
-    logical                              :: found
-    integer                              :: first, second, source_first, source_second
-    character(200)                       :: message
-
-    call find_duplicate_observations(request, found, first, second)
-    if (.not. found) return
-
-    source_first = first
-    source_second = second
-    if (allocated(request%observation_source_index)) then
-      source_first = request%observation_source_index(first)
-      source_second = request%observation_source_index(second)
-    end if
-    write(message,'(A,I0,A,I0,A,I0,A,I0)') &
-      'Co-located conditioning observations at packed indices ', first, ' and ', second, &
-      ' (source indices ', source_first, ' and ', source_second
-    message = trim(message)//')'
-    call error_handler(4, opt_msg=trim(message))
-  end subroutine validate_unique_observations
 
 !-------------------------------------------------------------------------------------------------!
 
