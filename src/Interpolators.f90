@@ -51,18 +51,21 @@ contains
 
 !-------------------------------------------------------------------------------------------------!
 
-  function dist_vector(p, point_array) result(distances)
+  subroutine dist_vector(p, point_array, point_index, distances)
     real, intent(in) :: p(:)
     real, intent(in) :: point_array(:,:)
-    real :: distances(size(point_array,2))
-    integer :: i
+    integer, intent(in) :: point_index(:)
+    real, intent(out) :: distances(:)
+    integer :: i, j
 
-    distances = 0.0
-    do i = 1, size(p)
-      distances = distances + (p(i) - point_array(i,:))**2
+    do j = 1, size(point_index)
+      distances(j) = 0.0
+      do i = 1, size(p)
+        distances(j) = distances(j) + (p(i) - point_array(i,point_index(j)))**2
+      end do
+      distances(j) = sqrt(distances(j))
     end do
-    distances = sqrt(distances)
-  end function dist_vector
+  end subroutine dist_vector
 
 !-------------------------------------------------------------------------------------------------!
 
@@ -95,7 +98,7 @@ contains
     logical, allocatable :: observation_mask(:)
     real, allocatable :: weights(:), distances(:)
     real :: total_weight
-    integer :: i, j, zero_count
+    integer :: i, j, k, zero_count
     logical :: reset_cache
 
     if (.not. allocated(request%observation_coordinates) .or. &
@@ -113,7 +116,13 @@ contains
       ! common model workflow but do not participate in an IDW estimate.
       observation_mask = request%observation_variable_id == 1
     end if
-    observation_index = pack([(j,j=1,size(values,1))], observation_mask)
+    allocate(observation_index(count(observation_mask)))
+    i = 0
+    do j = 1, size(observation_mask)
+      if (.not. observation_mask(j)) cycle
+      i = i + 1
+      observation_index(i) = j
+    end do
     if (size(observation_index) == 0) &
       call error_handler(4, opt_msg='IDW batch interpolation has no observations')
 
@@ -131,7 +140,10 @@ contains
       if (request%observation_total_count < 1 .or. request%target_total_count < 1 .or. &
           .not. allocated(request%observation_source_index)) &
         call error_handler(4, opt_msg='IDW saved weights require full source and target index metadata')
-      cache_index = request%observation_source_index(observation_index)
+      allocate(cache_index(size(observation_index)))
+      do j = 1, size(observation_index)
+        cache_index(j) = request%observation_source_index(observation_index(j))
+      end do
       reset_cache = trim(this%cached_weight_file) /= trim(request%weight_file)
       if (allocated(this%cached_weights)) then
         reset_cache = reset_cache .or. &
@@ -156,23 +168,44 @@ contains
     allocate(weights(size(observation_index)), distances(size(observation_index)))
     do i = 1, size(request%target_coordinates,2)
       if (request%use_old_weight) then
-        weights = this%cached_weights(request%target_index(i),cache_index)
+        do j = 1, size(cache_index)
+          weights(j) = this%cached_weights(request%target_index(i),cache_index(j))
+        end do
       else
-        distances = dist_vector(request%target_coordinates(:,i), &
-                                request%observation_coordinates(:,observation_index))
-        zero_count = count(distances == 0.0)
+        call dist_vector(request%target_coordinates(:,i), request%observation_coordinates, &
+                         observation_index, distances)
+        zero_count = 0
+        do j = 1, size(distances)
+          if (distances(j) == 0.0) zero_count = zero_count + 1
+        end do
         if (zero_count > 0) then
-          weights = 0.0
-          where (distances == 0.0) weights = 1.0 / zero_count
+          do j = 1, size(weights)
+            weights(j) = 0.0
+            if (distances(j) == 0.0) weights(j) = 1.0 / zero_count
+          end do
         else
-          weights = 1.0 / distances**opt%IDW_POWER
-          total_weight = sum(weights)
-          weights = weights / total_weight
+          total_weight = 0.0
+          do j = 1, size(weights)
+            weights(j) = 1.0 / distances(j)**opt%IDW_POWER
+            total_weight = total_weight + weights(j)
+          end do
+          do j = 1, size(weights)
+            weights(j) = weights(j) / total_weight
+          end do
         end if
-        if (request%store_weight) &
-          this%cached_weights(request%target_index(i),cache_index) = weights
+        if (request%store_weight) then
+          do j = 1, size(cache_index)
+            this%cached_weights(request%target_index(i),cache_index(j)) = weights(j)
+          end do
+        end if
       end if
-      result%estimates_many(i,:) = matmul(weights,values(observation_index,:))
+      do j = 1, size(values,2)
+        result%estimates_many(i,j) = 0.0
+        do k = 1, size(observation_index)
+          result%estimates_many(i,j) = result%estimates_many(i,j) + &
+            weights(k) * values(observation_index(k),j)
+        end do
+      end do
     end do
 
     if (request%store_weight) then

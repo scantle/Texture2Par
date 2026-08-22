@@ -121,7 +121,7 @@ contains
     do d = 1, size(observations)
       call check_layerdata(observations(d), dataval_idx(d), dimension)
       allocate(pack_mask(observations(d)%grid%n))
-      pack_mask = category_value_mask(observations(d), dataval_idx(d), category_id)
+      call fill_category_value_mask(observations(d), dataval_idx(d), category_id, pack_mask)
       nobs = nobs + count(pack_mask)
       total_count = total_count + observations(d)%grid%n
       deallocate(pack_mask)
@@ -143,7 +143,7 @@ contains
       request%variable_class_id(d) = class_idx(d)
       request%variable_mean(d) = observations(d)%mean(dataval_idx(d))
       allocate(pack_mask(observations(d)%grid%n))
-      pack_mask = category_value_mask(observations(d), dataval_idx(d), category_id)
+      call fill_category_value_mask(observations(d), dataval_idx(d), category_id, pack_mask)
       do i = 1, observations(d)%grid%n
         if (.not. pack_mask(i)) cycle
         j = j + 1
@@ -288,15 +288,18 @@ contains
 
 !-------------------------------------------------------------------------------------------------!
 
-  function category_value_mask(observations, dataval_idx, category_id) result(mask)
+  subroutine fill_category_value_mask(observations, dataval_idx, category_id, mask)
     type(t_layerdata), intent(in) :: observations
     integer, intent(in)           :: dataval_idx, category_id
-    logical                       :: mask(observations%grid%n)
+    logical, intent(out)          :: mask(:)
+    integer                       :: i
 
-    mask = ((observations%category == category_id) .or. &
-            (observations%category == CAT_ALL)) .and. &
-           (observations%values(dataval_idx,:) /= NODATA)
-  end function category_value_mask
+    do i = 1, size(mask)
+      mask(i) = ((observations%category(i) == category_id) .or. &
+                 (observations%category(i) == CAT_ALL)) .and. &
+                (observations%values(dataval_idx,i) /= NODATA)
+    end do
+  end subroutine fill_category_value_mask
 
 !-------------------------------------------------------------------------------------------------!
 

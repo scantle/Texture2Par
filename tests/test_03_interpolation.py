@@ -1277,6 +1277,19 @@ class TestBatchModelIDW:
         target = df[(df["X"] == 0.5) & (df["Y"] == 0.5)]
         assert target["Layer1"].iloc[0] == pytest.approx(0.28, abs=1e-10)
 
+    def test_large_observation_mask_does_not_use_stack(self, run_t2p):
+        # A default LOGICAL mask with this many values is just over 1 MiB.
+        nobs = 262_145
+        header = "Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse\n"
+        dataset = header + "\n".join(
+            f"W{i},{i},1,{0.5 + i / 1_000_000.0},0.5,100,0,10,0.25"
+            for i in range(1, nobs + 1)
+        )
+        files = {"dataset.csv": dataset, "grid.grd": OK_LIB_2D_GRD}
+
+        r = run_t2p(self._input(), extra_files=files)
+        assert r.returncode == 0, r.combined
+
     def test_model_idw_saved_weights_use_current_values(self, run_t2p):
         write = run_t2p(
             self._input("WRITE_GRID_WEIGHTS"),
