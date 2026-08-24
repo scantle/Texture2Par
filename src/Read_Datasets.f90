@@ -51,9 +51,11 @@ module m_read_datasets
     character(256)                :: iomsg
     character(2048)               :: line
     character(20)                 :: tmp,tmp2
+    character(200)                :: duplicate_message
     integer                       :: i, j, k, l, ndat, nlines, npoints, nsets, ncats, eof, hsu_id
     integer                       :: idx, idx_offset, iint, prev_idx, prev_iint, fmodel_loc, didx, ios
-    integer,allocatable           :: cids(:), all_count(:), lw(:), rw(:)
+    integer                       :: nlocations, duplicate_first, duplicate_second
+    integer,allocatable           :: cids(:), all_count(:), lw(:), rw(:), location_indices(:)
     real                          :: x, y, z, fmodel_z, depth0, depth, intv_top, intv_bot, frac_thick
     real    ,allocatable          :: wvalues(:), wv_accumulator(:,:), local_elevs(:), total_thick(:,:), wvariance(:), var_accumulator(:,:)
     real    ,allocatable          :: all_sum(:), all_depth(:)
@@ -62,7 +64,7 @@ module m_read_datasets
     ! subsidence variables
     real,allocatable              :: kbed_run(:)
     logical,allocatable           :: kbed_open(:), interbed_mask(:)
-    logical                       :: is_interbed, inferred_fine
+    logical                       :: is_interbed, inferred_fine, duplicates_found
 
     allocate(t2p%datasets(t2p%ndatasets, t2p%fmodel%nlayers))
     if (t2p%opt%SUBSIDENCE_ON) then
@@ -139,6 +141,8 @@ module m_read_datasets
       npoints = item2int(strings,2) - idx_offset    ! Last - (First - 1) = npoints
       ! Allocate shared grid
       grid => create_grid_object(2, npoints)
+      allocate(location_indices(npoints))
+      nlocations = 0
       ! Allocate dataset(s) for all layers, set default value
       do k=1, t2p%fmodel%nlayers
         call t2p%datasets(didx,k)%initialize(npoints, nsets)
@@ -208,14 +212,8 @@ module m_read_datasets
         if (iint==1) then
           idx = idx - idx_offset
           if (idx <= prev_idx) call error_handler(1,file,"Loc IDs must be sequential - Check Loc "//trim(name)//" on line "//adjustl(trim(tmp)))
-          ! Check for duplicate well locations
-          do k = 1, idx-1
-            if (x==grid%coords(1,k).and.y==grid%coords(2,k)) then
-              write(tmp , '(i)') idx+idx_offset
-              write(tmp2, '(i)') k+idx_offset
-              call error_handler(1,file,"Co-located data point at "//trim(name)//". Loc ID "//trim(adjustl(tmp))//" has same XY as ID "//trim(adjustl(tmp2)))
-            end if
-          end do
+          nlocations = nlocations + 1
+          location_indices(nlocations) = idx
           ! Store previous log values...
           if (j>1) then
             do k=1, t2p%fmodel%nlayers
@@ -321,6 +319,18 @@ module m_read_datasets
         prev_iint = iint
       end do  ! end of loop over file lines
 
+      ! Check actual dataset locations only; location IDs are allowed to have gaps.
+      call grid%find_duplicate_coordinates(location_indices(:nlocations), duplicates_found, &
+                                           duplicate_first, duplicate_second)
+      if (duplicates_found) then
+        write(tmp , '(i)') duplicate_first + idx_offset
+        write(tmp2, '(i)') duplicate_second + idx_offset
+        write(duplicate_message,'(5A,2(G0,1X))') 'Co-located data points at Loc IDs ', &
+          trim(adjustl(tmp)), ' and ', trim(adjustl(tmp2)), ' share XY coordinates: ', &
+          grid%coords(:,duplicate_first)
+        call error_handler(1,file,trim(duplicate_message))
+      end if
+
       ! Store final log values
       do k=1, t2p%fmodel%nlayers
         do l=1, nsets
@@ -346,7 +356,8 @@ module m_read_datasets
       end do
 
       ! Cleanup loop variables
-      deallocate(wvalues, wvariance, all_count, all_sum, all_depth, total_thick, wv_accumulator, var_accumulator, hsus, rw, lw)
+      deallocate(wvalues, wvariance, all_count, all_sum, all_depth, total_thick, wv_accumulator, &
+                 var_accumulator, hsus, rw, lw, location_indices)
       if (allocated(interbed_mask)) deallocate(interbed_mask)
     end do
     if (allocated(kbed_run)) deallocate(kbed_run)

@@ -426,6 +426,13 @@ def _duplicate_conditioning_t2p(interp_dim: int) -> str:
         """
 
 
+def _duplicate_conditioning_idw_t2p() -> str:
+    t2p = _duplicate_conditioning_t2p(interp_dim=2).replace(
+        "MAX_VSTRUCT 1", "MAX_VSTRUCT 1\n          INTERP_METHOD IDW"
+    )
+    return t2p.split("BEGIN VARIOGRAMS", maxsplit=1)[0]
+
+
 DUPLICATE_2D_DATASET = """\
 Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
 W1,1,1,0.5,0.5,100,0,10,0.10
@@ -441,6 +448,33 @@ W1,1,1,0.5,0.5,100,4,6,0.10
 W2,2,1,0.5,0.5,100,4,6,0.90
 W3,3,1,2.5,0.5,100,4,6,0.30
 W4,4,1,0.5,2.5,100,4,6,0.40
+"""
+
+
+SPARSE_DUPLICATE_2D_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W10,10,1,0.5,0.5,100,0,10,0.10
+W12,12,1,2.5,0.5,100,0,10,0.30
+W15,15,1,0.5,2.5,100,0,10,0.40
+W20,20,1,0.5,0.5,100,0,10,0.90
+"""
+
+
+SPARSE_UNIQUE_2D_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W10,10,1,0.5,0.5,100,0,10,0.10
+W12,12,1,0.5,1.5,100,0,10,0.30
+W15,15,1,1.5,0.5,100,0,10,0.40
+W20,20,1,2.5,2.5,100,0,10,0.90
+"""
+
+
+SHARED_XY_3D_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse
+W1,1,1,0.5,0.5,100,1,3,0.10
+W2,2,1,0.5,0.5,100,5,7,0.90
+W3,3,1,2.5,0.5,100,1,3,0.30
+W4,4,1,0.5,2.5,100,1,3,0.40
 """
 
 
@@ -1642,6 +1676,48 @@ class TestLibKrigingOrdinary:
             term in r.combined.lower()
             for term in ("duplicate coordinate", "co-located data point")
         )
+
+    def test_2d_duplicate_reports_original_sparse_location_ids(self, run_t2p):
+        r = run_t2p(
+            _duplicate_conditioning_t2p(interp_dim=2),
+            extra_files={
+                "dataset.csv": SPARSE_DUPLICATE_2D_DATASET,
+                "grid.grd": DUPLICATE_GRD,
+            },
+        )
+        assert r.returncode != 0
+        assert "Co-located data points at Loc IDs 10 and 20" in r.combined
+
+    def test_2d_sparse_ids_and_shared_coordinate_axes_are_valid(self, run_t2p):
+        r = run_t2p(
+            _duplicate_conditioning_idw_t2p(),
+            extra_files={
+                "dataset.csv": SPARSE_UNIQUE_2D_DATASET,
+                "grid.grd": DUPLICATE_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
+
+    def test_idw_duplicate_dataset_locations_are_fatal(self, run_t2p):
+        r = run_t2p(
+            _duplicate_conditioning_idw_t2p(),
+            extra_files={
+                "dataset.csv": SPARSE_DUPLICATE_2D_DATASET,
+                "grid.grd": DUPLICATE_GRD,
+            },
+        )
+        assert r.returncode != 0
+        assert "Co-located data points at Loc IDs 10 and 20" in r.combined
+
+    def test_3d_locations_may_share_xy_at_different_elevations(self, run_t2p):
+        r = run_t2p(
+            _duplicate_conditioning_t2p(interp_dim=3),
+            extra_files={
+                "dataset.csv": SHARED_XY_3D_DATASET,
+                "grid.grd": DUPLICATE_GRD,
+            },
+        )
+        assert r.returncode == 0, r.combined
 
 # ---------------------------------------------------------------------------
 # 3. Block kriging status

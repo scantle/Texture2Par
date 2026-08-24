@@ -27,6 +27,7 @@ module m_grid
       procedure,public         :: build_tree
       procedure,public         :: get_nnear
       procedure,public         :: burn_tree
+      procedure,public         :: find_duplicate_coordinates
   end type t_Grid
 !-------------------------------------------------------------------------------------------------!
   contains
@@ -145,6 +146,104 @@ module m_grid
       deallocate(this%tree)
     end if
   end subroutine burn_tree
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine find_duplicate_coordinates(this, point_indices, found, first, second)
+    implicit none
+    class(t_Grid), intent(in) :: this
+    integer, intent(in)       :: point_indices(:)
+    logical, intent(out)      :: found
+    integer, intent(out)      :: first, second
+    integer, allocatable      :: sorted_indices(:)
+    integer                   :: i
+
+    found = .false.
+    first = 0
+    second = 0
+    if (size(point_indices) <= 1) return
+
+    allocate(sorted_indices, source=point_indices)
+    call heapsort_coordinate_indices(this%coords, sorted_indices)
+
+    do i=1,size(sorted_indices)-1
+      if (all(this%coords(:,sorted_indices(i)) == this%coords(:,sorted_indices(i+1)))) then
+        found = .true.
+        first = min(sorted_indices(i), sorted_indices(i+1))
+        second = max(sorted_indices(i), sorted_indices(i+1))
+        return
+      end if
+    end do
+
+  end subroutine find_duplicate_coordinates
+
+!-------------------------------------------------------------------------------------------------!
+
+  subroutine heapsort_coordinate_indices(coords, indices)
+    implicit none
+    real, intent(in)       :: coords(:,:)
+    integer, intent(inout) :: indices(:)
+    integer                :: i, j, ileft, iright, value
+
+    if (size(indices) <= 1) return
+
+    ileft = size(indices) / 2 + 1
+    iright = size(indices)
+    do
+      if (ileft > 1) then
+        ileft = ileft - 1
+        value = indices(ileft)
+      else
+        value = indices(iright)
+        indices(iright) = indices(1)
+        iright = iright - 1
+        if (iright == 1) then
+          indices(1) = value
+          return
+        end if
+      end if
+
+      i = ileft
+      j = 2 * ileft
+      do while (j <= iright)
+        if (j < iright) then
+          if (coordinate_is_less(coords, indices(j), indices(j+1))) j = j + 1
+        end if
+        if (coordinate_is_less(coords, value, indices(j))) then
+          indices(i) = indices(j)
+          i = j
+          j = j + j
+        else
+          j = iright + 1
+        end if
+      end do
+      indices(i) = value
+    end do
+
+  end subroutine heapsort_coordinate_indices
+
+!-------------------------------------------------------------------------------------------------!
+
+  logical function coordinate_is_less(coords, first, second) result(is_less)
+    implicit none
+    real, intent(in)    :: coords(:,:)
+    integer, intent(in) :: first, second
+    integer             :: i
+
+    is_less = .false.
+    do i=1,size(coords,1)
+      if (coords(i,first) < coords(i,second)) then
+        is_less = .true.
+        return
+      else if (coords(i,first) > coords(i,second)) then
+        return
+      end if
+    end do
+
+    ! Break coordinate ties by source index for deterministic results.
+    is_less = first < second
+
+  end function coordinate_is_less
 
 !-------------------------------------------------------------------------------------------------!
 

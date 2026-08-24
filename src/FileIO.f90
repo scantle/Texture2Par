@@ -395,6 +395,34 @@ module m_file_io
 
 !-------------------------------------------------------------------------------------------------!
 
+  subroutine read_line_is_blank(funit, iostat, is_blank)
+    implicit none
+    integer, intent(in)  :: funit
+    integer, intent(out) :: iostat
+    logical, intent(out) :: is_blank
+
+    ! local
+    integer, parameter     :: bufsize=1024
+    integer                :: size_read
+    character(len=bufsize) :: buffer
+
+    ! Scan the full record without assembling an allocatable string. This keeps
+    ! long-line support inexpensive when only the record count is needed.
+    is_blank = .true.
+    do
+      read(funit, '(A)', advance='no', size=size_read, iostat=iostat) buffer
+      if (size_read > 0) then
+        is_blank = is_blank .and. len_trim(buffer(1:size_read)) == 0
+      end if
+      if (size_read < bufsize) exit
+    end do
+    if (.not. is_blank) then
+      iostat = 0 ! reset iostat values if there is content in the current line
+    end if
+  end subroutine read_line_is_blank
+
+!-------------------------------------------------------------------------------------------------!
+
 !-------------------------------------------------------------------------------------------------!
 ! READER TYPE-BOUND PROCEDURES
 !-------------------------------------------------------------------------------------------------!
@@ -722,7 +750,8 @@ end subroutine
   function get_data_len(this,rewind_to_last_line) result(data_len)
     implicit none
     class(t_file_reader), intent(in) :: this
-    integer                         :: i, data_len, eof, ierr
+    integer                         :: data_len, eof, ierr
+    logical                         :: is_blank
     logical, optional               :: rewind_to_last_line
 
     data_len = 0
@@ -731,10 +760,10 @@ end subroutine
     call this%read_to_next_line(eof)
     do while (eof == 0)
       !call this%read_to_next_line(eof)  ! Inconsistent with how data files are usually read
-      call read_line(this%unit, ierr, line)
+      call read_line_is_blank(this%unit, ierr, is_blank)
       if (IS_IOSTAT_END(ierr)) then
         eof = 1
-      else if (trim(adjustl(line)) /= '') then
+      else if (.not. is_blank) then
         ! not blank
         data_len = data_len + 1
       else
