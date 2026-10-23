@@ -310,6 +310,7 @@ module m_datasets
 
     ! By default
     this%category = 1
+    this%fmodel_loc = 0
 
     if (present(default_value)) this%values = default_value
     this%variance = 0.0

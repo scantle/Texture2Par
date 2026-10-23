@@ -41,6 +41,12 @@ IBOUND constant 1
 
 FILES = {"dataset.csv": DATASET, "grid.grd": GRD}
 
+GAPPED_DATASET = """\
+Location,WellIndex,IntervalIndex,X,Y,Zland,TopDepth,BotDepth,Coarse,Fine
+W1,1,1,5000.0,4000.0,100.0,0.0,10.0,0.60,0.40
+W3,3,1,5050.0,4010.0,100.0,0.0,10.0,0.55,0.45
+"""
+
 
 def _base_t2p(extra_options="", extra_blocks="") -> str:
     return f"""\
@@ -258,6 +264,21 @@ class TestDatasetFiles:
         assert r.returncode == 0
         layavg_files = list(r.workdir.glob("*_layavg*"))
         assert not layavg_files, "Layer-averaged dataset files written without WRITE_DATASET_FILES flag"
+
+    def test_missing_well_id_has_zero_model_element(self, run_t2p):
+        """A gap in well IDs must not expose an uninitialized model element."""
+        r = run_t2p(
+            _base_t2p(),
+            extra_files={"dataset.csv": GAPPED_DATASET, "grid.grd": GRD},
+        )
+        assert r.returncode == 0, r.combined
+
+        layavg = r.output_file("test_COARSE_layavg.csv")
+        assert layavg.exists()
+        rows = _csv_rows(layavg)
+        assert len(rows) == 3
+        assert int(rows[1]["Well"]) == 2
+        assert int(rows[1]["Column"]) == 0
 
 
 # ---------------------------------------------------------------------------
