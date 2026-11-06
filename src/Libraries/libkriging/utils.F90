@@ -484,4 +484,3 @@ subroutine r8vec_normal_01 ( n, x )
 
   end function starts_with_ignore_case
 end module
-

@@ -102,4 +102,3 @@ A recent application integrating AEM and borehole information in a probabilistic
 - `tests/` — end-to-end pytest regression suite
 - `Texture2Par.sln` — Visual Studio solution
 - `version.f90` — program version string
-

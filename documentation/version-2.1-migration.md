@@ -85,4 +85,3 @@ For final reporting, record the Texture2Par version, `CK_MEAN_MODE`, interpolati
 - [KrigeKit repository](https://github.com/ougx/krigekit)
 - [KrigeKit v0.3.2 preprint](https://doi.org/10.5194/egusphere-2026-5708)
 - [Probabilistic multi-texture AEM application](https://doi.org/10.1029/2025WR042695)
-
