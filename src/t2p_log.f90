@@ -51,12 +51,13 @@ module m_log
     minutes = int(mod(elapsed_time, 3600) / 60)
     seconds = int(mod(elapsed_time, 60))
 
+    ! I0 uses the minimum required width and cannot overflow to asterisks.
     if (hours > 0) then
-      write(line,'(a,i3,a,2(i2,a))') "Elapsed time: ", hours, " hours, ", minutes, " minutes, ", seconds, " seconds."
+      write(line,'(a,i0,a,2(i0,a))') "Elapsed time: ", hours, " hours, ", minutes, " minutes, ", seconds, " seconds."
     else if (minutes > 0) then
-      write(line,'(a,2(i2,a))') "Elapsed time: ", minutes, " minutes, ", seconds, " seconds."
+      write(line,'(a,2(i0,a))') "Elapsed time: ", minutes, " minutes, ", seconds, " seconds."
     else
-      write(line,'(a,i2,a)') "Elapsed time: ", seconds, " seconds."
+      write(line,'(a,i0,a)') "Elapsed time: ", seconds, " seconds."
     endif
 
     call log%write_line(line, blank_start=1)

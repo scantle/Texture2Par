@@ -128,7 +128,11 @@ class TestLogFile:
     def test_log_records_elapsed_time(self, run_t2p):
         r = run_t2p(_base_t2p(), extra_files=FILES)
         assert r.returncode == 0
-        assert "elapsed" in r.log.lower(), "Log file does not record elapsed time"
+        elapsed_lines = [line for line in r.log.splitlines()
+                         if "elapsed time:" in line.lower()]
+        assert elapsed_lines, "Log file does not record elapsed time"
+        assert all("*" not in line for line in elapsed_lines), (
+            "Elapsed-time integer field overflowed")
 
     def test_log_echoes_options(self, run_t2p):
         r = run_t2p(_base_t2p(), extra_files=FILES)
