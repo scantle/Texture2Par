@@ -7,9 +7,9 @@
 !   COV(vgm, lag)    — for vgm_struct    (kriging.F90)
 !   COV_ST(vgm, lag) — for vgm_struct_st (kriging_st.F90)
 !
-! When USE_COV_TABLE is defined (default production build) both macros use
-! the table-accelerated path; otherwise both fall back to the analytic path
-! (useful for debugging or validating table accuracy).
+! Normal Texture2Par builds use the analytic path. Defining USE_COV_TABLE
+! explicitly enables the table-accelerated path for developer benchmarking
+! and table-accuracy validation.
 
 #ifdef USE_COV_TABLE
 #  define COV(vgm, lag)    vgm%cov_tab(lag)

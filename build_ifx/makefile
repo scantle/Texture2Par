@@ -84,7 +84,7 @@ T2P_MODFLAGS := $(subst $(MODDIR),$(T2PMODDIR),$(IFX_MOD)) $(INC)$(FLIBMODDIR) $
 
 FLIB_FFLAGS := $(FLIB_COMMON) $(FLIB_MODFLAGS) $(INC)$(FLIBDIR) $(LIB_OPTFLAGS)
 MFUSG_FFLAGS := $(MFUSG_COMMON) $(MFUSG_MODFLAGS) $(LIB_OPTFLAGS)
-KRIG_FFLAGS := $(FLIB_COMMON) $(KRIG_MODFLAGS) $(INC)$(KRIGDIR) $(LIB_OPTFLAGS) $(IFX_REAL8) $(IFX_OPENMP) /DKRIGEKIT_HCACHE_SLOTS=256 /DUSE_COV_TABLE
+KRIG_FFLAGS := $(FLIB_COMMON) $(KRIG_MODFLAGS) $(INC)$(KRIGDIR) $(LIB_OPTFLAGS) $(IFX_REAL8) $(IFX_OPENMP) /DKRIGEKIT_HCACHE_SLOTS=256
 T2P_FFLAGS := $(T2P_COMMON) $(T2P_MODFLAGS) $(INC)$(FLIBDIR) $(T2P_OPTFLAGS) $(IFX_REAL8)
 LDFLAGS := $(IFX_LINK) $(IFX_OPENMP) $(LINKDEBUG)
 
@@ -328,9 +328,9 @@ $(KRIGOBJDIR)/kdtree2_maxidx.obj: $(KRIGOBJDIR)/kriging_err.obj
 $(KRIGOBJDIR)/variogram.obj: $(KRIGOBJDIR)/common.obj $(KRIGOBJDIR)/kriging_err.obj $(KRIGOBJDIR)/vgmfunc.obj $(KRIGOBJDIR)/rotation.obj
 $(KRIGOBJDIR)/variogram_st.obj: $(KRIGOBJDIR)/kriging_err.obj $(KRIGOBJDIR)/variogram.obj $(KRIGOBJDIR)/vgmfunc.obj
 $(KRIGOBJDIR)/kriging_base.obj: $(KRIGOBJDIR)/common.obj $(KRIGOBJDIR)/kriging_err.obj $(KRIGOBJDIR)/progress_bar.obj $(KRIGOBJDIR)/utils.obj $(KRIGOBJDIR)/gaussian_quadrature.obj $(KRIGOBJDIR)/kdtree2_maxidx.obj $(KRIGOBJDIR)/nscore.obj $(KRIGOBJDIR)/solver.obj
-$(KRIGOBJDIR)/kriging.obj: $(KRIGOBJDIR)/common.obj $(KRIGOBJDIR)/kriging_err.obj $(KRIGOBJDIR)/utils.obj $(KRIGOBJDIR)/progress_bar.obj $(KRIGOBJDIR)/rotation.obj $(KRIGOBJDIR)/variogram.obj $(KRIGOBJDIR)/kdtree2_maxidx.obj $(KRIGOBJDIR)/kriging_base.obj
+$(KRIGOBJDIR)/kriging.obj: $(KRIGOBJDIR)/common.obj $(KRIGOBJDIR)/kriging_err.obj $(KRIGOBJDIR)/utils.obj $(KRIGOBJDIR)/progress_bar.obj $(KRIGOBJDIR)/rotation.obj $(KRIGOBJDIR)/variogram.obj $(KRIGOBJDIR)/kdtree2_maxidx.obj $(KRIGOBJDIR)/kriging_base.obj $(KRIGDIR)/cov_dispatch.fh
 $(KRIGOBJDIR)/kriging_indicator.obj: $(KRIGOBJDIR)/kriging.obj $(KRIGOBJDIR)/kriging_base.obj $(KRIGOBJDIR)/utils.obj $(KRIGOBJDIR)/kriging_err.obj
-$(KRIGOBJDIR)/kriging_st.obj: $(KRIGOBJDIR)/common.obj $(KRIGOBJDIR)/kriging_err.obj $(KRIGOBJDIR)/utils.obj $(KRIGOBJDIR)/rotation.obj $(KRIGOBJDIR)/variogram_st.obj $(KRIGOBJDIR)/vgmfunc.obj $(KRIGOBJDIR)/kdtree2_maxidx.obj $(KRIGOBJDIR)/kriging_base.obj
+$(KRIGOBJDIR)/kriging_st.obj: $(KRIGOBJDIR)/common.obj $(KRIGOBJDIR)/kriging_err.obj $(KRIGOBJDIR)/utils.obj $(KRIGOBJDIR)/rotation.obj $(KRIGOBJDIR)/variogram_st.obj $(KRIGOBJDIR)/vgmfunc.obj $(KRIGOBJDIR)/kdtree2_maxidx.obj $(KRIGOBJDIR)/kriging_base.obj $(KRIGDIR)/cov_dispatch.fh
 
 $(OBJDIR)/FileIO.obj: $(OBJDIR)/Str_Module.obj $(FLIB_DEP) $(OBJDIR)/Lists.obj
 $(OBJDIR)/global.obj: $(OBJDIR)/FileIO.obj
