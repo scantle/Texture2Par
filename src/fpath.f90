@@ -31,7 +31,7 @@ subroutine fpath_join(path1, path2, pathcombo)
   character(*), intent(in)  :: path1, path2
   character(*), intent(out) :: pathcombo
 
-  character(maxlen)              :: c1, c2
+  character(maxlen)              :: c1, c2 
   integer                        :: len1, len2
 
   ! Copy

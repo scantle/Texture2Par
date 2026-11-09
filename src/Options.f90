@@ -9,6 +9,9 @@ module m_options
 !     after the options are read.
 !-------------------------------------------------------------------------------------------------!
 
+  integer, parameter, public :: CK_MEAN_LIBKRIGING = 1
+  integer, parameter, public :: CK_MEAN_LEGACY_STANDARDIZED = 2
+
   type t_options
     ! Required Options:
     integer                  :: MAX_VSTRUCT           ! Maximum variogram structures
@@ -16,30 +19,40 @@ module m_options
     ! "Optional" Options - Default Value and Settings
     real                     :: NO_DATA_VALUE         !
     real                     :: IDW_POWER             ! Inverse Distance Weighting Power Parameter
+    real                     :: MAX_PRIMARY_DIST      ! Maximum distance to include primary data in interpolation
     real                     :: MAX_SECONDARY_DIST    ! Maximum distance to include secondary data in interpolation
     real                     :: MAX_OUTSIDE_DIST      ! Maximum distance data can be outside of [model] domain
-    real                     :: MAX_LOG_LENGTH        ! Maximum interval length when reading 3D data, longer logs will be split
+    real                     :: MAX_LOG_LENGTH(999)   ! Maximum interval length when reading 3D data, longer logs will be split; can be defined separately for each dataset file
     integer                  :: INTERP_DIM            ! 2D, 3D, stored as integer, read as string
     integer                  :: NSIM                  ! number of sequential gaussian simulation; default is zero which is Kriging
     integer                  :: SEED                  ! seed number for generating random path and samples for SGSIM
-    character(10)            :: INTERP_METHOD         ! OK, SK, IDW
+    integer                  :: NTHREADS              ! threads used by deterministic libkriging solves
+    character(10)            :: INTERP_METHOD         ! Model/data: OK, OK_LIB, SK, IDW
+    character(10)            :: PP_INTERP_METHOD      ! Pilot points: OK, IDW
+    character(10)            :: IB_INTERP_METHOD      ! Interbeds: OK, IDW
     character(10)            :: INTERP_ORDER          ! Interpolate to grid: [BEFORE, AFTER] upscaling/aggegating?
+    integer                  :: CK_MEAN_MODE          ! Libkriging local means or legacy global standardization
     character(60)            :: MAIN_OUTPUT           !
-    character(60)            :: PROJECT_NAME          ! project name, used as prefix for output file names
+    character(500)           :: PROJECT_NAME          ! project name, used as prefix for output file names
     !character(100)           :: OUTPUT_DIR            ! Directory where output gets written
     !character(100)           :: INPUT_DIR             ! Direction where input gets read
     logical                  :: SILENT_MODE           ! UNIMPLMENTED
     logical                  :: DEBUG_MODE            ! UNIMPLMENTED
     logical                  :: ONLY_TEXTURE          ! Stops after calculating texture
-    logical                  :: WRITE_MATRIX          ! Writes kriging matrices to log
+    logical                  :: READ_GRID             ! Skips texture interpolation, reads file of gridded texture
+    logical                  :: WRITE_MATRIX          ! Writes libkriging diagnostic matrices to CSV files
     logical                  :: WRITE_VARIANCE        ! Write kriging variance
     logical                  :: WRITE_PP_WEIGHTS      ! Write pilot point weights for reuse
     logical                  :: WRITE_GRID_WEIGHTS    ! Write grid (texture) weights for reuse
+    logical                  :: WRITE_IB_WEIGHTS      ! Write interbed weights for reuse (subsidence ON)
     logical                  :: READ_PP_WEIGHTS       ! Reuse pilot point weights
     logical                  :: READ_GRID_WEIGHTS     ! Reuse grid (texture) weights
+    logical                  :: READ_IB_WEIGHTS       ! Reuse interbed weights (subsidence ON)
     logical                  :: WRITE_NONE            ! Skips model output files (as implemented...)
     logical                  :: WRITE_NODE_FILES      ! Writes parameters by node/cell
     logical                  :: WRITE_DATASET_FILES   ! Writes out datasets averaged by layer
+    logical                  :: WRITE_ELEVATION_FILE  ! Writes grid layer elevations
+    logical                  :: WRITE_DATA_ELEV_FILE  ! Writes layer elevations at dataset points
     logical                  :: OUTPUT_GRID           ! UNIMPLMENTED
     logical                  :: OUTPUT_ARRAY          ! UNIMPLMENTED
     logical                  :: LOG_KRIGE_K           ! UNIMPLMENTED
@@ -56,8 +69,11 @@ module m_options
     logical                  :: ASYMMETRIC_COV        ! Whether relationships between covariates can be asymmetric
     logical                  :: PP_WEIGHTS_TEXT       ! Write pp weight file as text file
     logical                  :: GRID_WEIGHTS_TEXT     ! Write grid weight file as text file
+    logical                  :: IB_WEIGHTS_TEXT       ! Write interbed weight file as text file
     logical                  :: SUBSIDENCE_ON         ! Tracks if in subsidence mode (inelastic, elastic storage split)
-    logical                  :: PREPROC_ON            ! Tracks if using preprocessor
+    logical                  :: PREPROC_ON            ! Tracks if using a preprocessor
+    real                     :: MIN_IB_COUNT          ! Minimum number of interbeds to delineate subsidence (between 0 and 1)
+    real                     :: MIN_IB_THICK          ! Minimum thickness of interbeds to delineate subsidence (default is 0, which means any non-zero thickness counts)
     integer                  :: BLOCK_KRIGE           ! Block kriging active (>1) type (1- gaus. quad. 2- custom points,weights) (set by fmodel read)
 
     contains
@@ -75,37 +91,48 @@ module m_options
 
   subroutine initialize(this)
     use m_global, only: NODATA
+    use m_file_io, only: basename
     implicit none
     class(t_options),intent(inout)         :: this
 
-    this%MAX_VSTRUCT          = 1
+    this%MAX_VSTRUCT          = 10
     !this%DATA_CLASSES         = -1
     this%NO_DATA_VALUE        = NODATA
     this%IDW_POWER            = 2.0
+    this%MAX_PRIMARY_DIST     = -999.0
     this%MAX_SECONDARY_DIST   = 0.0                   ! Default is overwritten in filter_near_points
     this%MAX_OUTSIDE_DIST     = 0.0
-    this%MAX_LOG_LENGTH       = HUGE(0.0)
+    this%MAX_LOG_LENGTH       = 1e7
     this%INTERP_DIM           = 2
     this%NSIM                 = 0
     this%SEED                 = 0
+    this%NTHREADS             = 1
     this%INTERP_METHOD        = 'OK'
+    this%PP_INTERP_METHOD     = 'OK'
+    this%IB_INTERP_METHOD     = 'OK'
     this%INTERP_ORDER         = 'BEFORE'
-    this%PROJECT_NAME         = 't2p'
+    this%CK_MEAN_MODE         = CK_MEAN_LIBKRIGING
+    this%PROJECT_NAME         = trim(basename)
     this%MAIN_OUTPUT          = ''
     !this%OUTPUT_DIR           = './'
     !this%INPUT_DIR            = './'
     this%SILENT_MODE          = .false.
     this%DEBUG_MODE           = .false.
     this%ONLY_TEXTURE         = .false.
+    this%READ_GRID            = .false.
     this%WRITE_MATRIX         = .false.
     this%WRITE_VARIANCE       = .false.
     this%WRITE_PP_WEIGHTS     = .false.
     this%WRITE_GRID_WEIGHTS   = .false.
+    this%WRITE_IB_WEIGHTS     = .false.
     this%READ_PP_WEIGHTS      = .false.
     this%READ_GRID_WEIGHTS    = .false.
+    this%READ_IB_WEIGHTS      = .false.
     this%WRITE_NONE           = .false.
     this%WRITE_NODE_FILES     = .false.
     this%WRITE_DATASET_FILES  = .false.
+    this%WRITE_ELEVATION_FILE = .false.
+    this%WRITE_DATA_ELEV_FILE = .false.
     this%OUTPUT_GRID          = .false.
     this%OUTPUT_ARRAY         = .false.
     this%LOG_KRIGE_K          = .false.
@@ -120,9 +147,12 @@ module m_options
     this%ASYMMETRIC_COV       = .false.
     this%PP_WEIGHTS_TEXT      = .false.
     this%GRID_WEIGHTS_TEXT    = .false.
+    this%IB_WEIGHTS_TEXT      = .false.
     this%SUBSIDENCE_ON        = .false.
     this%PREPROC_ON           = .false.
     this%BLOCK_KRIGE          = 0
+    this%MIN_IB_COUNT         = 0.5
+    this%MIN_IB_THICK         = 0.0
   end subroutine initialize
 
 !-------------------------------------------------------------------------------------------------!
@@ -135,7 +165,7 @@ subroutine read_options(this, reader)
   implicit none
   class(t_options)           :: this
   type(t_file_reader), pointer :: reader
-  integer                    :: status, length
+  integer                    :: i, status, length
   character(30)              :: id, temp
   type(t_vstringlist)        :: strings
 
@@ -161,10 +191,29 @@ subroutine read_options(this, reader)
         this%NSIM              = 1
       case("SEED")
         this%SEED              = item2int(strings, 2)
+      case("NTHREADS")
+        call item2char(strings, 2, temp)
+        read(temp, *, iostat=status) this%NTHREADS
+        if (status /= 0 .or. this%NTHREADS < 1) &
+          call error_handler(1,reader%file,"NTHREADS must be at least 1")
       case("INTERP_METHOD")
         call item2char(strings, 2, this%INTERP_METHOD,toupper=.true.)
+      case("PP_INTERP_METHOD")
+        call item2char(strings, 2, this%PP_INTERP_METHOD,toupper=.true.)
+      case("IB_INTERP_METHOD")
+        call item2char(strings, 2, this%IB_INTERP_METHOD,toupper=.true.)
       case("INTERP_ORDER")
         call item2char(strings, 2, this%INTERP_ORDER,toupper=.true.)
+      case("CK_MEAN_MODE")
+        call item2char(strings, 2, temp,toupper=.true.)
+        select case (trim(temp))
+          case("LIBKRIGING")
+            this%CK_MEAN_MODE = CK_MEAN_LIBKRIGING
+          case("LEGACY_STANDARDIZED")
+            this%CK_MEAN_MODE = CK_MEAN_LEGACY_STANDARDIZED
+          case DEFAULT
+            call error_handler(1,reader%file,"Invalid CK_MEAN_MODE: " // trim(temp))
+        end select
       case("MAIN_OUTPUT")
         call item2char(strings, 2, this%MAIN_OUTPUT)
       case("PROJECT_NAME")
@@ -177,18 +226,32 @@ subroutine read_options(this, reader)
         this%NO_DATA_VALUE        = item2real(strings, 2)
       case("IDW_POWER")
         this%IDW_POWER            = item2real(strings, 2)
+      case("MAX_PRIMARY_DIST")
+        this%MAX_PRIMARY_DIST     = item2real(strings, 2)
       case("MAX_SECONDARY_DIST")
         this%MAX_SECONDARY_DIST   = item2real(strings, 2)
       case("MAX_OUTSIDE_DIST")
         this%MAX_OUTSIDE_DIST     = item2real(strings, 2)
       case("MAX_LOG_LENGTH")
-        this%MAX_LOG_LENGTH       = item2real(strings, 2)
+        if (length==2) then
+          this%MAX_LOG_LENGTH       = item2real(strings, 2)
+        else
+          do i=1, length-1
+            this%MAX_LOG_LENGTH(i)  = item2real(strings, 1+i)
+          end do
+        end if
+      case("MIN_IB_COUNT")
+        this%MIN_IB_COUNT         = item2real(strings, 2)
+      case("MIN_IB_THICK")
+        this%MIN_IB_THICK         = item2real(strings, 2)
       case("SILENT_MODE")
         this%SILENT_MODE          = .true.
       case("DEBUG_MODE")
         this%DEBUG_MODE           = .true.
       case("ONLY_TEXTURE")
         this%ONLY_TEXTURE         = .true.
+      case("READ_GRID")
+        this%READ_GRID            = .true.
       case("WRITE_MATRIX")
         this%WRITE_MATRIX         = .true.
       case("WRITE_VARIANCE")
@@ -205,6 +268,12 @@ subroutine read_options(this, reader)
           call item2char(strings, 2, temp,toupper=.true.)
           if (trim(temp)=="TEXT") this%GRID_WEIGHTS_TEXT = .true.
         end if
+      case("WRITE_IB_WEIGHTS")
+        this%WRITE_IB_WEIGHTS     = .true.
+        if (length>1) then
+          call item2char(strings, 2, temp,toupper=.true.)
+          if (trim(temp)=="TEXT") this%IB_WEIGHTS_TEXT = .true.
+        end if
       case("READ_PP_WEIGHTS")
         this%READ_PP_WEIGHTS      = .true.
         if (length>1) then
@@ -217,12 +286,22 @@ subroutine read_options(this, reader)
           call item2char(strings, 2, temp,toupper=.true.)
           if (trim(temp)=="TEXT") this%GRID_WEIGHTS_TEXT = .true.
         end if
+      case("READ_IB_WEIGHTS")
+        this%READ_IB_WEIGHTS      = .true.
+        if (length>1) then
+          call item2char(strings, 2, temp,toupper=.true.)
+          if (trim(temp)=="TEXT") this%IB_WEIGHTS_TEXT = .true.
+        end if
       case("WRITE_NONE")
         this%WRITE_NONE           = .true.
       case("WRITE_NODE_FILES","WRITE_CELL_FILES")
         this%WRITE_NODE_FILES     = .true.
       case("WRITE_DATASET_FILES")
         this%WRITE_DATASET_FILES  = .true.
+      case("WRITE_ELEVATION_FILE")
+        this%WRITE_ELEVATION_FILE  = .true.
+      case("WRITE_DATA_ELEV_FILE", "WRITE_DATA_ELEVATION_FILE")
+        this%WRITE_DATA_ELEV_FILE = .true.
       case("OUTPUT_GRID")
         this%OUTPUT_GRID          = .true.
       case("OUTPUT_ARRAY")
@@ -255,36 +334,74 @@ end subroutine read_options
 
 !-------------------------------------------------------------------------------------------------!
 
-subroutine write_input_summary(this)
+subroutine write_input_summary(this, ndatafiles)
   use m_global, only: log
   implicit none
   class(t_options)           :: this
-  character(200)             :: logic_true, interp_text
+  integer                    :: ndatafiles
+  character(200)             :: logic_true, interp_text, pp_interp_text, ib_interp_text, ck_mean_text
   integer                    :: no_true_len
 
     call log%write_valueline('Max Variogram Structures:', this%MAX_VSTRUCT)
     call log%write_valueline('No Data Value:',this%NO_DATA_VALUE)
     call log%write_valueline('IDW Power Value:',this%IDW_POWER)
+    if (this%MAX_PRIMARY_DIST>=0.0) then
+      call log%write_valueline('Max Primary Data Dist:', this%MAX_PRIMARY_DIST)
+    else
+      this%MAX_PRIMARY_DIST = huge(0.0)
+      call log%write_valueline('Max Primary Data Dist:', 'Not Set (using all primary data)')
+    end if
     call log%write_valueline('Max Secondary Data Dist:', this%MAX_SECONDARY_DIST)
     call log%write_valueline('Max Outside Bounds Dist:', this%MAX_OUTSIDE_DIST)
-    if (this%INTERP_DIM == 3) call log%write_valueline('Max Log Interval Length:', this%MAX_LOG_LENGTH)
+    if (this%INTERP_DIM == 3) call log%write_valueline('Max Log Interval Length:', this%MAX_LOG_LENGTH(1:ndatafiles))
     call log%write_valueline('Interpolation Dimensions:',this%INTERP_DIM)
+    call log%write_valueline('Libkriging Threads:',this%NTHREADS)
     !call log%write_valueline('',this%INTERP_DIM)  ! unimplemented
     ! Going to do something a little nicer for the Interpolation Method
     select case(this%INTERP_METHOD)
       case("OK")
-        interp_text = "Ordinary Kriging (OK)"
+        interp_text = "Ordinary Kriging (libkriging)"
+      case("OK_LIB")
+        interp_text = "Ordinary Kriging (libkriging; OK_LIB alias)"
       case("SK")
-        interp_text = "Simple Kriging (SK)"
+        interp_text = "Simple Kriging (libkriging)"
       case("IDW")
         interp_text = "Inverse Distance Weighting (IDW)"
       case DEFAULT  ! Shouldn't be able to get here
         interp_text = this%INTERP_METHOD
     end select
+    if (this%NSIM > 0) interp_text = trim(interp_text) // ' - SGSIM simulation mode'
     if (this%block_krige>0) interp_text = trim(interp_text) // ' - Block Kriging Active'
     call log%write_valueline('Interpolation Method:',trim(interp_text))
+    select case(this%PP_INTERP_METHOD)
+      case("OK")
+        pp_interp_text = "Ordinary Kriging (libkriging)"
+      case("IDW")
+        pp_interp_text = "Inverse Distance Weighting (IDW)"
+      case DEFAULT
+        pp_interp_text = this%PP_INTERP_METHOD
+    end select
+    call log%write_valueline('Pilot-Point Interpolation Method:',trim(pp_interp_text))
+    select case(this%IB_INTERP_METHOD)
+      case("OK")
+        ib_interp_text = "Ordinary Kriging (libkriging)"
+      case("IDW")
+        ib_interp_text = "Inverse Distance Weighting (IDW)"
+      case DEFAULT
+        ib_interp_text = this%IB_INTERP_METHOD
+    end select
+    call log%write_valueline('Interbed Interpolation Method:',trim(ib_interp_text))
     call log%write_valueline('Interpolation Order:',this%INTERP_ORDER)
-    if (this%NSIM > 1) then
+    select case(this%CK_MEAN_MODE)
+      case(CK_MEAN_LIBKRIGING)
+        ck_mean_text = 'LIBKRIGING'
+      case(CK_MEAN_LEGACY_STANDARDIZED)
+        ck_mean_text = 'LEGACY_STANDARDIZED'
+      case DEFAULT
+        ck_mean_text = 'INVALID'
+    end select
+    call log%write_valueline('CK Mean Mode:',trim(ck_mean_text))
+    if (this%NSIM > 0) then
       call log%write_valueline('Simulation Realizations:', this%NSIM)
       call log%write_valueline('Random Seed Number:', this%SEED)
     end if
@@ -299,15 +416,21 @@ subroutine write_input_summary(this)
     if (this%SILENT_MODE        ) logic_true = trim(logic_true) // "SILENT_MODE"         // ","
     if (this%DEBUG_MODE         ) logic_true = trim(logic_true) // "DEBUG_MODE"          // ","
     if (this%ONLY_TEXTURE       ) logic_true = trim(logic_true) // "ONLY_TEXTURE"        // ","
+    if (this%READ_GRID          ) logic_true = trim(logic_true) // "READ_GRID"           // ","
     if (this%WRITE_MATRIX       ) logic_true = trim(logic_true) // "WRITE_MATRIX"        // ","
     if (this%WRITE_VARIANCE     ) logic_true = trim(logic_true) // "WRITE_VARIANCE"      // ","
     if (this%WRITE_PP_WEIGHTS   ) logic_true = trim(logic_true) // "WRITE_PP_WEIGHTS"    // ","
     if (this%WRITE_GRID_WEIGHTS ) logic_true = trim(logic_true) // "WRITE_GRID_WEIGHTS"  // ","
+    if (this%WRITE_IB_WEIGHTS   ) logic_true = trim(logic_true) // "WRITE_IB_WEIGHTS"    // ","
     if (this%READ_PP_WEIGHTS    ) logic_true = trim(logic_true) // "READ_PP_WEIGHTS"     // ","
     if (this%READ_GRID_WEIGHTS  ) logic_true = trim(logic_true) // "READ_GRID_WEIGHTS"   // ","
+    if (this%READ_IB_WEIGHTS    ) logic_true = trim(logic_true) // "READ_IB_WEIGHTS"     // ","
     if (this%WRITE_NONE         ) logic_true = trim(logic_true) // "WRITE_NONE"          // ","
     if (this%WRITE_NODE_FILES   ) logic_true = trim(logic_true) // "WRITE_NODE_FILES"    // ","
     if (this%WRITE_DATASET_FILES) logic_true = trim(logic_true) // "WRITE_DATASET_FILES" // ","
+    if (this%WRITE_ELEVATION_FILE) logic_true = trim(logic_true) // "WRITE_ELEVATION_FILE" // ","
+    if (this%WRITE_DATA_ELEV_FILE) &
+      logic_true = trim(logic_true) // "WRITE_DATA_ELEV_FILE" // ","
     if (this%OUTPUT_GRID        ) logic_true = trim(logic_true) // "OUTPUT_GRID"         // ","
     if (this%OUTPUT_ARRAY       ) logic_true = trim(logic_true) // "OUTPUT_ARRAY"        // ","
     if (this%LOG_KRIGE_K        ) logic_true = trim(logic_true) // "LOG_KRIGE_K"         // ","

@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<VisualStudioProject ProjectType="typeStaticLibrary" ProjectCreator="Intel Fortran" Keyword="Static Library" Version="11.0" ProjectIdGuid="{B6C06374-A6FD-B0EA-D2A0-26AC61D1C812}">
+	<Platforms>
+		<Platform Name="Win32"/>
+		<Platform Name="x64"/>
+	</Platforms>
+	<Configurations>
+		<Configuration Name="Debug|Win32" UseCompiler="ifortCompiler" ConfigurationType="typeStaticLibrary" OutputDirectory=".\$(PlatformName)\$(ConfigurationName)" IntermediateDirectory=".\$(PlatformName)\$(ConfigurationName)\obj">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" PreprocessorDefinitions="KRIGEKIT_HCACHE_SLOTS=256" WarnInterfaces="true" RealKIND="realKIND8" Traceback="true" BoundsCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebug"/>
+			<Tool Name="VFLibrarianTool"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+		</Configuration>
+		<Configuration Name="Debug|x64" UseCompiler="ifxCompiler" ConfigurationType="typeStaticLibrary" OutputDirectory=".\$(PlatformName)\$(ConfigurationName)" IntermediateDirectory=".\$(PlatformName)\$(ConfigurationName)\obj">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" PreprocessorDefinitions="KRIGEKIT_HCACHE_SLOTS=256" WarnInterfaces="true" RealKIND="realKIND8" Traceback="true" BoundsCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebug"/>
+			<Tool Name="VFLibrarianTool"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+		</Configuration>
+		<Configuration Name="Release|Win32" UseCompiler="ifortCompiler" ConfigurationType="typeStaticLibrary" OutputDirectory=".\$(PlatformName)\$(ConfigurationName)" IntermediateDirectory=".\$(PlatformName)\$(ConfigurationName)\obj">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" Preprocess="preprocessYes" PreprocessorDefinitions="KRIGEKIT_HCACHE_SLOTS=256" RealKIND="realKIND8"/>
+			<Tool Name="VFLibrarianTool"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+		</Configuration>
+		<Configuration Name="Release|x64" UseCompiler="ifxCompiler" ConfigurationType="typeStaticLibrary" OutputDirectory=".\$(PlatformName)\$(ConfigurationName)" IntermediateDirectory=".\$(PlatformName)\$(ConfigurationName)\obj">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" Preprocess="preprocessYes" PreprocessorDefinitions="KRIGEKIT_HCACHE_SLOTS=256" RealKIND="realKIND8"/>
+			<Tool Name="VFLibrarianTool"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+		</Configuration>
+		<Configuration Name="Release_OpenMP|Win32" UseCompiler="ifortCompiler" ConfigurationType="typeStaticLibrary" OutputDirectory=".\$(PlatformName)\$(ConfigurationName)" IntermediateDirectory=".\$(PlatformName)\$(ConfigurationName)\obj">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" Preprocess="preprocessYes" PreprocessorDefinitions="KRIGEKIT_HCACHE_SLOTS=256" OpenMP="OpenMPParallelCode" RealKIND="realKIND8"/>
+			<Tool Name="VFLibrarianTool"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+		</Configuration>
+		<Configuration Name="Release_OpenMP|x64" UseCompiler="ifxCompiler" ConfigurationType="typeStaticLibrary" OutputDirectory=".\$(PlatformName)\$(ConfigurationName)" IntermediateDirectory=".\$(PlatformName)\$(ConfigurationName)\obj">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" Preprocess="preprocessYes" PreprocessorDefinitions="KRIGEKIT_HCACHE_SLOTS=256" OpenMP="OpenMPParallelCode" RealKIND="realKIND8"/>
+			<Tool Name="VFLibrarianTool"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+		</Configuration>
+		<Configuration Name="Debug_OpenMP|Win32" UseCompiler="ifortCompiler" ConfigurationType="typeStaticLibrary" OutputDirectory=".\$(PlatformName)\$(ConfigurationName)" IntermediateDirectory=".\$(PlatformName)\$(ConfigurationName)\obj">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" PreprocessorDefinitions="KRIGEKIT_HCACHE_SLOTS=256" OpenMP="OpenMPParallelCode" WarnInterfaces="true" RealKIND="realKIND8" Traceback="true" BoundsCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebug"/>
+			<Tool Name="VFLibrarianTool"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+		</Configuration>
+		<Configuration Name="Debug_OpenMP|x64" UseCompiler="ifxCompiler" ConfigurationType="typeStaticLibrary" OutputDirectory=".\$(PlatformName)\$(ConfigurationName)" IntermediateDirectory=".\$(PlatformName)\$(ConfigurationName)\obj">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" Preprocess="preprocessYes" PreprocessorDefinitions="KRIGEKIT_HCACHE_SLOTS=256" OpenMP="OpenMPParallelCode" WarnInterfaces="true" RealKIND="realKIND8" Traceback="true" BoundsCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebug"/>
+			<Tool Name="VFLibrarianTool"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+		</Configuration>
+	</Configurations>
+	<Files>
+		<Filter Name="Header Files" Filter="fi;fd">
+			<File RelativePath=".\cov_dispatch.fh"/>
+		</Filter>
+		<Filter Name="Resource Files" Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"/>
+		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
+			<File RelativePath=".\common.f90"/>
+			<File RelativePath=".\gaussian_quadrature.f90"/>
+			<File RelativePath=".\kdtree2_maxidx.f90"/>
+			<File RelativePath=".\kriging.F90"/>
+			<File RelativePath=".\kriging_base.F90"/>
+			<File RelativePath=".\kriging_capi.F90"/>
+			<File RelativePath=".\kriging_capi_common.F90"/>
+			<File RelativePath=".\kriging_err.f90"/>
+			<File RelativePath=".\kriging_indicator.F90"/>
+			<File RelativePath=".\kriging_st.F90"/>
+			<File RelativePath=".\kriging_st_capi.f90"/>
+			<File RelativePath=".\lapack.f"/>
+			<File RelativePath=".\nscore.f90"/>
+			<File RelativePath=".\progress_bar.F90"/>
+			<File RelativePath=".\rotation.f90"/>
+			<File RelativePath=".\solver.f90"/>
+			<File RelativePath=".\utils.F90"/>
+			<File RelativePath=".\variogram.f90"/>
+			<File RelativePath=".\variogram_st.f90"/>
+			<File RelativePath=".\vgmfunc.f90"/>
+		</Filter>
+	</Files>
+	<Globals/>
+</VisualStudioProject>
