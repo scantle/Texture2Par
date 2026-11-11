@@ -1,5 +1,6 @@
       SUBROUTINE GLO2BAS8AR(INUNIT,CUNIT,VERSION,IUDIS,IUZON,IUMLT,
-     1   MAXUNIT,IUOC,HEADNG,IUPVAL,MFVNAM,IUCLN,IUGNC,IUGNC2,IUGNCn)
+     1   MAXUNIT,IUOC,HEADNG,IUPVAL,MFVNAM,IUCLN,IUGNC,IUGNC2,IUGNCn,
+     2   LAYFNAME)
 c      call glo2bas8ar(mf_iin,CUNIT,VERSION,24,31,32,maxunit,12,headng,26,MFVNAM,29,27,30,36)
 C     ******************************************************************************
 C     ALLOCATE AND READ BASIC AND DISCRETIZATION INFORMATION FOR ALL PROCESS DOMAINS
@@ -28,6 +29,7 @@ C
       CHARACTER*(*) VERSION
       CHARACTER*80 HEADNG(2)
       CHARACTER*(*) MFVNAM
+      CHARACTER*(*) LAYFNAME
       CHARACTER*200 LINE
 c      INTEGER INUNIT
 C
@@ -82,7 +84,7 @@ C
 C
 C2------Open all files in name file.
       CALL SGWF2BAS8OPEN(INUNIT,IOUT,IUNIT,CUNIT,NIUNIT,
-     &                 VERSION,INBAS,MAXUNIT,MFVNAM)
+     &                 VERSION,INBAS,MAXUNIT,MFVNAM,LAYFNAME)
 C
 C3------PRINT A MESSAGE IDENTIFYING THE BASIC PACKAGE.
       WRITE(IOUT,1)MFVNAM,VERSION,INBAS
@@ -230,7 +232,7 @@ C15-----return
       END
 C--------------------------------------------------------------------------------
       SUBROUTINE SGWF2BAS8OPEN(INUNIT,IOUT,IUNIT,CUNIT,
-     1              NIUNIT,VERSION,INBAS,MAXUNIT,MFVNAM)
+     1              NIUNIT,VERSION,INBAS,MAXUNIT,MFVNAM,LAYFNAME)
 C     ******************************************************************
 C     OPEN FILES.
 C     ******************************************************************
@@ -244,6 +246,7 @@ C     ------------------------------------------------------------------
       CHARACTER*7 FILSTAT
       CHARACTER*20 FILACT, FMTARG, ACCARG
       CHARACTER*(*) VERSION,MFVNAM
+      CHARACTER*(*) LAYFNAME
       CHARACTER*40 SPACES
       CHARACTER*300 LINE, FNAME
       CHARACTER*20 FILTYP
@@ -254,6 +257,7 @@ C1------INITIALIZE CONSTANTS.
       INBAS=0
       NFILE=0
       IOUT=0
+      LAYFNAME=' '
       DO 5 I=1,NIUNIT
       IUNIT(I)=0
 5     CONTINUE
@@ -347,6 +351,13 @@ C11-----CHECK FOR MAJOR OPTIONS.
         DO 20 I=1,NIUNIT
            IF(LINE(ITYP1:ITYP2).EQ.CUNIT(I)) THEN
                 IUNIT(I)=IU
+              IF(I.EQ.23 .OR. I.EQ.45) THEN
+                LAYFNAME=FNAME(1:IFLEN)
+                WRITE(IOUT,22) LINE(ITYP1:ITYP2),FNAME(1:IFLEN)
+ 22             FORMAT(1X,'Texture2Par - Deferring ',A,
+     1                 ' file creation: ',A)
+                GO TO 10
+              END IF
               FILSTAT='OLD    '
               FILACT=ACTION(1)
               GO TO 30

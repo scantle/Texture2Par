@@ -17,6 +17,7 @@ tests/
   test_03_interpolation.py  # core interpolation, 3D OK, SGS, and weight caching
   test_04_butte_model.py    # larger Butte ordinary-kriging reference tests
   test_05_butte_model_ck.py # larger Butte cokriging and 3D CK reference tests
+  test_07_model_templates.py # template-driven MODFLOW and IWFM model outputs
 pytest.ini               # pytest configuration
 requirements-test.txt    # Python test dependencies
 ```
@@ -117,6 +118,12 @@ one record per invocation.
 | `TestWriteNone` | model output files suppressed |
 | `TestSubsidenceOutputs` | run completes; IB_THK/KVF written; IB_THK ≥ 0 |
 | `TestOutputRowCounts` | KH row count matches grid size (5×5×2 = 50) |
+
+### `test_07_model_templates.py`
+
+Checks that missing MODFLOW LPF and IWFM groundwater/subsidence output targets
+are created from their templates, missing templates fail with clear diagnostics,
+and output-suppressed runs do not require model templates.
 
 ### `test_03_interpolation.py`
 
