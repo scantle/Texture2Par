@@ -1184,6 +1184,7 @@ module m_flow_model
     real    ,allocatable         :: rarray(:)
     integer                      :: i, j, itemp, inode, maxnodeid
     integer, allocatable         :: lay2grid(:)
+    logical                      :: template_exists, write_model
 
     ! Standard file reader variables
     integer                    :: status, length, eof
@@ -1306,9 +1307,18 @@ module m_flow_model
     call item2char(strings, 1, value)
     call fpath_join(path, value, this%output_file)
     call reader%close_file()                   ! Close Simulation file
-    
-    ! GW file, if subsidence
-    if (opt%SUBSIDENCE_ON) then
+
+    write_model = .not. opt%WRITE_NONE .and. .not. opt%ONLY_TEXTURE
+    if (write_model) then
+      if (len_trim(this%template_file)==0) &
+        call error_handler(2,opt_msg='IWFM groundwater TEMPLATE_FILE is required')
+      inquire(file=trim(this%template_file), exist=template_exists)
+      if (.not. template_exists) &
+        call error_handler(2,this%template_file,'IWFM groundwater template file does not exist')
+    end if
+
+    ! Subsidence output file is declared in the groundwater template.
+    if (write_model .and. opt%SUBSIDENCE_ON) then
       reader => open_file_reader(this%template_file)
       call reader%read_to_next_iwfm_line(eof)
       call reader%skip(3, eof)                   ! BCFL, TDFL, PUMPFL
@@ -1316,6 +1326,12 @@ module m_flow_model
       call item2char(strings, 1, value)
       call fpath_join(path, value, this%out_sub_file)
       call reader%close_file()                   ! Close GW file
+
+      if (len_trim(this%tmp_sub_file)==0) &
+        call error_handler(2,opt_msg='IWFM subsidence TEMPLATE_FILE is required')
+      inquire(file=trim(this%tmp_sub_file), exist=template_exists)
+      if (.not. template_exists) &
+        call error_handler(2,this%tmp_sub_file,'IWFM subsidence template file does not exist')
     end if
 
   end subroutine read_iwfm
@@ -1929,10 +1945,10 @@ module m_flow_model
     integer                      :: ierr, ngrids, i, j, k, n, mfmaxunit
     integer,allocatable          :: grid_count(:), lay2grid(:)
     character(256)               :: iomsg
-    logical                      :: found
+    logical                      :: found, template_exists, write_model
 
     ! MODFLOW-USG does the heavy lifting
-    call init_modflow_usg(this%sim_file,ierr,iomsg,mfmaxunit)
+    call init_modflow_usg(this%sim_file,ierr,iomsg,mfmaxunit,this%output_file)
     this%ncol = NCOL
     ! Error handling for external reader...
     if (ierr /= 0) then
@@ -1954,6 +1970,15 @@ module m_flow_model
       this%gwftyp = 'UPW'
     end if
     if (this%layfile==0) call error_handler(2,'MODFLOW NAM file must have LPF or UPW package present',this%sim_file)
+
+    write_model = .not. opt%WRITE_NONE .and. .not. opt%ONLY_TEXTURE
+    if (write_model) then
+      if (len_trim(this%template_file)==0) &
+        call error_handler(2,opt_msg='MODFLOW LPF/UPW TEMPLATE_FILE is required')
+      inquire(file=trim(this%template_file), exist=template_exists)
+      if (.not. template_exists) &
+        call error_handler(2,this%template_file,'MODFLOW LPF/UPW template file does not exist')
+    end if
 
     allocate(lay2grid(nlay))
     lay2grid = 1
@@ -2054,14 +2079,8 @@ module m_flow_model
     type(t_file_reader),pointer  :: fread
     type(t_file_writer),pointer  :: fwrite
     integer                      :: ierr, upwflag
-    character(500)               :: fname
-    logical                      :: lop
 
     !write(*,'(2x,2(a,3a))') 'Reading temp ', this%gwftyp, ', writing new ', this%gwftyp
-
-    ! LPF/UPW [should be] open - close it. We're going to do a bait-and-switch on MODFLOW
-    inquire(unit=IUNIT(this%layfile), opened=lop, name=fname)
-    if (lop) close(IUNIT(this%layfile))
 
     ! Initialize MODFLOW LPF values with template LPF file (user provided)
     fread => open_file_reader(this%template_file)
@@ -2070,8 +2089,8 @@ module m_flow_model
     CALL GWF2BCFU1AR(IUNIT(1),IUNIT(22),fread%unit,IUNIT(64), upwflag)
     call fread%close_file()
 
-    ! Re-open actual LPF file and OVERWRITE
-    fwrite => open_file_writer(fname)
+    ! Create or replace the LPF/UPW file named by the MODFLOW name file.
+    fwrite => open_file_writer(this%output_file)
 
     call writeGWFP(fwrite%unit, par, this%gwftyp)
     call fwrite%close_file()

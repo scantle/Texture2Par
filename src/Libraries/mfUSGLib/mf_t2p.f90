@@ -1,5 +1,5 @@
 !     ******************************************************************
-      subroutine init_modflow_usg(namfname,ierr,iomsg,cmaxunit)
+      subroutine init_modflow_usg(namfname,ierr,iomsg,cmaxunit,layfname)
       use mf_fpath, only: relpath, fpath_strip
 
       ! Initializes the dis/bas packages of MODFLOW
@@ -20,6 +20,7 @@
       ! variables used in routine
       integer                   :: n
       character(*)            :: namfname
+      character(*)            :: layfname
       character(200)            :: namfname_nopath
       integer,parameter         :: mf_iin=141,  &
                                    niunit=100,  &
@@ -50,6 +51,7 @@
 
       ! initialize
       ierr=0
+      layfname=''
 
       ! prep the modflow name file for reading
       open(mf_iin,file=namfname,status='OLD',iostat=ierr,iomsg=iomsg)
@@ -63,7 +65,7 @@
       call fpath_strip(namfname, relpath, namfname_nopath)
 
       ! read modflow nam and basic and dis data
-      call glo2bas8ar(mf_iin,CUNIT,VERSION,24,31,32,maxunit,12,headng,26,MFVNAM,29,27,30,36)
+      call glo2bas8ar(mf_iin,CUNIT,VERSION,24,31,32,maxunit,12,headng,26,MFVNAM,29,27,30,36,layfname)
       
       ! Set unstructured return variables
       !mfunst = IUNSTR

@@ -1462,7 +1462,7 @@ module m_T2P
       call this%write_dataset_files()
     end if
 
-    if (.not. this%opt%WRITE_NONE) then
+    if (.not. this%opt%WRITE_NONE .and. .not. this%opt%ONLY_TEXTURE) then
       ! Write out flow model input files
       call this%write_minor_status("Writing "//trim(this%fmodel%name)//" Input Files")
       call this%fmodel%write_fmodel_input(this%par, this%opt)
