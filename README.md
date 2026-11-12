@@ -52,6 +52,52 @@ If GNU Make is installed as `mingw32-make`, substitute that command for `make`. 
 
 Both build routes write `bin/Texture2Par.exe`. This repository does not currently provide a supported Linux or macOS build configuration.
 
+### Intel OpenMP runtime DLL
+
+The downloadable Windows release is built with OpenMP support and requires
+`libiomp5md.dll`. This file is Intel's OpenMP runtime library; it provides the
+thread creation, scheduling, and synchronization used when Texture2Par runs
+deterministic libkriging solves in parallel. It is a program dependency, not a
+Texture2Par input file or optional plugin.
+
+Keep `libiomp5md.dll` in the same directory as `Texture2Par.exe`. Windows
+searches the executable's directory for dependent DLLs, so this works even
+when Texture2Par is launched from a different working directory. If the
+executable is copied into a model or working directory, copy the DLL with it.
+The DLL is still required when `NTHREADS` is 1 because Windows loads program
+dependencies when the executable starts.
+
+A non-OpenMP build, such as the Visual Studio `Release|x64` configuration,
+does not require this DLL. The supported release package uses
+`Release_OpenMP|x64`, however, so users should extract or copy both bundled
+files. If Windows reports that `libiomp5md.dll` is missing, re-extract the
+complete release ZIP or place its bundled copy beside the executable. Do not
+download replacement DLLs from third-party DLL sites.
+
+### Building a release
+
+The release helper builds the 64-bit OpenMP configuration, copies the required
+Intel OpenMP runtime, runs the full pytest suite against that exact executable,
+and creates a versioned ZIP plus SHA-256 checksum under `build/release/`:
+
+```powershell
+.\release.bat 2.1.1
+```
+
+The version argument must match `version.f90`. Use `-SkipTests` only for local
+packaging checks, never for a published release.
+
+After installing and authenticating the [GitHub CLI](https://cli.github.com/),
+the same command can tag the tested commit, push it, and create a GitHub Release:
+
+```powershell
+.\release.bat 2.1.1 -Publish -Draft
+```
+
+Omit `-Draft` when the release should be published immediately. Add
+`-Prerelease` for a beta or release candidate. Publishing requires a clean
+worktree; build and test outputs are ignored by Git.
+
 ## Testing
 
 Install the Python test dependencies and run pytest against the compiled executable:

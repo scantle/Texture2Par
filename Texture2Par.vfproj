@@ -84,7 +84,7 @@
 		</Configuration>
 		<Configuration Name="Release_OpenMP|x64" UseCompiler="ifxCompiler" OutputDirectory=".\bin\" IntermediateDirectory=".\build\$(PlatformName)\$(ConfigurationName)">
 			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" Preprocess="preprocessYes" AdditionalIncludeDirectories="$(ProjectDir)\mfUSGLib\x64\Release\" RealKIND="realKIND8" Traceback="true" UseWindowsLibs="true"/>
-			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" OutputFile="$(OutDir)Texture2Par_parallel.exe" SubSystem="subSystemConsole"/>
+			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" OutputFile="$(OutDir)Texture2Par.exe" SubSystem="subSystemConsole"/>
 			<Tool Name="VFResourceCompilerTool"/>
 			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
 			<Tool Name="VFCustomBuildTool"/>

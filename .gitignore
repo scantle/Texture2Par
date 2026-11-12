@@ -65,6 +65,7 @@ x64/*
 training*
 *.pyc
 /.claude
+/.agents/
 /T2P
 /.codex*
 /.bench*_tmp/
